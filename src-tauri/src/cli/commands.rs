@@ -134,6 +134,17 @@ pub fn save_settings(settings_json: &str) -> Result<bool, String> {
     Ok(true)
 }
 
+pub fn get_app_config_dir() -> String {
+    crate::config::get_app_config_dir()
+        .to_string_lossy()
+        .to_string()
+}
+
+pub fn set_app_config_dir(path: &str) -> Result<bool, String> {
+    crate::app_store::set_app_config_dir_override_for_cli(Some(path)).map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
 pub fn migrate_skill_storage(
     target: &str,
 ) -> Result<crate::services::skill::MigrationResult, String> {
@@ -945,6 +956,36 @@ pub fn import_database_sql_b64(encoded_sql: &str) -> Result<Value, String> {
         payload["warning"] = Value::String(warning);
     }
     Ok(payload)
+}
+
+pub fn create_database_backup() -> Result<String, String> {
+    let db = Database::init().map_err(|e| e.to_string())?;
+    let path = db
+        .backup_database_file()
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Database file not found, backup skipped".to_string())?;
+    Ok(path
+        .file_name()
+        .map(|filename| filename.to_string_lossy().into_owned())
+        .unwrap_or_default())
+}
+
+pub fn list_database_backups() -> Result<Vec<crate::database::backup::BackupEntry>, String> {
+    Database::list_backups().map_err(|e| e.to_string())
+}
+
+pub fn restore_database_backup(filename: &str) -> Result<String, String> {
+    let db = Database::init().map_err(|e| e.to_string())?;
+    db.restore_from_backup(filename).map_err(|e| e.to_string())
+}
+
+pub fn rename_database_backup(old_filename: &str, new_name: &str) -> Result<String, String> {
+    Database::rename_backup(old_filename, new_name).map_err(|e| e.to_string())
+}
+
+pub fn delete_database_backup(filename: &str) -> Result<bool, String> {
+    Database::delete_backup(filename).map_err(|e| e.to_string())?;
+    Ok(true)
 }
 
 fn live_config_missing_as_false(error: AppError) -> Result<bool, String> {

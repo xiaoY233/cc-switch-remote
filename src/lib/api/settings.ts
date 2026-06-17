@@ -94,11 +94,26 @@ export const settingsApi = {
     await invoke("open_app_config_folder");
   },
 
-  async getAppConfigDirOverride(): Promise<string | null> {
+  async getAppConfigDirOverride(
+    target?: ManagementTarget,
+  ): Promise<string | null> {
+    if (target?.type === "remote") {
+      return await remoteApi.getAppConfigDir(target.profile, target.secret);
+    }
     return await invoke("get_app_config_dir_override");
   },
 
-  async setAppConfigDirOverride(path: string | null): Promise<boolean> {
+  async setAppConfigDirOverride(
+    path: string | null,
+    target?: ManagementTarget,
+  ): Promise<boolean> {
+    if (target?.type === "remote") {
+      return await remoteApi.setAppConfigDir(
+        target.profile,
+        path,
+        target.secret,
+      );
+    }
     return await invoke("set_app_config_dir_override", { path });
   },
 
@@ -362,23 +377,61 @@ export interface BackupEntry {
 }
 
 export const backupsApi = {
-  async createDbBackup(): Promise<string> {
+  async createDbBackup(target?: ManagementTarget): Promise<string> {
+    if (target?.type === "remote") {
+      return await remoteApi.createDbBackup(target.profile, target.secret);
+    }
     return await invoke("create_db_backup");
   },
 
-  async listDbBackups(): Promise<BackupEntry[]> {
+  async listDbBackups(target?: ManagementTarget): Promise<BackupEntry[]> {
+    if (target?.type === "remote") {
+      return await remoteApi.listDbBackups(target.profile, target.secret);
+    }
     return await invoke("list_db_backups");
   },
 
-  async restoreDbBackup(filename: string): Promise<string> {
+  async restoreDbBackup(
+    filename: string,
+    target?: ManagementTarget,
+  ): Promise<string> {
+    if (target?.type === "remote") {
+      return await remoteApi.restoreDbBackup(
+        target.profile,
+        filename,
+        target.secret,
+      );
+    }
     return await invoke("restore_db_backup", { filename });
   },
 
-  async renameDbBackup(oldFilename: string, newName: string): Promise<string> {
+  async renameDbBackup(
+    oldFilename: string,
+    newName: string,
+    target?: ManagementTarget,
+  ): Promise<string> {
+    if (target?.type === "remote") {
+      return await remoteApi.renameDbBackup(
+        target.profile,
+        oldFilename,
+        newName,
+        target.secret,
+      );
+    }
     return await invoke("rename_db_backup", { oldFilename, newName });
   },
 
-  async deleteDbBackup(filename: string): Promise<void> {
+  async deleteDbBackup(
+    filename: string,
+    target?: ManagementTarget,
+  ): Promise<boolean | void> {
+    if (target?.type === "remote") {
+      return await remoteApi.deleteDbBackup(
+        target.profile,
+        filename,
+        target.secret,
+      );
+    }
     await invoke("delete_db_backup", { filename });
   },
 };

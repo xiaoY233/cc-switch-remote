@@ -1,29 +1,38 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { backupsApi } from "@/lib/api";
+import type { ManagementTarget } from "@/lib/api";
+import {
+  getManagementTargetKey,
+  LOCAL_MANAGEMENT_TARGET,
+} from "@/lib/managementTarget";
 
-export function useBackupManager() {
+export function useBackupManager(
+  target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+) {
   const queryClient = useQueryClient();
+  const targetKey = getManagementTargetKey(target);
 
   const {
     data: backups = [],
     isLoading,
     refetch,
   } = useQuery({
-    queryKey: ["db-backups"],
-    queryFn: () => backupsApi.listDbBackups(),
+    queryKey: ["db-backups", targetKey],
+    queryFn: () => backupsApi.listDbBackups(target),
   });
 
   const createMutation = useMutation({
-    mutationFn: () => backupsApi.createDbBackup(),
+    mutationFn: () => backupsApi.createDbBackup(target),
     onSuccess: () => refetch(),
   });
 
   const restoreMutation = useMutation({
-    mutationFn: (filename: string) => backupsApi.restoreDbBackup(filename),
+    mutationFn: (filename: string) =>
+      backupsApi.restoreDbBackup(filename, target),
     onSuccess: async () => {
-      // Invalidate all queries to refresh data from restored database
-      await queryClient.invalidateQueries();
-      // Refetch backup list
+      await queryClient.invalidateQueries({
+        predicate: (query) => query.queryKey.includes(targetKey),
+      });
       await refetch();
     },
   });
@@ -35,12 +44,13 @@ export function useBackupManager() {
     }: {
       oldFilename: string;
       newName: string;
-    }) => backupsApi.renameDbBackup(oldFilename, newName),
+    }) => backupsApi.renameDbBackup(oldFilename, newName, target),
     onSuccess: () => refetch(),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (filename: string) => backupsApi.deleteDbBackup(filename),
+    mutationFn: (filename: string) =>
+      backupsApi.deleteDbBackup(filename, target),
     onSuccess: () => refetch(),
   });
 

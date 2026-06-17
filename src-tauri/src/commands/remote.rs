@@ -187,6 +187,44 @@ pub async fn remote_save_settings(
 }
 
 #[tauri::command]
+pub async fn remote_get_app_config_dir(
+    profile: RemoteHostProfile,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<String, String> {
+    run_remote_helper_json(
+        profile,
+        vec!["settings".to_string(), "app-config-dir".to_string()],
+        secret,
+        "Remote app config dir",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_set_app_config_dir(
+    profile: RemoteHostProfile,
+    path: Option<String>,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<bool, String> {
+    let profile_id = profile.id.clone();
+    let saved: bool = run_remote_helper_json(
+        profile,
+        vec![
+            "settings".to_string(),
+            "set-app-config-dir".to_string(),
+            path.unwrap_or_else(|| "-".to_string()),
+        ],
+        secret,
+        "Remote app config dir save",
+    )
+    .await?;
+    if saved {
+        remote_session_manager().close(&profile_id).await;
+    }
+    Ok(saved)
+}
+
+#[tauri::command]
 pub async fn remote_migrate_skill_storage(
     profile: RemoteHostProfile,
     target: SkillStorageLocation,
@@ -292,6 +330,93 @@ pub async fn remote_import_config_from_file(
         ],
         secret,
         "Remote config import",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_create_db_backup(
+    profile: RemoteHostProfile,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<String, String> {
+    run_remote_helper_json(
+        profile,
+        vec!["import-export".to_string(), "create-backup".to_string()],
+        secret,
+        "Remote database backup create",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_list_db_backups(
+    profile: RemoteHostProfile,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Vec<crate::database::backup::BackupEntry>, String> {
+    run_remote_helper_json(
+        profile,
+        vec!["import-export".to_string(), "backups".to_string()],
+        secret,
+        "Remote database backup list",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_restore_db_backup(
+    profile: RemoteHostProfile,
+    filename: String,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<String, String> {
+    run_remote_helper_json(
+        profile,
+        vec![
+            "import-export".to_string(),
+            "restore-backup".to_string(),
+            filename,
+        ],
+        secret,
+        "Remote database backup restore",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_rename_db_backup(
+    profile: RemoteHostProfile,
+    #[allow(non_snake_case)] oldFilename: String,
+    #[allow(non_snake_case)] newName: String,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<String, String> {
+    run_remote_helper_json(
+        profile,
+        vec![
+            "import-export".to_string(),
+            "rename-backup".to_string(),
+            oldFilename,
+            newName,
+        ],
+        secret,
+        "Remote database backup rename",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_delete_db_backup(
+    profile: RemoteHostProfile,
+    filename: String,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<bool, String> {
+    run_remote_helper_json(
+        profile,
+        vec![
+            "import-export".to_string(),
+            "delete-backup".to_string(),
+            filename,
+        ],
+        secret,
+        "Remote database backup delete",
     )
     .await
 }

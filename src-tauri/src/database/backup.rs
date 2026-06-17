@@ -34,7 +34,7 @@ const SYNC_PRESERVE_TABLES: &[&str] = &[
 ];
 
 /// A database backup entry for the UI
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackupEntry {
     pub filename: String,

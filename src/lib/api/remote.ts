@@ -19,7 +19,7 @@ import type {
 import type { AppId } from "./types";
 import type { ProviderSortUpdate, SwitchResult } from "./providers";
 import type { StreamCheckConfig, StreamCheckResult } from "./model-test";
-import type { LogConfig } from "./settings";
+import type { BackupEntry, LogConfig } from "./settings";
 import type { Prompt } from "./prompts";
 import type {
   DiscoverableSkill,
@@ -331,6 +331,25 @@ export const remoteApi = {
     });
   },
 
+  getAppConfigDir(
+    profile: RemoteHostProfile,
+    secret?: RemoteConnectionSecret,
+  ): Promise<string> {
+    return invoke<string>("remote_get_app_config_dir", { profile, secret });
+  },
+
+  setAppConfigDir(
+    profile: RemoteHostProfile,
+    path: string | null,
+    secret?: RemoteConnectionSecret,
+  ): Promise<boolean> {
+    return invoke<boolean>("remote_set_app_config_dir", {
+      profile,
+      path,
+      secret,
+    });
+  },
+
   migrateSkillStorage(
     profile: RemoteHostProfile,
     target: SkillStorageLocation,
@@ -392,6 +411,58 @@ export const remoteApi = {
     return invoke("remote_import_config_from_file", {
       profile,
       filePath,
+      secret,
+    });
+  },
+
+  createDbBackup(
+    profile: RemoteHostProfile,
+    secret?: RemoteConnectionSecret,
+  ): Promise<string> {
+    return invoke<string>("remote_create_db_backup", { profile, secret });
+  },
+
+  listDbBackups(
+    profile: RemoteHostProfile,
+    secret?: RemoteConnectionSecret,
+  ): Promise<BackupEntry[]> {
+    return invoke<BackupEntry[]>("remote_list_db_backups", { profile, secret });
+  },
+
+  restoreDbBackup(
+    profile: RemoteHostProfile,
+    filename: string,
+    secret?: RemoteConnectionSecret,
+  ): Promise<string> {
+    return invoke<string>("remote_restore_db_backup", {
+      profile,
+      filename,
+      secret,
+    });
+  },
+
+  renameDbBackup(
+    profile: RemoteHostProfile,
+    oldFilename: string,
+    newName: string,
+    secret?: RemoteConnectionSecret,
+  ): Promise<string> {
+    return invoke<string>("remote_rename_db_backup", {
+      profile,
+      oldFilename,
+      newName,
+      secret,
+    });
+  },
+
+  deleteDbBackup(
+    profile: RemoteHostProfile,
+    filename: string,
+    secret?: RemoteConnectionSecret,
+  ): Promise<boolean> {
+    return invoke<boolean>("remote_delete_db_backup", {
+      profile,
+      filename,
       secret,
     });
   },

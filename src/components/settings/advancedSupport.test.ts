@@ -25,7 +25,7 @@ describe("advanced settings remote support matrix", () => {
     ).toEqual([
       ["directory", "remote-adapted"],
       ["data", "parity"],
-      ["backup", "unsupported"],
+      ["backup", "parity"],
       ["cloudSync", "unsupported"],
       ["test", "parity"],
       ["logConfig", "parity"],

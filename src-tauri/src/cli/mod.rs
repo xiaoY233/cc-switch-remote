@@ -234,6 +234,63 @@ pub(crate) fn run_command(args: &[String]) -> Value {
                 }
             }
         }
+        [group, cmd] if group == "import-export" && cmd == "create-backup" => {
+            match commands::create_database_backup() {
+                Ok(value) => {
+                    serde_json::to_value(types::ok(value)).expect("serialize backup create")
+                }
+                Err(message) => {
+                    serde_json::to_value(types::err::<()>("backup_create_failed", message))
+                        .expect("serialize backup create error")
+                }
+            }
+        }
+        [group, cmd] if group == "import-export" && cmd == "backups" => {
+            match commands::list_database_backups() {
+                Ok(value) => {
+                    serde_json::to_value(types::ok(value)).expect("serialize backup list")
+                }
+                Err(message) => {
+                    serde_json::to_value(types::err::<()>("backup_list_failed", message))
+                        .expect("serialize backup list error")
+                }
+            }
+        }
+        [group, cmd, filename] if group == "import-export" && cmd == "restore-backup" => {
+            match commands::restore_database_backup(filename) {
+                Ok(value) => {
+                    serde_json::to_value(types::ok(value)).expect("serialize backup restore")
+                }
+                Err(message) => {
+                    serde_json::to_value(types::err::<()>("backup_restore_failed", message))
+                        .expect("serialize backup restore error")
+                }
+            }
+        }
+        [group, cmd, old_filename, new_name]
+            if group == "import-export" && cmd == "rename-backup" =>
+        {
+            match commands::rename_database_backup(old_filename, new_name) {
+                Ok(value) => {
+                    serde_json::to_value(types::ok(value)).expect("serialize backup rename")
+                }
+                Err(message) => {
+                    serde_json::to_value(types::err::<()>("backup_rename_failed", message))
+                        .expect("serialize backup rename error")
+                }
+            }
+        }
+        [group, cmd, filename] if group == "import-export" && cmd == "delete-backup" => {
+            match commands::delete_database_backup(filename) {
+                Ok(value) => {
+                    serde_json::to_value(types::ok(value)).expect("serialize backup delete")
+                }
+                Err(message) => {
+                    serde_json::to_value(types::err::<()>("backup_delete_failed", message))
+                        .expect("serialize backup delete error")
+                }
+            }
+        }
         [group, cmd, tools_json] if group == "tools" && cmd == "versions" => {
             match commands::tool_versions(tools_json) {
                 Ok(value) => {
@@ -304,6 +361,21 @@ pub(crate) fn run_command(args: &[String]) -> Value {
         }
         [group, cmd] if group == "settings" && cmd == "get" => {
             serde_json::to_value(types::ok(commands::get_settings())).expect("serialize settings")
+        }
+        [group, cmd] if group == "settings" && cmd == "app-config-dir" => {
+            serde_json::to_value(types::ok(commands::get_app_config_dir()))
+                .expect("serialize app config dir")
+        }
+        [group, cmd, path] if group == "settings" && cmd == "set-app-config-dir" => {
+            match commands::set_app_config_dir(path) {
+                Ok(value) => {
+                    serde_json::to_value(types::ok(value)).expect("serialize app config dir save")
+                }
+                Err(message) => {
+                    serde_json::to_value(types::err::<()>("app_config_dir_failed", message))
+                        .expect("serialize app config dir error")
+                }
+            }
         }
         [group, cmd, settings_json] if group == "settings" && cmd == "save" => {
             match commands::save_settings(settings_json) {

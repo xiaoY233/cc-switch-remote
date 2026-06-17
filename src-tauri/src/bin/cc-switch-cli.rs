@@ -84,8 +84,116 @@ mod usage_script;
 
 #[cfg(not(feature = "desktop"))]
 mod app_store {
+    use serde_json::Value;
+    use std::path::PathBuf;
+    use std::sync::{OnceLock, RwLock};
+
+    const STORE_KEY_APP_CONFIG_DIR: &str = "app_config_dir_override";
+    static APP_CONFIG_DIR_OVERRIDE: OnceLock<RwLock<Option<PathBuf>>> = OnceLock::new();
+
+    fn override_cache() -> &'static RwLock<Option<PathBuf>> {
+        APP_CONFIG_DIR_OVERRIDE.get_or_init(|| RwLock::new(read_override_from_file()))
+    }
+
     pub fn get_app_config_dir_override() -> Option<std::path::PathBuf> {
-        None
+        override_cache().read().ok()?.clone()
+    }
+
+    pub fn set_app_config_dir_override_for_cli(path: Option<&str>) -> Result<(), crate::AppError> {
+        let value = match path.map(str::trim) {
+            Some(trimmed) if !trimmed.is_empty() && trimmed != "-" => {
+                let resolved = resolve_path(trimmed);
+                std::fs::create_dir_all(&resolved)
+                    .map_err(|e| crate::AppError::io(&resolved, e))?;
+                Some(trimmed.to_string())
+            }
+            _ => None,
+        };
+        write_override_to_file(value.as_deref())?;
+        if let Ok(mut guard) = override_cache().write() {
+            *guard = read_override_from_file();
+        }
+        Ok(())
+    }
+
+    fn read_override_from_file() -> Option<PathBuf> {
+        let path = helper_store_path();
+        let content = std::fs::read_to_string(path).ok()?;
+        let value: Value = serde_json::from_str(&content).ok()?;
+        let raw = value.get(STORE_KEY_APP_CONFIG_DIR)?.as_str()?.trim();
+        if raw.is_empty() {
+            return None;
+        }
+        let path = resolve_path(raw);
+        if path.exists() {
+            Some(path)
+        } else {
+            None
+        }
+    }
+
+    fn write_override_to_file(path: Option<&str>) -> Result<(), crate::AppError> {
+        let store_path = helper_store_path();
+        if let Some(parent) = store_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| crate::AppError::io(parent, e))?;
+        }
+
+        let mut value = if store_path.exists() {
+            std::fs::read_to_string(&store_path)
+                .ok()
+                .and_then(|content| serde_json::from_str::<Value>(&content).ok())
+                .unwrap_or_else(|| Value::Object(Default::default()))
+        } else {
+            Value::Object(Default::default())
+        };
+
+        let object = value
+            .as_object_mut()
+            .ok_or_else(|| crate::AppError::Message("Invalid app_paths.json".to_string()))?;
+        match path {
+            Some(raw) => {
+                object.insert(
+                    STORE_KEY_APP_CONFIG_DIR.to_string(),
+                    Value::String(raw.trim().to_string()),
+                );
+            }
+            None => {
+                object.remove(STORE_KEY_APP_CONFIG_DIR);
+            }
+        }
+
+        crate::config::atomic_write(&store_path, value.to_string().as_bytes())
+    }
+
+    fn helper_store_path() -> PathBuf {
+        default_app_config_dir().join("app_paths.json")
+    }
+
+    fn default_app_config_dir() -> PathBuf {
+        helper_home_dir().join(".cc-switch")
+    }
+
+    fn helper_home_dir() -> PathBuf {
+        if let Ok(home) = std::env::var("CC_SWITCH_TEST_HOME") {
+            let trimmed = home.trim();
+            if !trimmed.is_empty() {
+                return PathBuf::from(trimmed);
+            }
+        }
+        dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))
+    }
+
+    fn resolve_path(raw: &str) -> PathBuf {
+        if raw == "~" {
+            return helper_home_dir();
+        }
+        if let Some(stripped) = raw.strip_prefix("~/") {
+            return helper_home_dir().join(stripped);
+        }
+        if let Some(stripped) = raw.strip_prefix("~\\") {
+            return helper_home_dir().join(stripped);
+        }
+        PathBuf::from(raw)
     }
 }
 

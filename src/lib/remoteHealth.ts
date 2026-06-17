@@ -64,6 +64,11 @@ export const EXPECTED_REMOTE_CAPABILITIES = [
     defaultLabel: "通用设置",
   },
   {
+    id: "settings-app-config-dir",
+    labelKey: "remote.capabilities.settingsAppConfigDir",
+    defaultLabel: "CC Switch 配置目录",
+  },
+  {
     id: "plugin",
     labelKey: "remote.capabilities.plugin",
     defaultLabel: "Claude 插件",

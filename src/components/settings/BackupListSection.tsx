@@ -22,8 +22,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useBackupManager } from "@/hooks/useBackupManager";
 import { extractErrorMessage } from "@/utils/errorUtils";
+import type { ManagementTarget } from "@/lib/api";
 
 interface BackupListSectionProps {
+  target?: ManagementTarget;
   backupIntervalHours?: number;
   backupRetainCount?: number;
   onSettingsChange: (updates: {
@@ -62,6 +64,7 @@ function getDisplayName(filename: string): string {
 }
 
 export function BackupListSection({
+  target,
   backupIntervalHours,
   backupRetainCount,
   onSettingsChange,
@@ -78,7 +81,7 @@ export function BackupListSection({
     isRenaming,
     remove,
     isDeleting,
-  } = useBackupManager();
+  } = useBackupManager(target);
   const [confirmFilename, setConfirmFilename] = useState<string | null>(null);
   const [deleteFilename, setDeleteFilename] = useState<string | null>(null);
   const [editingFilename, setEditingFilename] = useState<string | null>(null);

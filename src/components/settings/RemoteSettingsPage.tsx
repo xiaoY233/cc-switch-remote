@@ -29,6 +29,7 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { AppVisibilitySettings } from "@/components/settings/AppVisibilitySettings";
 import { CodexAuthSettings } from "@/components/settings/CodexAuthSettings";
 import { ImportExportSection } from "@/components/settings/ImportExportSection";
+import { BackupListSection } from "@/components/settings/BackupListSection";
 import { SkillStorageLocationSettings } from "@/components/settings/SkillStorageLocationSettings";
 import { SkillSyncMethodSettings } from "@/components/settings/SkillSyncMethodSettings";
 import { WindowSettings } from "@/components/settings/WindowSettings";
@@ -142,8 +143,12 @@ export function RemoteSettingsPage({
 
   const toolsCapability = health?.capabilities.includes("tools") ?? false;
   const settingsCapability = health?.capabilities.includes("settings") ?? false;
+  const appConfigDirCapability =
+    health?.capabilities.includes("settings-app-config-dir") ?? false;
   const pluginCapability = health?.capabilities.includes("plugin") ?? false;
   const skillsCapability = health?.capabilities.includes("skills") ?? false;
+  const importExportCapability =
+    health?.capabilities.includes("import-export") ?? false;
   const streamCheckCapability =
     health?.capabilities.includes("stream-check") ?? false;
   const routingCapability =
@@ -636,6 +641,8 @@ export function RemoteSettingsPage({
                       </div>
                     ) : (
                       <RemoteDirectorySettings
+                        target={target}
+                        supportsAppConfigDir={appConfigDirCapability}
                         settings={remoteSettings}
                         isSaving={isSavingRemoteSettings}
                         onSave={saveRemoteSettings}
@@ -654,6 +661,43 @@ export function RemoteSettingsPage({
                       onClear={importExport.clearSelection}
                     />
                   ),
+                  backup:
+                    !helperReady ||
+                    !importExportCapability ||
+                    !settingsCapability ? (
+                      <div className="rounded-xl border border-border bg-card/50 px-4 py-3 text-sm text-muted-foreground">
+                        {!helperReady
+                          ? t("remote.settings.environment.helperRequired", {
+                              defaultValue:
+                                "请先完成健康检查并安装可用的远程 Helper。",
+                            })
+                          : !importExportCapability
+                            ? t("remote.settings.advanced.unsupported.backup", {
+                                defaultValue:
+                                  "当前远程 Helper 不支持备份与恢复。请更新到包含 import-export capability 的新版 Helper。",
+                              })
+                            : t("remote.settings.general.unsupported", {
+                                defaultValue:
+                                  "当前远程 Helper 不支持通用设置管理。请更新到包含 settings capability 的新版 Helper。",
+                              })}
+                      </div>
+                    ) : isLoadingRemoteSettings || !remoteSettings ? (
+                      <div className="flex items-center gap-2 rounded-xl border border-border bg-card/50 px-4 py-3 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        {t("remote.settings.general.loading", {
+                          defaultValue: "正在加载远程设置...",
+                        })}
+                      </div>
+                    ) : (
+                      <BackupListSection
+                        target={target}
+                        backupIntervalHours={remoteSettings.backupIntervalHours}
+                        backupRetainCount={remoteSettings.backupRetainCount}
+                        onSettingsChange={(updates) => {
+                          void saveRemoteSettings(updates);
+                        }}
+                      />
+                    ),
                   test:
                     !helperReady || !streamCheckCapability ? (
                       <div className="rounded-xl border border-border bg-card/50 px-4 py-3 text-sm text-muted-foreground">

@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { Settings } from "@/types";
+import { settingsApi, type ManagementTarget } from "@/lib/api";
+import { extractErrorMessage } from "@/utils/errorUtils";
 import {
   REMOTE_DIRECTORY_FIELDS,
   buildRemoteDirectoryUpdates,
@@ -14,6 +16,8 @@ import {
 
 interface RemoteDirectorySettingsProps {
   settings: Settings;
+  target: Extract<ManagementTarget, { type: "remote" }>;
+  supportsAppConfigDir?: boolean;
   isSaving?: boolean;
   onSave: (
     updates: Partial<Settings>,
@@ -33,6 +37,8 @@ function buildDrafts(settings: Settings): DirectoryDrafts {
 
 export function RemoteDirectorySettings({
   settings,
+  target,
+  supportsAppConfigDir = true,
   isSaving = false,
   onSave,
 }: RemoteDirectorySettingsProps) {
@@ -40,11 +46,94 @@ export function RemoteDirectorySettings({
   const [drafts, setDrafts] = useState<DirectoryDrafts>(() =>
     buildDrafts(settings),
   );
+  const [appConfigDir, setAppConfigDir] = useState("");
+  const [appConfigDraft, setAppConfigDraft] = useState("");
+  const [isLoadingAppConfigDir, setIsLoadingAppConfigDir] = useState(false);
+  const [isSavingAppConfigDir, setIsSavingAppConfigDir] = useState(false);
+  const [appConfigDirUnsupported, setAppConfigDirUnsupported] =
+    useState(!supportsAppConfigDir);
   const [savingApp, setSavingApp] = useState<RemoteDirectoryApp | null>(null);
 
   useEffect(() => {
     setDrafts(buildDrafts(settings));
   }, [settings]);
+
+  useEffect(() => {
+    setAppConfigDirUnsupported(!supportsAppConfigDir);
+    if (!supportsAppConfigDir) {
+      setAppConfigDir("");
+      setAppConfigDraft("");
+      setIsLoadingAppConfigDir(false);
+      return;
+    }
+
+    let active = true;
+    setIsLoadingAppConfigDir(true);
+    settingsApi
+      .getAppConfigDirOverride(target)
+      .then((value) => {
+        if (!active) return;
+        const next = value ?? "";
+        setAppConfigDir(next);
+        setAppConfigDraft(next);
+      })
+      .catch((error) => {
+        if (!active) return;
+        if (isUnsupportedHelperCommand(error)) {
+          setAppConfigDirUnsupported(true);
+          setAppConfigDir("");
+          setAppConfigDraft("");
+          return;
+        }
+        toast.error(
+          t("remote.settings.advanced.directory.loadAppConfigFailed", {
+            defaultValue: "读取远程 CC Switch 配置目录失败",
+          }),
+          { description: extractErrorMessage(error) },
+        );
+      })
+      .finally(() => {
+        if (active) setIsLoadingAppConfigDir(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [supportsAppConfigDir, t, target]);
+
+  const saveAppConfigDir = async (value: string | null) => {
+    setIsSavingAppConfigDir(true);
+    try {
+      const normalized = value?.trim() ? value.trim() : null;
+      const result = await settingsApi.setAppConfigDirOverride(
+        normalized,
+        target,
+      );
+      if (result !== false) {
+        const next = (await settingsApi.getAppConfigDirOverride(target)) ?? "";
+        setAppConfigDir(next);
+        setAppConfigDraft(next);
+        toast.success(
+          t("remote.settings.advanced.directory.saved", {
+            defaultValue: "远程配置目录已保存",
+          }),
+          { closeButton: true },
+        );
+      }
+    } catch (error) {
+      if (isUnsupportedHelperCommand(error)) {
+        setAppConfigDirUnsupported(true);
+        return;
+      }
+      toast.error(
+        t("remote.settings.advanced.directory.saveAppConfigFailed", {
+          defaultValue: "保存远程 CC Switch 配置目录失败",
+        }),
+        { description: extractErrorMessage(error) },
+      );
+    } finally {
+      setIsSavingAppConfigDir(false);
+    }
+  };
 
   const saveApp = async (app: RemoteDirectoryApp, value: string) => {
     setSavingApp(app);
@@ -74,14 +163,69 @@ export function RemoteDirectorySettings({
                 "这里保存的是当前远程主机自己的应用配置目录覆盖，不会读取或修改本机目录。",
             })}
           </p>
-          <p>
-            {t("remote.settings.advanced.directory.appConfigUnsupported", {
-              defaultValue:
-                "CC Switch 数据目录覆盖暂未开放远程迁移；远程数据仍由远程 Helper 当前数据目录管理。",
-            })}
-          </p>
         </div>
       </div>
+
+      <section className="space-y-4">
+        <header className="space-y-1">
+          <h3 className="text-sm font-medium">{t("settings.appConfigDir")}</h3>
+          <p className="text-xs text-muted-foreground">
+            {t("settings.appConfigDirDescription")}
+          </p>
+        </header>
+
+        {appConfigDirUnsupported ? (
+          <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-200">
+            {t("remote.settings.advanced.directory.appConfigUnsupported", {
+              defaultValue:
+                "当前远程 Helper 不支持 CC Switch 配置目录管理。请更新 Helper 后再使用。",
+            })}
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <Input
+              value={appConfigDraft}
+              placeholder="~/.cc-switch"
+              className="text-xs"
+              disabled={isLoadingAppConfigDir || isSavingAppConfigDir}
+              onChange={(event) => setAppConfigDraft(event.target.value)}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              disabled={
+                isLoadingAppConfigDir ||
+                isSavingAppConfigDir ||
+                appConfigDraft.trim() === appConfigDir
+              }
+              title={t("common.save")}
+              onClick={() => void saveAppConfigDir(appConfigDraft)}
+            >
+              {isSavingAppConfigDir ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              disabled={
+                isLoadingAppConfigDir || isSavingAppConfigDir || !appConfigDir
+              }
+              title={t("settings.resetDefault")}
+              onClick={() => {
+                setAppConfigDraft("");
+                void saveAppConfigDir(null);
+              }}
+            >
+              <Undo2 className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+      </section>
 
       <section className="space-y-4">
         <header className="space-y-1">
@@ -154,4 +298,8 @@ export function RemoteDirectorySettings({
       </section>
     </div>
   );
+}
+
+function isUnsupportedHelperCommand(error: unknown): boolean {
+  return extractErrorMessage(error).includes("unsupported_command");
 }

@@ -1,4 +1,5 @@
 use serde_json::Value;
+use std::fs;
 use std::path::PathBuf;
 use std::sync::{OnceLock, RwLock};
 use tauri_plugin_store::StoreExt;
@@ -24,6 +25,22 @@ fn update_cached_override(value: Option<PathBuf>) {
 /// 获取缓存中的 app_config_dir 覆盖路径
 pub fn get_app_config_dir_override() -> Option<PathBuf> {
     override_cache().read().ok()?.clone()
+}
+
+/// CLI/helper builds do not have a Tauri AppHandle available. In desktop builds
+/// this is only used by JSON CLI tests and accidental helper-style invocations;
+/// the real desktop app continues to persist through `set_app_config_dir_to_store`.
+pub fn set_app_config_dir_override_for_cli(path: Option<&str>) -> Result<(), AppError> {
+    let value = match path.map(str::trim) {
+        Some(trimmed) if !trimmed.is_empty() && trimmed != "-" => {
+            let path = resolve_path(trimmed);
+            fs::create_dir_all(&path).map_err(|e| AppError::io(&path, e))?;
+            Some(path)
+        }
+        _ => None,
+    };
+    update_cached_override(value);
+    Ok(())
 }
 
 fn read_override_from_store(app: &tauri::AppHandle) -> Option<PathBuf> {

@@ -114,6 +114,65 @@ fn settings_round_trip_through_json_cli() {
 
 #[test]
 #[serial]
+fn settings_app_config_dir_override_round_trips_through_json_cli() {
+    let (default_response, set_response, get_response, clear_response, cleared_response) =
+        with_temp_home(|| {
+            let override_dir = cli_test_home().join("remote-data-dir");
+            let override_dir = override_dir.to_string_lossy().to_string();
+
+            let default_response =
+                cc_switch_lib::cli::run(&["settings".to_string(), "app-config-dir".to_string()]);
+            let set_response = cc_switch_lib::cli::run(&[
+                "settings".to_string(),
+                "set-app-config-dir".to_string(),
+                override_dir,
+            ]);
+            let get_response =
+                cc_switch_lib::cli::run(&["settings".to_string(), "app-config-dir".to_string()]);
+            let clear_response = cc_switch_lib::cli::run(&[
+                "settings".to_string(),
+                "set-app-config-dir".to_string(),
+                "-".to_string(),
+            ]);
+            let cleared_response =
+                cc_switch_lib::cli::run(&["settings".to_string(), "app-config-dir".to_string()]);
+
+            (
+                default_response,
+                set_response,
+                get_response,
+                clear_response,
+                cleared_response,
+            )
+        });
+
+    assert_eq!(default_response["ok"], true);
+    assert!(default_response["data"]
+        .as_str()
+        .expect("default app config dir")
+        .ends_with(".cc-switch"));
+    assert_eq!(set_response["ok"], true);
+    assert_eq!(set_response["data"], true);
+    assert!(
+        cli_test_home().join("remote-data-dir").exists(),
+        "setting a remote app config dir should create the remote directory"
+    );
+    assert_eq!(get_response["ok"], true);
+    assert!(get_response["data"]
+        .as_str()
+        .expect("overridden app config dir")
+        .ends_with("remote-data-dir"));
+    assert_eq!(clear_response["ok"], true);
+    assert_eq!(clear_response["data"], true);
+    assert_eq!(cleared_response["ok"], true);
+    assert!(cleared_response["data"]
+        .as_str()
+        .expect("cleared app config dir")
+        .ends_with(".cc-switch"));
+}
+
+#[test]
+#[serial]
 fn stream_check_config_round_trip_through_json_cli() {
     let (save_response, get_response) = with_temp_home(|| {
         let config_json = serde_json::json!({
@@ -750,6 +809,115 @@ fn import_export_round_trips_database_sql_through_json_cli() {
         .as_bool()
         .unwrap_or(false));
     assert!(import_response["data"]["backupId"].is_string());
+}
+
+#[test]
+#[serial]
+fn import_export_manages_database_backups_through_json_cli() {
+    let (
+        create_response,
+        list_after_create,
+        rename_response,
+        list_after_rename,
+        restore_response,
+        delete_response,
+        list_after_delete,
+    ) = with_temp_home(|| {
+        let seed_response = cc_switch_lib::cli::run(&[
+            "providers".to_string(),
+            "add".to_string(),
+            "claude".to_string(),
+            r#"{"id":"backup-seed","name":"Backup Seed","settingsConfig":{"env":{"ANTHROPIC_AUTH_TOKEN":"test-key"}}}"#
+                .to_string(),
+            "false".to_string(),
+        ]);
+        assert_eq!(seed_response["ok"], true);
+
+        let create_response =
+            cc_switch_lib::cli::run(&["import-export".to_string(), "create-backup".to_string()]);
+        let created_filename = create_response["data"]
+            .as_str()
+            .expect("created backup filename")
+            .to_string();
+        let list_after_create =
+            cc_switch_lib::cli::run(&["import-export".to_string(), "backups".to_string()]);
+
+        let rename_response = cc_switch_lib::cli::run(&[
+            "import-export".to_string(),
+            "rename-backup".to_string(),
+            created_filename,
+            "remote backup renamed".to_string(),
+        ]);
+        let renamed_filename = rename_response["data"]
+            .as_str()
+            .expect("renamed backup filename")
+            .to_string();
+        let list_after_rename =
+            cc_switch_lib::cli::run(&["import-export".to_string(), "backups".to_string()]);
+
+        let restore_response = cc_switch_lib::cli::run(&[
+            "import-export".to_string(),
+            "restore-backup".to_string(),
+            renamed_filename.clone(),
+        ]);
+
+        let delete_response = cc_switch_lib::cli::run(&[
+            "import-export".to_string(),
+            "delete-backup".to_string(),
+            renamed_filename,
+        ]);
+        let list_after_delete =
+            cc_switch_lib::cli::run(&["import-export".to_string(), "backups".to_string()]);
+
+        (
+            create_response,
+            list_after_create,
+            rename_response,
+            list_after_rename,
+            restore_response,
+            delete_response,
+            list_after_delete,
+        )
+    });
+
+    assert_eq!(create_response["ok"], true);
+    let created_filename = create_response["data"]
+        .as_str()
+        .expect("created backup filename");
+    assert!(created_filename.starts_with("db_backup_"));
+    assert!(created_filename.ends_with(".db"));
+
+    assert_eq!(list_after_create["ok"], true);
+    assert!(list_after_create["data"]
+        .as_array()
+        .expect("backup list")
+        .iter()
+        .any(|entry| entry["filename"] == created_filename));
+
+    assert_eq!(rename_response["ok"], true);
+    let renamed_filename = rename_response["data"]
+        .as_str()
+        .expect("renamed backup filename");
+    assert_eq!(renamed_filename, "remote backup renamed.db");
+
+    assert_eq!(list_after_rename["ok"], true);
+    assert!(list_after_rename["data"]
+        .as_array()
+        .expect("renamed backup list")
+        .iter()
+        .any(|entry| entry["filename"] == renamed_filename));
+
+    assert_eq!(restore_response["ok"], true);
+    assert!(restore_response["data"].is_string());
+
+    assert_eq!(delete_response["ok"], true);
+    assert_eq!(delete_response["data"], true);
+    assert_eq!(list_after_delete["ok"], true);
+    assert!(!list_after_delete["data"]
+        .as_array()
+        .expect("backup list after delete")
+        .iter()
+        .any(|entry| entry["filename"] == renamed_filename));
 }
 
 #[test]

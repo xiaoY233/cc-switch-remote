@@ -82,12 +82,7 @@ const REMOTE_ADVANCED_SUPPORT: Record<
     status: "remote-adapted",
   },
   data: { status: "parity" },
-  backup: {
-    status: "unsupported",
-    reasonKey: "remote.settings.advanced.unsupported.backup",
-    defaultReason:
-      "Remote backup management is not connected yet. It needs helper commands for listing, creating, restoring, renaming, and deleting remote database snapshots.",
-  },
+  backup: { status: "parity" },
   cloudSync: {
     status: "unsupported",
     reasonKey: "remote.settings.advanced.unsupported.cloudSync",
