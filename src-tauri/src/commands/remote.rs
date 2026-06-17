@@ -20,7 +20,7 @@ use crate::services::skill::{
 };
 use crate::services::{ProviderSortUpdate, SwitchResult};
 use crate::session_manager;
-use crate::settings::AppSettings;
+use crate::settings::{AppSettings, S3SyncSettings, WebDavSyncSettings};
 use indexmap::IndexMap;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -422,6 +422,178 @@ pub async fn remote_delete_db_backup(
 }
 
 #[tauri::command]
+pub async fn remote_webdav_test_connection(
+    profile: RemoteHostProfile,
+    settings: WebDavSyncSettings,
+    #[allow(non_snake_case)] preserveEmptyPassword: Option<bool>,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Value, String> {
+    let settings_json = serde_json::to_string(&settings).map_err(|e| e.to_string())?;
+    run_remote_helper_json(
+        profile,
+        vec![
+            "cloud-sync".to_string(),
+            "webdav-test".to_string(),
+            settings_json,
+            preserveEmptyPassword.unwrap_or(true).to_string(),
+        ],
+        secret,
+        "Remote WebDAV connection test",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_webdav_sync_save_settings(
+    profile: RemoteHostProfile,
+    settings: WebDavSyncSettings,
+    #[allow(non_snake_case)] passwordTouched: Option<bool>,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Value, String> {
+    let settings_json = serde_json::to_string(&settings).map_err(|e| e.to_string())?;
+    run_remote_helper_json(
+        profile,
+        vec![
+            "cloud-sync".to_string(),
+            "webdav-save".to_string(),
+            settings_json,
+            passwordTouched.unwrap_or(false).to_string(),
+        ],
+        secret,
+        "Remote WebDAV settings save",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_webdav_sync_upload(
+    profile: RemoteHostProfile,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Value, String> {
+    run_remote_helper_json(
+        profile,
+        vec!["cloud-sync".to_string(), "webdav-upload".to_string()],
+        secret,
+        "Remote WebDAV upload",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_webdav_sync_download(
+    profile: RemoteHostProfile,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Value, String> {
+    run_remote_helper_json(
+        profile,
+        vec!["cloud-sync".to_string(), "webdav-download".to_string()],
+        secret,
+        "Remote WebDAV download",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_webdav_sync_fetch_remote_info(
+    profile: RemoteHostProfile,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Value, String> {
+    run_remote_helper_json(
+        profile,
+        vec!["cloud-sync".to_string(), "webdav-remote-info".to_string()],
+        secret,
+        "Remote WebDAV remote info",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_s3_test_connection(
+    profile: RemoteHostProfile,
+    settings: S3SyncSettings,
+    #[allow(non_snake_case)] preserveEmptyPassword: Option<bool>,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Value, String> {
+    let settings_json = serde_json::to_string(&settings).map_err(|e| e.to_string())?;
+    run_remote_helper_json(
+        profile,
+        vec![
+            "cloud-sync".to_string(),
+            "s3-test".to_string(),
+            settings_json,
+            preserveEmptyPassword.unwrap_or(true).to_string(),
+        ],
+        secret,
+        "Remote S3 connection test",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_s3_sync_save_settings(
+    profile: RemoteHostProfile,
+    settings: S3SyncSettings,
+    #[allow(non_snake_case)] passwordTouched: Option<bool>,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Value, String> {
+    let settings_json = serde_json::to_string(&settings).map_err(|e| e.to_string())?;
+    run_remote_helper_json(
+        profile,
+        vec![
+            "cloud-sync".to_string(),
+            "s3-save".to_string(),
+            settings_json,
+            passwordTouched.unwrap_or(false).to_string(),
+        ],
+        secret,
+        "Remote S3 settings save",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_s3_sync_upload(
+    profile: RemoteHostProfile,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Value, String> {
+    run_remote_helper_json(
+        profile,
+        vec!["cloud-sync".to_string(), "s3-upload".to_string()],
+        secret,
+        "Remote S3 upload",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_s3_sync_download(
+    profile: RemoteHostProfile,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Value, String> {
+    run_remote_helper_json(
+        profile,
+        vec!["cloud-sync".to_string(), "s3-download".to_string()],
+        secret,
+        "Remote S3 download",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_s3_sync_fetch_remote_info(
+    profile: RemoteHostProfile,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Value, String> {
+    run_remote_helper_json(
+        profile,
+        vec!["cloud-sync".to_string(), "s3-remote-info".to_string()],
+        secret,
+        "Remote S3 remote info",
+    )
+    .await
+}
+
+#[tauri::command]
 pub async fn remote_get_tool_versions(
     profile: RemoteHostProfile,
     tools: Option<Vec<String>>,
@@ -748,9 +920,11 @@ fn parse_remote_capability(value: &str) -> Option<RemoteCapability> {
         "sessions" => Some(RemoteCapability::Sessions),
         "hermes-memory" => Some(RemoteCapability::HermesMemory),
         "import-export" => Some(RemoteCapability::ImportExport),
+        "cloud-sync" => Some(RemoteCapability::CloudSync),
         "tools" => Some(RemoteCapability::Tools),
         "stream-check" => Some(RemoteCapability::StreamCheck),
         "settings" => Some(RemoteCapability::Settings),
+        "settings-app-config-dir" => Some(RemoteCapability::SettingsAppConfigDir),
         "plugin" => Some(RemoteCapability::Plugin),
         "session" => Some(RemoteCapability::Session),
         _ => None,

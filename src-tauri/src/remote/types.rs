@@ -89,9 +89,11 @@ pub enum RemoteCapability {
     Sessions,
     HermesMemory,
     ImportExport,
+    CloudSync,
     Tools,
     StreamCheck,
     Settings,
+    SettingsAppConfigDir,
     Plugin,
     Session,
 }

@@ -35,6 +35,7 @@ import { SkillSyncMethodSettings } from "@/components/settings/SkillSyncMethodSe
 import { WindowSettings } from "@/components/settings/WindowSettings";
 import { AdvancedSettingsAccordion } from "@/components/settings/AdvancedSettingsAccordion";
 import { RemoteDirectorySettings } from "@/components/settings/RemoteDirectorySettings";
+import { WebdavSyncSection } from "@/components/settings/WebdavSyncSection";
 import { LogConfigPanel } from "@/components/settings/LogConfigPanel";
 import { ModelTestConfigPanel } from "@/components/usage/ModelTestConfigPanel";
 import { AutoFailoverConfigPanel } from "@/components/proxy/AutoFailoverConfigPanel";
@@ -149,6 +150,8 @@ export function RemoteSettingsPage({
   const skillsCapability = health?.capabilities.includes("skills") ?? false;
   const importExportCapability =
     health?.capabilities.includes("import-export") ?? false;
+  const cloudSyncCapability =
+    health?.capabilities.includes("cloud-sync") ?? false;
   const streamCheckCapability =
     health?.capabilities.includes("stream-check") ?? false;
   const routingCapability =
@@ -695,6 +698,47 @@ export function RemoteSettingsPage({
                         backupRetainCount={remoteSettings.backupRetainCount}
                         onSettingsChange={(updates) => {
                           void saveRemoteSettings(updates);
+                        }}
+                      />
+                    ),
+                  cloudSync:
+                    !helperReady ||
+                    !settingsCapability ||
+                    !cloudSyncCapability ? (
+                      <div className="rounded-xl border border-border bg-card/50 px-4 py-3 text-sm text-muted-foreground">
+                        {!helperReady
+                          ? t("remote.settings.environment.helperRequired", {
+                              defaultValue:
+                                "请先完成健康检查并安装可用的远程 Helper。",
+                            })
+                          : !settingsCapability
+                            ? t("remote.settings.general.unsupported", {
+                                defaultValue:
+                                  "当前远程 Helper 不支持通用设置管理。请更新到包含 settings capability 的新版 Helper。",
+                              })
+                            : t(
+                                "remote.settings.advanced.unsupported.cloudSync",
+                                {
+                                  defaultValue:
+                                    "当前远程 Helper 不支持云同步。请更新到包含 cloud-sync capability 的新版 Helper。",
+                                },
+                              )}
+                      </div>
+                    ) : isLoadingRemoteSettings || !remoteSettings ? (
+                      <div className="flex items-center gap-2 rounded-xl border border-border bg-card/50 px-4 py-3 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        {t("remote.settings.general.loading", {
+                          defaultValue: "正在加载远程设置...",
+                        })}
+                      </div>
+                    ) : (
+                      <WebdavSyncSection
+                        target={target}
+                        config={remoteSettings.webdavSync}
+                        s3Config={remoteSettings.s3Sync}
+                        settings={remoteSettings}
+                        onAutoSave={async (updates) => {
+                          await saveRemoteSettings(updates);
                         }}
                       />
                     ),

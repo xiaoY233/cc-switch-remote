@@ -2928,7 +2928,7 @@
           "generic": "This advanced setting is not available for the current target yet.",
           "directory": "Remote configuration directory overrides need a remote path editor and helper-side path validation before saving can be enabled.",
           "backup": "Remote backup management is not connected yet. It needs helper commands for listing, creating, restoring, renaming, and deleting remote database snapshots.",
-          "cloudSync": "Remote cloud sync is not connected yet. Saving credentials and running upload/download must happen through remote helper commands.",
+          "cloudSync": "The current remote helper does not support cloud sync. Update to a helper build with the cloud-sync capability.",
           "test": "Remote model test settings are not connected yet. They need target-aware stream check config commands.",
           "logConfig": "Remote log configuration is not connected yet. It needs helper-side log config read/write commands."
         }
@@ -2977,7 +2977,9 @@
       "hermesMemory": "Hermes Memory",
       "tools": "Environment Check Updates",
       "importExport": "Import / Export",
+      "cloudSync": "Cloud Sync",
       "settings": "General Settings",
+      "settingsAppConfigDir": "CC Switch Configuration Directory",
       "plugin": "Claude Plugin"
     },
     "routing": {

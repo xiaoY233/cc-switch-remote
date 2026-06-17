@@ -145,6 +145,237 @@ pub fn set_app_config_dir(path: &str) -> Result<bool, String> {
     Ok(true)
 }
 
+pub fn webdav_test_connection(settings_json: &str, preserve: &str) -> Result<Value, String> {
+    let settings: crate::settings::WebDavSyncSettings =
+        serde_json::from_str(settings_json).map_err(|e| e.to_string())?;
+    let preserve_empty = parse_bool(preserve)?;
+    let resolved = resolve_webdav_password_for_request(
+        settings,
+        crate::settings::get_webdav_sync_settings(),
+        preserve_empty,
+    );
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+    runtime
+        .block_on(crate::services::webdav_sync::check_connection(&resolved))
+        .map_err(|e| e.to_string())?;
+    Ok(json!({
+        "success": true,
+        "message": "WebDAV connection ok"
+    }))
+}
+
+pub fn webdav_save_settings(settings_json: &str, password_touched: &str) -> Result<Value, String> {
+    let settings: crate::settings::WebDavSyncSettings =
+        serde_json::from_str(settings_json).map_err(|e| e.to_string())?;
+    let password_touched = parse_bool(password_touched)?;
+    let existing = crate::settings::get_webdav_sync_settings();
+    let mut sync_settings =
+        resolve_webdav_password_for_request(settings, existing.clone(), !password_touched);
+    if let Some(existing_settings) = existing {
+        sync_settings.status = existing_settings.status;
+    }
+    sync_settings.normalize();
+    sync_settings.validate().map_err(|e| e.to_string())?;
+    crate::settings::set_webdav_sync_settings(Some(sync_settings)).map_err(|e| e.to_string())?;
+    Ok(json!({ "success": true }))
+}
+
+pub fn webdav_upload() -> Result<Value, String> {
+    let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
+    let mut settings = require_enabled_webdav_settings()?;
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+    let result = runtime.block_on(crate::services::webdav_sync::run_with_sync_lock(
+        crate::services::webdav_sync::upload(&db, &mut settings),
+    ));
+    map_webdav_sync_result(result, &mut settings, "manual")
+}
+
+pub fn webdav_download() -> Result<Value, String> {
+    let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
+    let db_for_sync = Arc::clone(&db);
+    let mut settings = require_enabled_webdav_settings()?;
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+    let mut value = map_webdav_sync_result(
+        runtime.block_on(crate::services::webdav_sync::run_with_sync_lock(
+            crate::services::webdav_sync::download(&db, &mut settings),
+        )),
+        &mut settings,
+        "manual",
+    )?;
+    attach_cli_warning(&mut value, run_cli_post_import_sync(db_for_sync).err());
+    Ok(value)
+}
+
+pub fn webdav_fetch_remote_info() -> Result<Value, String> {
+    let settings = require_enabled_webdav_settings()?;
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+    let info = runtime
+        .block_on(crate::services::webdav_sync::fetch_remote_info(&settings))
+        .map_err(|e| e.to_string())?;
+    Ok(info.unwrap_or_else(|| json!({ "empty": true })))
+}
+
+pub fn s3_test_connection(settings_json: &str, preserve: &str) -> Result<Value, String> {
+    let settings: crate::settings::S3SyncSettings =
+        serde_json::from_str(settings_json).map_err(|e| e.to_string())?;
+    let preserve_empty = parse_bool(preserve)?;
+    let resolved = resolve_s3_secret_for_request(
+        settings,
+        crate::settings::get_s3_sync_settings(),
+        preserve_empty,
+    );
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+    runtime
+        .block_on(crate::services::s3_sync::check_connection(&resolved))
+        .map_err(|e| e.to_string())?;
+    Ok(json!({
+        "success": true,
+        "message": "S3 connection ok"
+    }))
+}
+
+pub fn s3_save_settings(settings_json: &str, password_touched: &str) -> Result<Value, String> {
+    let settings: crate::settings::S3SyncSettings =
+        serde_json::from_str(settings_json).map_err(|e| e.to_string())?;
+    let password_touched = parse_bool(password_touched)?;
+    let existing = crate::settings::get_s3_sync_settings();
+    let mut sync_settings =
+        resolve_s3_secret_for_request(settings, existing.clone(), !password_touched);
+    if let Some(existing_settings) = existing {
+        sync_settings.status = existing_settings.status;
+    }
+    sync_settings.normalize();
+    sync_settings.validate().map_err(|e| e.to_string())?;
+    crate::settings::set_s3_sync_settings(Some(sync_settings)).map_err(|e| e.to_string())?;
+    Ok(json!({ "success": true }))
+}
+
+pub fn s3_upload() -> Result<Value, String> {
+    let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
+    let mut settings = require_enabled_s3_settings()?;
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+    let result = runtime.block_on(crate::services::s3_sync::run_with_sync_lock(
+        crate::services::s3_sync::upload(&db, &mut settings),
+    ));
+    map_s3_sync_result(result, &mut settings, "manual")
+}
+
+pub fn s3_download() -> Result<Value, String> {
+    let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
+    let db_for_sync = Arc::clone(&db);
+    let mut settings = require_enabled_s3_settings()?;
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+    let mut value = map_s3_sync_result(
+        runtime.block_on(crate::services::s3_sync::run_with_sync_lock(
+            crate::services::s3_sync::download(&db, &mut settings),
+        )),
+        &mut settings,
+        "manual",
+    )?;
+    attach_cli_warning(&mut value, run_cli_post_import_sync(db_for_sync).err());
+    Ok(value)
+}
+
+pub fn s3_fetch_remote_info() -> Result<Value, String> {
+    let settings = require_enabled_s3_settings()?;
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+    let info = runtime
+        .block_on(crate::services::s3_sync::fetch_remote_info(&settings))
+        .map_err(|e| e.to_string())?;
+    Ok(info.unwrap_or_else(|| json!({ "empty": true })))
+}
+
+fn resolve_webdav_password_for_request(
+    mut incoming: crate::settings::WebDavSyncSettings,
+    existing: Option<crate::settings::WebDavSyncSettings>,
+    preserve_empty_password: bool,
+) -> crate::settings::WebDavSyncSettings {
+    if let Some(existing_settings) = existing {
+        if preserve_empty_password && incoming.password.is_empty() {
+            incoming.password = existing_settings.password;
+        }
+    }
+    incoming
+}
+
+fn resolve_s3_secret_for_request(
+    mut incoming: crate::settings::S3SyncSettings,
+    existing: Option<crate::settings::S3SyncSettings>,
+    preserve_empty_secret: bool,
+) -> crate::settings::S3SyncSettings {
+    if let Some(existing_settings) = existing {
+        if preserve_empty_secret && incoming.secret_access_key.is_empty() {
+            incoming.secret_access_key = existing_settings.secret_access_key;
+        }
+    }
+    incoming
+}
+
+fn require_enabled_webdav_settings() -> Result<crate::settings::WebDavSyncSettings, String> {
+    let settings = crate::settings::get_webdav_sync_settings()
+        .ok_or_else(|| "WebDAV sync is not configured.".to_string())?;
+    if !settings.enabled {
+        return Err("WebDAV sync is disabled.".to_string());
+    }
+    Ok(settings)
+}
+
+fn require_enabled_s3_settings() -> Result<crate::settings::S3SyncSettings, String> {
+    let settings = crate::settings::get_s3_sync_settings()
+        .ok_or_else(|| "S3 sync is not configured.".to_string())?;
+    if !settings.enabled {
+        return Err("S3 sync is disabled.".to_string());
+    }
+    Ok(settings)
+}
+
+fn map_webdav_sync_result(
+    result: Result<Value, crate::AppError>,
+    settings: &mut crate::settings::WebDavSyncSettings,
+    source: &str,
+) -> Result<Value, String> {
+    match result {
+        Ok(value) => Ok(value),
+        Err(error) => {
+            settings.status.last_error = Some(error.to_string());
+            settings.status.last_error_source = Some(source.to_string());
+            let _ = crate::settings::update_webdav_sync_status(settings.status.clone());
+            Err(error.to_string())
+        }
+    }
+}
+
+fn map_s3_sync_result(
+    result: Result<Value, crate::AppError>,
+    settings: &mut crate::settings::S3SyncSettings,
+    source: &str,
+) -> Result<Value, String> {
+    match result {
+        Ok(value) => Ok(value),
+        Err(error) => {
+            settings.status.last_error = Some(error.to_string());
+            settings.status.last_error_source = Some(source.to_string());
+            let _ = crate::settings::update_s3_sync_status(settings.status.clone());
+            Err(error.to_string())
+        }
+    }
+}
+
+fn run_cli_post_import_sync(db: Arc<Database>) -> Result<(), String> {
+    let state = AppState::new(db);
+    ProviderService::sync_current_to_live(&state)
+        .and_then(|_| crate::settings::reload_settings())
+        .map_err(|e| e.to_string())
+}
+
+fn attach_cli_warning(value: &mut Value, warning: Option<String>) {
+    if let Some(message) = warning {
+        if let Some(object) = value.as_object_mut() {
+            object.insert("warning".to_string(), Value::String(message));
+        }
+    }
+}
+
 pub fn migrate_skill_storage(
     target: &str,
 ) -> Result<crate::services::skill::MigrationResult, String> {

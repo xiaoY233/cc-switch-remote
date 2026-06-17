@@ -2928,7 +2928,7 @@
           "generic": "現在の対象ではこの詳細設定はまだ利用できません。",
           "directory": "リモート設定ディレクトリの上書きは、リモートパス編集 UI と Helper 側のパス検証を追加してから有効化します。",
           "backup": "リモートのバックアップ管理はまだ接続されていません。リモート DB スナップショットの一覧、作成、復元、名前変更、削除を行う Helper コマンドが必要です。",
-          "cloudSync": "リモートのクラウド同期はまだ接続されていません。認証情報の保存とアップロード/ダウンロードはリモート Helper 経由で実行する必要があります。",
+          "cloudSync": "現在のリモート Helper はクラウド同期に対応していません。cloud-sync capability を含む Helper に更新してください。",
           "test": "リモートのモデルテスト設定はまだ接続されていません。target-aware な接続チェック設定コマンドが必要です。",
           "logConfig": "リモートのログ設定はまだ接続されていません。Helper 側のログ設定読み書きコマンドが必要です。"
         }
@@ -2977,7 +2977,9 @@
       "hermesMemory": "Hermes メモリ",
       "tools": "環境チェック更新",
       "importExport": "インポート / エクスポート",
+      "cloudSync": "クラウド同期",
       "settings": "一般設定",
+      "settingsAppConfigDir": "CC Switch 設定ディレクトリ",
       "plugin": "Claude プラグイン"
     },
     "routing": {

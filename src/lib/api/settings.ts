@@ -153,34 +153,66 @@ export const settingsApi = {
   async webdavTestConnection(
     settings: WebDavSyncSettings,
     preserveEmptyPassword = true,
+    target?: ManagementTarget,
   ): Promise<WebDavTestResult> {
+    if (target?.type === "remote") {
+      return await remoteApi.webdavTestConnection(
+        target.profile,
+        settings,
+        preserveEmptyPassword,
+        target.secret,
+      );
+    }
     return await invoke("webdav_test_connection", {
       settings,
       preserveEmptyPassword,
     });
   },
 
-  async webdavSyncUpload(): Promise<WebDavSyncResult> {
+  async webdavSyncUpload(target?: ManagementTarget): Promise<WebDavSyncResult> {
+    if (target?.type === "remote") {
+      return await remoteApi.webdavSyncUpload(target.profile, target.secret);
+    }
     return await invoke("webdav_sync_upload");
   },
 
-  async webdavSyncDownload(): Promise<WebDavSyncResult> {
+  async webdavSyncDownload(
+    target?: ManagementTarget,
+  ): Promise<WebDavSyncResult> {
+    if (target?.type === "remote") {
+      return await remoteApi.webdavSyncDownload(target.profile, target.secret);
+    }
     return await invoke("webdav_sync_download");
   },
 
   async webdavSyncSaveSettings(
     settings: WebDavSyncSettings,
     passwordTouched = false,
+    target?: ManagementTarget,
   ): Promise<{ success: boolean }> {
+    if (target?.type === "remote") {
+      return await remoteApi.webdavSyncSaveSettings(
+        target.profile,
+        settings,
+        passwordTouched,
+        target.secret,
+      );
+    }
     return await invoke("webdav_sync_save_settings", {
       settings,
       passwordTouched,
     });
   },
 
-  async webdavSyncFetchRemoteInfo(): Promise<
-    RemoteSnapshotInfo | { empty: true }
-  > {
+  async webdavSyncFetchRemoteInfo(
+    target?: ManagementTarget,
+  ): Promise<RemoteSnapshotInfo | { empty: true }> {
+    if (target?.type === "remote") {
+      return await remoteApi.webdavSyncFetchRemoteInfo(
+        target.profile,
+        target.secret,
+      );
+    }
     return await invoke("webdav_sync_fetch_remote_info");
   },
 
@@ -189,32 +221,64 @@ export const settingsApi = {
   async s3TestConnection(
     settings: S3SyncSettings,
     preserveEmptyPassword = true,
+    target?: ManagementTarget,
   ): Promise<WebDavTestResult> {
+    if (target?.type === "remote") {
+      return await remoteApi.s3TestConnection(
+        target.profile,
+        settings,
+        preserveEmptyPassword,
+        target.secret,
+      );
+    }
     return await invoke("s3_test_connection", {
       settings,
       preserveEmptyPassword,
     });
   },
 
-  async s3SyncUpload(): Promise<WebDavSyncResult> {
+  async s3SyncUpload(target?: ManagementTarget): Promise<WebDavSyncResult> {
+    if (target?.type === "remote") {
+      return await remoteApi.s3SyncUpload(target.profile, target.secret);
+    }
     return await invoke("s3_sync_upload");
   },
 
-  async s3SyncDownload(): Promise<WebDavSyncResult> {
+  async s3SyncDownload(target?: ManagementTarget): Promise<WebDavSyncResult> {
+    if (target?.type === "remote") {
+      return await remoteApi.s3SyncDownload(target.profile, target.secret);
+    }
     return await invoke("s3_sync_download");
   },
 
   async s3SyncSaveSettings(
     settings: S3SyncSettings,
     passwordTouched: boolean,
+    target?: ManagementTarget,
   ): Promise<{ success: boolean }> {
+    if (target?.type === "remote") {
+      return await remoteApi.s3SyncSaveSettings(
+        target.profile,
+        settings,
+        passwordTouched,
+        target.secret,
+      );
+    }
     return await invoke("s3_sync_save_settings", {
       settings,
       passwordTouched,
     });
   },
 
-  async s3SyncFetchRemoteInfo(): Promise<RemoteSnapshotInfo | { empty: true }> {
+  async s3SyncFetchRemoteInfo(
+    target?: ManagementTarget,
+  ): Promise<RemoteSnapshotInfo | { empty: true }> {
+    if (target?.type === "remote") {
+      return await remoteApi.s3SyncFetchRemoteInfo(
+        target.profile,
+        target.secret,
+      );
+    }
     return await invoke("s3_sync_fetch_remote_info");
   },
 

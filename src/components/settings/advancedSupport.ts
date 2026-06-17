@@ -84,10 +84,7 @@ const REMOTE_ADVANCED_SUPPORT: Record<
   data: { status: "parity" },
   backup: { status: "parity" },
   cloudSync: {
-    status: "unsupported",
-    reasonKey: "remote.settings.advanced.unsupported.cloudSync",
-    defaultReason:
-      "Remote cloud sync is not connected yet. Saving credentials and running upload/download must happen through remote helper commands.",
+    status: "remote-adapted",
   },
   test: { status: "parity" },
   logConfig: { status: "parity" },

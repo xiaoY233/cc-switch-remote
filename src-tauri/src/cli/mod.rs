@@ -386,6 +386,78 @@ pub(crate) fn run_command(args: &[String]) -> Value {
                 }
             }
         }
+        [group, cmd, settings_json, preserve] if group == "cloud-sync" && cmd == "webdav-test" => {
+            match commands::webdav_test_connection(settings_json, preserve) {
+                Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize webdav test"),
+                Err(message) => serde_json::to_value(types::err::<()>("webdav_test_failed", message))
+                    .expect("serialize webdav test error"),
+            }
+        }
+        [group, cmd, settings_json, password_touched]
+            if group == "cloud-sync" && cmd == "webdav-save" =>
+        {
+            match commands::webdav_save_settings(settings_json, password_touched) {
+                Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize webdav save"),
+                Err(message) => serde_json::to_value(types::err::<()>("webdav_save_failed", message))
+                    .expect("serialize webdav save error"),
+            }
+        }
+        [group, cmd] if group == "cloud-sync" && cmd == "webdav-upload" => {
+            match commands::webdav_upload() {
+                Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize webdav upload"),
+                Err(message) => serde_json::to_value(types::err::<()>("webdav_upload_failed", message))
+                    .expect("serialize webdav upload error"),
+            }
+        }
+        [group, cmd] if group == "cloud-sync" && cmd == "webdav-download" => {
+            match commands::webdav_download() {
+                Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize webdav download"),
+                Err(message) => serde_json::to_value(types::err::<()>("webdav_download_failed", message))
+                    .expect("serialize webdav download error"),
+            }
+        }
+        [group, cmd] if group == "cloud-sync" && cmd == "webdav-remote-info" => {
+            match commands::webdav_fetch_remote_info() {
+                Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize webdav remote info"),
+                Err(message) => serde_json::to_value(types::err::<()>("webdav_remote_info_failed", message))
+                    .expect("serialize webdav remote info error"),
+            }
+        }
+        [group, cmd, settings_json, preserve] if group == "cloud-sync" && cmd == "s3-test" => {
+            match commands::s3_test_connection(settings_json, preserve) {
+                Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize s3 test"),
+                Err(message) => serde_json::to_value(types::err::<()>("s3_test_failed", message))
+                    .expect("serialize s3 test error"),
+            }
+        }
+        [group, cmd, settings_json, password_touched] if group == "cloud-sync" && cmd == "s3-save" => {
+            match commands::s3_save_settings(settings_json, password_touched) {
+                Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize s3 save"),
+                Err(message) => serde_json::to_value(types::err::<()>("s3_save_failed", message))
+                    .expect("serialize s3 save error"),
+            }
+        }
+        [group, cmd] if group == "cloud-sync" && cmd == "s3-upload" => {
+            match commands::s3_upload() {
+                Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize s3 upload"),
+                Err(message) => serde_json::to_value(types::err::<()>("s3_upload_failed", message))
+                    .expect("serialize s3 upload error"),
+            }
+        }
+        [group, cmd] if group == "cloud-sync" && cmd == "s3-download" => {
+            match commands::s3_download() {
+                Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize s3 download"),
+                Err(message) => serde_json::to_value(types::err::<()>("s3_download_failed", message))
+                    .expect("serialize s3 download error"),
+            }
+        }
+        [group, cmd] if group == "cloud-sync" && cmd == "s3-remote-info" => {
+            match commands::s3_fetch_remote_info() {
+                Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize s3 remote info"),
+                Err(message) => serde_json::to_value(types::err::<()>("s3_remote_info_failed", message))
+                    .expect("serialize s3 remote info error"),
+            }
+        }
         [group, cmd] if group == "settings" && cmd == "log-config" => {
             match commands::get_log_config() {
                 Ok(value) => {
@@ -1284,7 +1356,7 @@ pub(crate) fn run_command(args: &[String]) -> Value {
         }
         _ => serde_json::to_value(types::err::<()>(
             "unsupported_command",
-            "Supported commands: status, providers, universal-providers, routing-config, routing-runtime, sessions, hermes, openclaw, mcp, prompts, skills, import-export, tools, settings, plugin, stream-check",
+            "Supported commands: status, providers, universal-providers, routing-config, routing-runtime, sessions, hermes, openclaw, mcp, prompts, skills, import-export, cloud-sync, tools, settings, plugin, stream-check",
         ))
         .expect("serialize error response"),
     }

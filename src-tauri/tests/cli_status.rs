@@ -173,6 +173,112 @@ fn settings_app_config_dir_override_round_trips_through_json_cli() {
 
 #[test]
 #[serial]
+fn cloud_sync_settings_round_trip_through_json_cli() {
+    let (webdav_save, webdav_preserve, s3_save, s3_preserve, webdav_password, s3_secret) =
+        with_temp_home(|| {
+            let webdav_settings = serde_json::json!({
+                "enabled": true,
+                "autoSync": false,
+                "baseUrl": "https://dav.example.com/dav/",
+                "username": "webdav-user",
+                "password": "webdav-secret",
+                "remoteRoot": "cc-switch-sync",
+                "profile": "default"
+            })
+            .to_string();
+            let webdav_save = cc_switch_lib::cli::run(&[
+                "cloud-sync".to_string(),
+                "webdav-save".to_string(),
+                webdav_settings,
+                "true".to_string(),
+            ]);
+
+            let webdav_without_password = serde_json::json!({
+                "enabled": true,
+                "autoSync": false,
+                "baseUrl": "https://dav.example.com/dav/",
+                "username": "webdav-user",
+                "password": "",
+                "remoteRoot": "cc-switch-sync",
+                "profile": "default"
+            })
+            .to_string();
+            let webdav_preserve = cc_switch_lib::cli::run(&[
+                "cloud-sync".to_string(),
+                "webdav-save".to_string(),
+                webdav_without_password,
+                "false".to_string(),
+            ]);
+
+            let s3_settings = serde_json::json!({
+                "enabled": true,
+                "autoSync": false,
+                "region": "us-east-1",
+                "bucket": "cc-switch",
+                "accessKeyId": "s3-ak",
+                "secretAccessKey": "s3-secret",
+                "remoteRoot": "cc-switch-sync",
+                "profile": "default"
+            })
+            .to_string();
+            let s3_save = cc_switch_lib::cli::run(&[
+                "cloud-sync".to_string(),
+                "s3-save".to_string(),
+                s3_settings,
+                "true".to_string(),
+            ]);
+
+            let s3_without_secret = serde_json::json!({
+                "enabled": true,
+                "autoSync": false,
+                "region": "us-east-1",
+                "bucket": "cc-switch",
+                "accessKeyId": "s3-ak",
+                "secretAccessKey": "",
+                "remoteRoot": "cc-switch-sync",
+                "profile": "default"
+            })
+            .to_string();
+            let s3_preserve = cc_switch_lib::cli::run(&[
+                "cloud-sync".to_string(),
+                "s3-save".to_string(),
+                s3_without_secret,
+                "false".to_string(),
+            ]);
+
+            let settings_path = cli_test_home().join(".cc-switch").join("settings.json");
+            let settings_file = std::fs::read_to_string(settings_path).expect("settings file");
+            let settings_json: serde_json::Value =
+                serde_json::from_str(&settings_file).expect("settings json");
+            let webdav_password = settings_json["webdavSync"]["password"]
+                .as_str()
+                .expect("webdav password")
+                .to_string();
+            let s3_secret = settings_json["s3Sync"]["secretAccessKey"]
+                .as_str()
+                .expect("s3 secret")
+                .to_string();
+
+            (
+                webdav_save,
+                webdav_preserve,
+                s3_save,
+                s3_preserve,
+                webdav_password,
+                s3_secret,
+            )
+        });
+
+    assert_eq!(webdav_save["ok"], true);
+    assert_eq!(webdav_preserve["ok"], true);
+    assert_eq!(s3_save["ok"], true);
+    assert_eq!(s3_preserve["ok"], true);
+    assert_eq!(webdav_password, "webdav-secret");
+    assert_eq!(s3_secret, "s3-secret");
+}
+
+#[test]
+#[serial]
 fn stream_check_config_round_trip_through_json_cli() {
     let (save_response, get_response) = with_temp_home(|| {
         let config_json = serde_json::json!({
@@ -930,6 +1036,6 @@ fn unsupported_command_returns_stable_error_envelope() {
     assert_eq!(response["error"]["code"], "unsupported_command");
     assert_eq!(
         response["error"]["message"],
-        "Supported commands: status, providers, universal-providers, routing-config, routing-runtime, sessions, hermes, openclaw, mcp, prompts, skills, import-export, tools, settings, plugin, stream-check"
+        "Supported commands: status, providers, universal-providers, routing-config, routing-runtime, sessions, hermes, openclaw, mcp, prompts, skills, import-export, cloud-sync, tools, settings, plugin, stream-check"
     );
 }

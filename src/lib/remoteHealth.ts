@@ -59,6 +59,11 @@ export const EXPECTED_REMOTE_CAPABILITIES = [
     defaultLabel: "导入 / 导出",
   },
   {
+    id: "cloud-sync",
+    labelKey: "remote.capabilities.cloudSync",
+    defaultLabel: "云同步",
+  },
+  {
     id: "settings",
     labelKey: "remote.capabilities.settings",
     defaultLabel: "通用设置",

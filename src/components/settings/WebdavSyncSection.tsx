@@ -33,8 +33,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { settingsApi } from "@/lib/api";
+import type { ManagementTarget } from "@/lib/api/remote";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import type { SettingsFormState } from "@/hooks/useSettings";
 import type {
   RemoteSnapshotInfo,
   S3SyncSettings,
@@ -188,8 +188,9 @@ type DialogType = "upload" | "download" | "mutual_exclusion" | null;
 interface WebdavSyncSectionProps {
   config?: WebDavSyncSettings;
   s3Config?: S3SyncSettings;
-  settings?: SettingsFormState;
-  onAutoSave?: (updates: Partial<SettingsFormState>) => Promise<unknown>;
+  settings?: { autoSyncConfirmed?: boolean };
+  onAutoSave?: (updates: { autoSyncConfirmed?: boolean }) => Promise<unknown>;
+  target?: ManagementTarget;
 }
 
 // ─── ActionButton ───────────────────────────────────────────
@@ -236,6 +237,7 @@ export function WebdavSyncSection({
   s3Config,
   settings,
   onAutoSave,
+  target,
 }: WebdavSyncSectionProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -477,7 +479,11 @@ export function WebdavSyncSection({
     }
     setActionState("testing");
     try {
-      await settingsApi.webdavTestConnection(settings, !passwordTouched);
+      await settingsApi.webdavTestConnection(
+        settings,
+        !passwordTouched,
+        target,
+      );
       toast.success(t("settings.webdavSync.testSuccess"));
     } catch (error) {
       toast.error(
@@ -488,7 +494,7 @@ export function WebdavSyncSection({
     } finally {
       setActionState("idle");
     }
-  }, [buildSettings, passwordTouched, t]);
+  }, [buildSettings, passwordTouched, target, t]);
 
   const handleSave = useCallback(async () => {
     const settings = buildSettings();
@@ -504,7 +510,11 @@ export function WebdavSyncSection({
         }
       : null;
     try {
-      await settingsApi.webdavSyncSaveSettings(settings, passwordTouched);
+      await settingsApi.webdavSyncSaveSettings(
+        settings,
+        passwordTouched,
+        target,
+      );
       setDirty(false);
       setPasswordTouched(false);
       // Show "saved" indicator for 2 seconds
@@ -529,7 +539,7 @@ export function WebdavSyncSection({
     // Auto-test connection after save
     setActionState("testing");
     try {
-      await settingsApi.webdavTestConnection(settings, true);
+      await settingsApi.webdavTestConnection(settings, true, target);
       toast.success(t("settings.webdavSync.saveAndTestSuccess"));
     } catch (error) {
       toast.warning(
@@ -540,7 +550,7 @@ export function WebdavSyncSection({
     } finally {
       setActionState("idle");
     }
-  }, [buildSettings, form.password, passwordTouched, queryClient, t]);
+  }, [buildSettings, form.password, passwordTouched, queryClient, target, t]);
 
   /** Fetch remote info, then open upload confirmation dialog. */
   const handleUploadClick = useCallback(async () => {
@@ -550,7 +560,7 @@ export function WebdavSyncSection({
     }
     setActionState("fetching_remote");
     try {
-      const info = await settingsApi.webdavSyncFetchRemoteInfo();
+      const info = await settingsApi.webdavSyncFetchRemoteInfo(target);
       if ("empty" in info) {
         setRemoteInfo(null);
       } else {
@@ -564,7 +574,7 @@ export function WebdavSyncSection({
       return;
     }
     setActionState("idle");
-  }, [dirty, t]);
+  }, [dirty, target, t]);
 
   /** Actually perform the upload after user confirms. */
   const handleUploadConfirm = useCallback(async () => {
@@ -575,7 +585,7 @@ export function WebdavSyncSection({
     closeDialog();
     setActionState("uploading");
     try {
-      await settingsApi.webdavSyncUpload();
+      await settingsApi.webdavSyncUpload(target);
       toast.success(t("settings.webdavSync.uploadSuccess"));
       await queryClient.invalidateQueries();
     } catch (error) {
@@ -587,7 +597,7 @@ export function WebdavSyncSection({
     } finally {
       setActionState("idle");
     }
-  }, [closeDialog, dirty, queryClient, t]);
+  }, [closeDialog, dirty, queryClient, target, t]);
 
   /** Fetch remote info, then open download confirmation dialog. */
   const handleDownloadClick = useCallback(async () => {
@@ -597,7 +607,7 @@ export function WebdavSyncSection({
     }
     setActionState("fetching_remote");
     try {
-      const info = await settingsApi.webdavSyncFetchRemoteInfo();
+      const info = await settingsApi.webdavSyncFetchRemoteInfo(target);
       if ("empty" in info) {
         toast.info(t("settings.webdavSync.noRemoteData"));
         return;
@@ -624,7 +634,7 @@ export function WebdavSyncSection({
     } finally {
       setActionState("idle");
     }
-  }, [dirty, t]);
+  }, [dirty, target, t]);
 
   /** Actually perform the download after user confirms. */
   const handleDownloadConfirm = useCallback(async () => {
@@ -635,7 +645,7 @@ export function WebdavSyncSection({
     closeDialog();
     setActionState("downloading");
     try {
-      await settingsApi.webdavSyncDownload();
+      await settingsApi.webdavSyncDownload(target);
       toast.success(t("settings.webdavSync.downloadSuccess"));
       await queryClient.invalidateQueries();
     } catch (error) {
@@ -647,7 +657,7 @@ export function WebdavSyncSection({
     } finally {
       setActionState("idle");
     }
-  }, [closeDialog, dirty, queryClient, t]);
+  }, [closeDialog, dirty, queryClient, target, t]);
 
   // ─── S3 helpers ────────────────────────────────────────────
 
@@ -702,7 +712,7 @@ export function WebdavSyncSection({
     }
     setS3ActionState("testing");
     try {
-      await settingsApi.s3TestConnection(s3Settings, !s3SecretTouched);
+      await settingsApi.s3TestConnection(s3Settings, !s3SecretTouched, target);
       toast.success(t("settings.s3Sync.testSuccess"));
     } catch (error) {
       toast.error(
@@ -713,7 +723,7 @@ export function WebdavSyncSection({
     } finally {
       setS3ActionState("idle");
     }
-  }, [buildS3Settings, s3SecretTouched, t]);
+  }, [buildS3Settings, s3SecretTouched, target, t]);
 
   const handleS3Save = useCallback(async () => {
     const s3Settings = buildS3Settings();
@@ -723,7 +733,7 @@ export function WebdavSyncSection({
     }
     setS3ActionState("saving");
     try {
-      await settingsApi.s3SyncSaveSettings(s3Settings, s3SecretTouched);
+      await settingsApi.s3SyncSaveSettings(s3Settings, s3SecretTouched, target);
       setS3Dirty(false);
       setS3SecretTouched(false);
       setS3JustSaved(true);
@@ -747,7 +757,7 @@ export function WebdavSyncSection({
     // Auto-test connection after save
     setS3ActionState("testing");
     try {
-      await settingsApi.s3TestConnection(s3Settings, true);
+      await settingsApi.s3TestConnection(s3Settings, true, target);
       toast.success(t("settings.s3Sync.saveAndTestSuccess"));
     } catch (error) {
       toast.warning(
@@ -758,7 +768,7 @@ export function WebdavSyncSection({
     } finally {
       setS3ActionState("idle");
     }
-  }, [buildS3Settings, s3SecretTouched, queryClient, t]);
+  }, [buildS3Settings, s3SecretTouched, queryClient, target, t]);
 
   const handleS3UploadClick = useCallback(async () => {
     if (s3Dirty) {
@@ -767,7 +777,7 @@ export function WebdavSyncSection({
     }
     setS3ActionState("fetching_remote");
     try {
-      const info = await settingsApi.s3SyncFetchRemoteInfo();
+      const info = await settingsApi.s3SyncFetchRemoteInfo(target);
       if ("empty" in info) {
         setS3RemoteInfo(null);
       } else {
@@ -781,7 +791,7 @@ export function WebdavSyncSection({
       return;
     }
     setS3ActionState("idle");
-  }, [s3Dirty, t]);
+  }, [s3Dirty, target, t]);
 
   const handleS3UploadConfirm = useCallback(async () => {
     if (s3Dirty) {
@@ -791,7 +801,7 @@ export function WebdavSyncSection({
     closeS3Dialog();
     setS3ActionState("uploading");
     try {
-      await settingsApi.s3SyncUpload();
+      await settingsApi.s3SyncUpload(target);
       toast.success(t("settings.s3Sync.uploadSuccess"));
       await queryClient.invalidateQueries();
     } catch (error) {
@@ -803,7 +813,7 @@ export function WebdavSyncSection({
     } finally {
       setS3ActionState("idle");
     }
-  }, [closeS3Dialog, s3Dirty, queryClient, t]);
+  }, [closeS3Dialog, s3Dirty, queryClient, target, t]);
 
   const handleS3DownloadClick = useCallback(async () => {
     if (s3Dirty) {
@@ -812,7 +822,7 @@ export function WebdavSyncSection({
     }
     setS3ActionState("fetching_remote");
     try {
-      const info = await settingsApi.s3SyncFetchRemoteInfo();
+      const info = await settingsApi.s3SyncFetchRemoteInfo(target);
       if ("empty" in info) {
         toast.info(t("settings.s3Sync.noRemoteData"));
         return;
@@ -836,7 +846,7 @@ export function WebdavSyncSection({
     } finally {
       setS3ActionState("idle");
     }
-  }, [s3Dirty, t]);
+  }, [s3Dirty, target, t]);
 
   const handleS3DownloadConfirm = useCallback(async () => {
     if (s3Dirty) {
@@ -846,7 +856,7 @@ export function WebdavSyncSection({
     closeS3Dialog();
     setS3ActionState("downloading");
     try {
-      await settingsApi.s3SyncDownload();
+      await settingsApi.s3SyncDownload(target);
       toast.success(t("settings.s3Sync.downloadSuccess"));
       await queryClient.invalidateQueries();
     } catch (error) {
@@ -858,7 +868,7 @@ export function WebdavSyncSection({
     } finally {
       setS3ActionState("idle");
     }
-  }, [closeS3Dialog, s3Dirty, queryClient, t]);
+  }, [closeS3Dialog, s3Dirty, queryClient, target, t]);
 
   // ─── Sync type switching with mutual exclusion ─────────────
 
@@ -894,7 +904,7 @@ export function WebdavSyncSection({
           enabled: false,
           autoSync: false,
         };
-        await settingsApi.webdavSyncSaveSettings(disabledWebdav, false);
+        await settingsApi.webdavSyncSaveSettings(disabledWebdav, false, target);
       } else {
         // Disable S3
         const disabledS3: S3SyncSettings = {
@@ -902,7 +912,7 @@ export function WebdavSyncSection({
           enabled: false,
           autoSync: false,
         };
-        await settingsApi.s3SyncSaveSettings(disabledS3, false);
+        await settingsApi.s3SyncSaveSettings(disabledS3, false, target);
         setS3Enabled(false);
         setS3AutoSync(false);
       }
@@ -916,7 +926,7 @@ export function WebdavSyncSection({
       );
     }
     setPendingSyncType(null);
-  }, [pendingSyncType, closeDialog, config, s3Config, queryClient, t]);
+  }, [pendingSyncType, closeDialog, config, s3Config, queryClient, target, t]);
 
   const handleMutualExclusionCancel = useCallback(() => {
     closeDialog();

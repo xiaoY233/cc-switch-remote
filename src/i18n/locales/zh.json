@@ -2928,7 +2928,7 @@
           "generic": "当前目标暂不支持此高级设置。",
           "directory": "远程配置目录覆盖需要远程路径编辑器和 Helper 侧路径校验，接入前不会开放保存。",
           "backup": "远程备份恢复暂未接入。需要 Helper 支持远程数据库快照的列表、创建、恢复、重命名和删除。",
-          "cloudSync": "远程云同步暂未接入。凭据保存以及上传/下载动作必须通过远程 Helper 执行。",
+          "cloudSync": "当前远程 Helper 不支持云同步。请更新到包含 cloud-sync capability 的新版 Helper。",
           "test": "远程模型测试设置暂未接入。需要 target-aware 的连通检测配置读写命令。",
           "logConfig": "远程日志配置暂未接入。需要 Helper 提供日志配置读取和保存命令。"
         }
@@ -2977,7 +2977,9 @@
       "hermesMemory": "Hermes 记忆",
       "tools": "环境检查更新",
       "importExport": "导入 / 导出",
+      "cloudSync": "云同步",
       "settings": "通用设置",
+      "settingsAppConfigDir": "CC Switch 配置目录",
       "plugin": "Claude 插件"
     },
     "routing": {

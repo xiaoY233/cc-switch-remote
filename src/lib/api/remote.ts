@@ -32,7 +32,13 @@ import type {
   UnmanagedSkill,
   MigrationResult,
 } from "./skills";
-import type { Settings, SkillStorageLocation } from "@/types";
+import type {
+  Settings,
+  SkillStorageLocation,
+  WebDavSyncSettings,
+  S3SyncSettings,
+  RemoteSnapshotInfo,
+} from "@/types";
 import type {
   AppProxyConfig,
   CircuitBreakerConfig,
@@ -465,6 +471,104 @@ export const remoteApi = {
       filename,
       secret,
     });
+  },
+
+  webdavTestConnection(
+    profile: RemoteHostProfile,
+    settings: WebDavSyncSettings,
+    preserveEmptyPassword = true,
+    secret?: RemoteConnectionSecret,
+  ): Promise<{ success: boolean; message?: string }> {
+    return invoke("remote_webdav_test_connection", {
+      profile,
+      settings,
+      preserveEmptyPassword,
+      secret,
+    });
+  },
+
+  webdavSyncSaveSettings(
+    profile: RemoteHostProfile,
+    settings: WebDavSyncSettings,
+    passwordTouched = false,
+    secret?: RemoteConnectionSecret,
+  ): Promise<{ success: boolean }> {
+    return invoke("remote_webdav_sync_save_settings", {
+      profile,
+      settings,
+      passwordTouched,
+      secret,
+    });
+  },
+
+  webdavSyncUpload(
+    profile: RemoteHostProfile,
+    secret?: RemoteConnectionSecret,
+  ): Promise<{ status: string }> {
+    return invoke("remote_webdav_sync_upload", { profile, secret });
+  },
+
+  webdavSyncDownload(
+    profile: RemoteHostProfile,
+    secret?: RemoteConnectionSecret,
+  ): Promise<{ status: string }> {
+    return invoke("remote_webdav_sync_download", { profile, secret });
+  },
+
+  webdavSyncFetchRemoteInfo(
+    profile: RemoteHostProfile,
+    secret?: RemoteConnectionSecret,
+  ): Promise<RemoteSnapshotInfo | { empty: true }> {
+    return invoke("remote_webdav_sync_fetch_remote_info", { profile, secret });
+  },
+
+  s3TestConnection(
+    profile: RemoteHostProfile,
+    settings: S3SyncSettings,
+    preserveEmptyPassword = true,
+    secret?: RemoteConnectionSecret,
+  ): Promise<{ success: boolean; message?: string }> {
+    return invoke("remote_s3_test_connection", {
+      profile,
+      settings,
+      preserveEmptyPassword,
+      secret,
+    });
+  },
+
+  s3SyncSaveSettings(
+    profile: RemoteHostProfile,
+    settings: S3SyncSettings,
+    passwordTouched: boolean,
+    secret?: RemoteConnectionSecret,
+  ): Promise<{ success: boolean }> {
+    return invoke("remote_s3_sync_save_settings", {
+      profile,
+      settings,
+      passwordTouched,
+      secret,
+    });
+  },
+
+  s3SyncUpload(
+    profile: RemoteHostProfile,
+    secret?: RemoteConnectionSecret,
+  ): Promise<{ status: string }> {
+    return invoke("remote_s3_sync_upload", { profile, secret });
+  },
+
+  s3SyncDownload(
+    profile: RemoteHostProfile,
+    secret?: RemoteConnectionSecret,
+  ): Promise<{ status: string }> {
+    return invoke("remote_s3_sync_download", { profile, secret });
+  },
+
+  s3SyncFetchRemoteInfo(
+    profile: RemoteHostProfile,
+    secret?: RemoteConnectionSecret,
+  ): Promise<RemoteSnapshotInfo | { empty: true }> {
+    return invoke("remote_s3_sync_fetch_remote_info", { profile, secret });
   },
 
   getToolVersions(
