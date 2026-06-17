@@ -18,7 +18,8 @@ import type {
 } from "@/types";
 import type { AppId } from "./types";
 import type { ProviderSortUpdate, SwitchResult } from "./providers";
-import type { StreamCheckResult } from "./model-test";
+import type { StreamCheckConfig, StreamCheckResult } from "./model-test";
+import type { LogConfig } from "./settings";
 import type { Prompt } from "./prompts";
 import type {
   DiscoverableSkill,
@@ -565,6 +566,50 @@ export const remoteApi = {
       profile,
       app,
       providerId,
+      secret,
+    });
+  },
+
+  getStreamCheckConfig(
+    profile: RemoteHostProfile,
+    secret?: RemoteConnectionSecret,
+  ): Promise<StreamCheckConfig> {
+    return invoke<StreamCheckConfig>("remote_get_stream_check_config", {
+      profile,
+      secret,
+    });
+  },
+
+  saveStreamCheckConfig(
+    profile: RemoteHostProfile,
+    config: StreamCheckConfig,
+    secret?: RemoteConnectionSecret,
+  ): Promise<boolean> {
+    return invoke<boolean>("remote_save_stream_check_config", {
+      profile,
+      config,
+      secret,
+    });
+  },
+
+  getLogConfig(
+    profile: RemoteHostProfile,
+    secret?: RemoteConnectionSecret,
+  ): Promise<LogConfig> {
+    return invoke<LogConfig>("remote_get_log_config", {
+      profile,
+      secret,
+    });
+  },
+
+  setLogConfig(
+    profile: RemoteHostProfile,
+    config: LogConfig,
+    secret?: RemoteConnectionSecret,
+  ): Promise<boolean> {
+    return invoke<boolean>("remote_set_log_config", {
+      profile,
+      config,
       secret,
     });
   },

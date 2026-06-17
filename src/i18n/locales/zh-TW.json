@@ -2889,6 +2889,22 @@
       "data": {
         "description": "匯入或匯出目前遠端伺服器自己的 CC Switch 資料"
       },
+      "advanced": {
+        "directory": {
+          "description": "這裡儲存的是目前遠端主機自己的應用程式設定目錄覆寫，不會讀取或修改本機目錄。",
+          "appConfigUnsupported": "CC Switch 資料目錄覆寫暫未開放遠端遷移；遠端資料仍由遠端 Helper 目前的資料目錄管理。",
+          "saved": "遠端設定目錄已儲存"
+        },
+        "unsupported": {
+          "title": "遠端暫未接入",
+          "generic": "目前目標暫不支援此進階設定。",
+          "directory": "遠端設定目錄覆寫需要遠端路徑編輯器與 Helper 端路徑驗證，接入前不會開放儲存。",
+          "backup": "遠端備份還原暫未接入。需要 Helper 支援遠端資料庫快照的列表、建立、還原、重新命名與刪除。",
+          "cloudSync": "遠端雲端同步暫未接入。憑證儲存以及上傳/下載動作必須透過遠端 Helper 執行。",
+          "test": "遠端模型測試設定暫未接入。需要 target-aware 的連線檢查設定讀寫命令。",
+          "logConfig": "遠端日誌設定暫未接入。需要 Helper 提供日誌設定讀取與儲存命令。"
+        }
+      },
       "routing": {
         "failoverRequired": "需要先啟動遠端路由，並啟用 {{app}} 的遠端路由後才能設定故障轉移。",
         "showRemoteRoutingToggle": "在主頁面顯示遠端路由開關",

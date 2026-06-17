@@ -2917,6 +2917,22 @@
       "data": {
         "description": "导入或导出当前远程服务器自己的 CC Switch 数据"
       },
+      "advanced": {
+        "directory": {
+          "description": "这里保存的是当前远程主机自己的应用配置目录覆盖，不会读取或修改本机目录。",
+          "appConfigUnsupported": "CC Switch 数据目录覆盖暂未开放远程迁移；远程数据仍由远程 Helper 当前数据目录管理。",
+          "saved": "远程配置目录已保存"
+        },
+        "unsupported": {
+          "title": "远程暂未接入",
+          "generic": "当前目标暂不支持此高级设置。",
+          "directory": "远程配置目录覆盖需要远程路径编辑器和 Helper 侧路径校验，接入前不会开放保存。",
+          "backup": "远程备份恢复暂未接入。需要 Helper 支持远程数据库快照的列表、创建、恢复、重命名和删除。",
+          "cloudSync": "远程云同步暂未接入。凭据保存以及上传/下载动作必须通过远程 Helper 执行。",
+          "test": "远程模型测试设置暂未接入。需要 target-aware 的连通检测配置读写命令。",
+          "logConfig": "远程日志配置暂未接入。需要 Helper 提供日志配置读取和保存命令。"
+        }
+      },
       "routing": {
         "failoverRequired": "需要先启动远程路由，并启用 {{app}} 的远程路由后才能配置故障转移。",
         "showRemoteRoutingToggle": "在主页面显示远程路由开关",

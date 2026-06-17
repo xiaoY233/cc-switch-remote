@@ -6,6 +6,7 @@ import type {
   RemoteSnapshotInfo,
 } from "@/types";
 import type { AppId } from "./types";
+import { remoteApi, type ManagementTarget } from "./remote";
 
 export interface ConfigTransferResult {
   success: boolean;
@@ -292,11 +293,24 @@ export const settingsApi = {
     return await invoke("set_optimizer_config", { config });
   },
 
-  async getLogConfig(): Promise<LogConfig> {
+  async getLogConfig(target?: ManagementTarget): Promise<LogConfig> {
+    if (target?.type === "remote") {
+      return await remoteApi.getLogConfig(target.profile, target.secret);
+    }
     return await invoke("get_log_config");
   },
 
-  async setLogConfig(config: LogConfig): Promise<boolean> {
+  async setLogConfig(
+    config: LogConfig,
+    target?: ManagementTarget,
+  ): Promise<boolean> {
+    if (target?.type === "remote") {
+      return await remoteApi.setLogConfig(
+        target.profile,
+        config,
+        target.secret,
+      );
+    }
     return await invoke("set_log_config", { config });
   },
 };

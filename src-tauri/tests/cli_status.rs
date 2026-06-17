@@ -114,6 +114,62 @@ fn settings_round_trip_through_json_cli() {
 
 #[test]
 #[serial]
+fn stream_check_config_round_trip_through_json_cli() {
+    let (save_response, get_response) = with_temp_home(|| {
+        let config_json = serde_json::json!({
+            "timeoutSecs": 12,
+            "maxRetries": 3,
+            "degradedThresholdMs": 9000
+        })
+        .to_string();
+
+        let save_response = cc_switch_lib::cli::run(&[
+            "stream-check".to_string(),
+            "set-config".to_string(),
+            config_json,
+        ]);
+        let get_response =
+            cc_switch_lib::cli::run(&["stream-check".to_string(), "config".to_string()]);
+        (save_response, get_response)
+    });
+
+    assert_eq!(save_response["ok"], true, "save_response={save_response:?}");
+    assert!(save_response["error"].is_null());
+    assert_eq!(get_response["ok"], true, "get_response={get_response:?}");
+    assert_eq!(get_response["data"]["timeoutSecs"], 12);
+    assert_eq!(get_response["data"]["maxRetries"], 3);
+    assert_eq!(get_response["data"]["degradedThresholdMs"], 9000);
+}
+
+#[test]
+#[serial]
+fn log_config_round_trip_through_json_cli() {
+    let (save_response, get_response) = with_temp_home(|| {
+        let config_json = serde_json::json!({
+            "enabled": false,
+            "level": "debug"
+        })
+        .to_string();
+
+        let save_response = cc_switch_lib::cli::run(&[
+            "settings".to_string(),
+            "set-log-config".to_string(),
+            config_json,
+        ]);
+        let get_response =
+            cc_switch_lib::cli::run(&["settings".to_string(), "log-config".to_string()]);
+        (save_response, get_response)
+    });
+
+    assert_eq!(save_response["ok"], true, "save_response={save_response:?}");
+    assert!(save_response["error"].is_null());
+    assert_eq!(get_response["ok"], true, "get_response={get_response:?}");
+    assert_eq!(get_response["data"]["enabled"], false);
+    assert_eq!(get_response["data"]["level"], "debug");
+}
+
+#[test]
+#[serial]
 fn routing_circuit_breaker_commands_round_trip_through_json_cli() {
     let (
         add_provider_response,

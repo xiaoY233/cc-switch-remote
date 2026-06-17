@@ -430,6 +430,35 @@ pub fn stream_check_provider(
     Ok(result)
 }
 
+pub fn get_stream_check_config() -> Result<crate::services::stream_check::StreamCheckConfig, String>
+{
+    let db = Database::init().map_err(|e| e.to_string())?;
+    db.get_stream_check_config().map_err(|e| e.to_string())
+}
+
+pub fn save_stream_check_config(config_json: &str) -> Result<bool, String> {
+    let config: crate::services::stream_check::StreamCheckConfig =
+        serde_json::from_str(config_json).map_err(|e| e.to_string())?;
+    let db = Database::init().map_err(|e| e.to_string())?;
+    db.save_stream_check_config(&config)
+        .map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+pub fn get_log_config() -> Result<crate::proxy::types::LogConfig, String> {
+    let db = Database::init().map_err(|e| e.to_string())?;
+    db.get_log_config().map_err(|e| e.to_string())
+}
+
+pub fn save_log_config(config_json: &str) -> Result<bool, String> {
+    let config: crate::proxy::types::LogConfig =
+        serde_json::from_str(config_json).map_err(|e| e.to_string())?;
+    let db = Database::init().map_err(|e| e.to_string())?;
+    db.set_log_config(&config).map_err(|e| e.to_string())?;
+    log::set_max_level(config.to_level_filter());
+    Ok(true)
+}
+
 pub fn sort_providers(app: AppType, updates_json: &str) -> Result<bool, String> {
     let updates: Vec<ProviderSortUpdate> =
         serde_json::from_str(updates_json).map_err(|e| e.to_string())?;

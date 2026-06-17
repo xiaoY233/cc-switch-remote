@@ -114,7 +114,7 @@ export function useRemoteSettings({
 
   const saveSettings = useCallback(
     async (updates: Partial<Settings>) => {
-      if (!settings) return;
+      if (!settings) return false;
       const nextSettings: Settings = { ...settings, ...updates };
       const previousSettings = settings;
       setSettings(nextSettings);
@@ -133,6 +133,7 @@ export function useRemoteSettings({
         );
         await syncClaudePluginIfChanged(nextSettings, settings);
         await syncClaudeOnboardingIfChanged(nextSettings, settings);
+        return true;
       } catch (error) {
         setSettings(previousSettings);
         onSettingsSaved?.(previousSettings);
@@ -143,6 +144,7 @@ export function useRemoteSettings({
           }),
           { description: extractErrorMessage(error) },
         );
+        return false;
       } finally {
         setIsSaving(false);
         setActiveTask(null);

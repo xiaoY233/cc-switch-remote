@@ -282,6 +282,26 @@ pub(crate) fn run_command(args: &[String]) -> Value {
                     .expect("serialize invalid app error"),
             }
         }
+        [group, cmd] if group == "stream-check" && cmd == "config" => {
+            match commands::get_stream_check_config() {
+                Ok(value) => serde_json::to_value(types::ok(value))
+                    .expect("serialize stream check config"),
+                Err(message) => {
+                    serde_json::to_value(types::err::<()>("stream_check_config_failed", message))
+                        .expect("serialize stream check config error")
+                }
+            }
+        }
+        [group, cmd, config_json] if group == "stream-check" && cmd == "set-config" => {
+            match commands::save_stream_check_config(config_json) {
+                Ok(value) => serde_json::to_value(types::ok(value))
+                    .expect("serialize stream check config save"),
+                Err(message) => {
+                    serde_json::to_value(types::err::<()>("stream_check_config_failed", message))
+                        .expect("serialize stream check config save error")
+                }
+            }
+        }
         [group, cmd] if group == "settings" && cmd == "get" => {
             serde_json::to_value(types::ok(commands::get_settings())).expect("serialize settings")
         }
@@ -291,6 +311,28 @@ pub(crate) fn run_command(args: &[String]) -> Value {
                 Err(message) => {
                     serde_json::to_value(types::err::<()>("settings_save_failed", message))
                         .expect("serialize settings error")
+                }
+            }
+        }
+        [group, cmd] if group == "settings" && cmd == "log-config" => {
+            match commands::get_log_config() {
+                Ok(value) => {
+                    serde_json::to_value(types::ok(value)).expect("serialize log config")
+                }
+                Err(message) => {
+                    serde_json::to_value(types::err::<()>("log_config_failed", message))
+                        .expect("serialize log config error")
+                }
+            }
+        }
+        [group, cmd, config_json] if group == "settings" && cmd == "set-log-config" => {
+            match commands::save_log_config(config_json) {
+                Ok(value) => {
+                    serde_json::to_value(types::ok(value)).expect("serialize log config save")
+                }
+                Err(message) => {
+                    serde_json::to_value(types::err::<()>("log_config_failed", message))
+                        .expect("serialize log config save error")
                 }
             }
         }

@@ -2917,6 +2917,22 @@
       "data": {
         "description": "Import or export the selected remote server's own CC Switch data"
       },
+      "advanced": {
+        "directory": {
+          "description": "These overrides are saved to the selected remote host and do not read or modify local directories.",
+          "appConfigUnsupported": "CC Switch data directory override is not available for remote migration yet. Remote data remains managed by the remote helper's current data directory.",
+          "saved": "Remote configuration directory saved"
+        },
+        "unsupported": {
+          "title": "Not connected for remote yet",
+          "generic": "This advanced setting is not available for the current target yet.",
+          "directory": "Remote configuration directory overrides need a remote path editor and helper-side path validation before saving can be enabled.",
+          "backup": "Remote backup management is not connected yet. It needs helper commands for listing, creating, restoring, renaming, and deleting remote database snapshots.",
+          "cloudSync": "Remote cloud sync is not connected yet. Saving credentials and running upload/download must happen through remote helper commands.",
+          "test": "Remote model test settings are not connected yet. They need target-aware stream check config commands.",
+          "logConfig": "Remote log configuration is not connected yet. It needs helper-side log config read/write commands."
+        }
+      },
       "routing": {
         "failoverRequired": "Start remote routing and enable {{app}} remote routing before configuring failover.",
         "showRemoteRoutingToggle": "Show Remote Routing Toggle on Main Page",

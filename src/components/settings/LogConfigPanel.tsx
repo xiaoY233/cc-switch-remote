@@ -11,10 +11,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { settingsApi, type LogConfig } from "@/lib/api/settings";
+import type { ManagementTarget } from "@/lib/api/remote";
 
 const LOG_LEVELS = ["error", "warn", "info", "debug", "trace"] as const;
 
-export function LogConfigPanel() {
+interface LogConfigPanelProps {
+  target?: ManagementTarget;
+}
+
+export function LogConfigPanel({ target }: LogConfigPanelProps) {
   const { t } = useTranslation();
   const [config, setConfig] = useState<LogConfig>({
     enabled: true,
@@ -23,18 +28,19 @@ export function LogConfigPanel() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    setIsLoading(true);
     settingsApi
-      .getLogConfig()
+      .getLogConfig(target)
       .then(setConfig)
       .catch((e) => console.error("Failed to load log config:", e))
       .finally(() => setIsLoading(false));
-  }, []);
+  }, [target]);
 
   const handleChange = async (updates: Partial<LogConfig>) => {
     const newConfig = { ...config, ...updates };
     setConfig(newConfig);
     try {
-      await settingsApi.setLogConfig(newConfig);
+      await settingsApi.setLogConfig(newConfig, target);
     } catch (e) {
       console.error("Failed to save log config:", e);
       toast.error(String(e));

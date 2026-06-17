@@ -11,8 +11,13 @@ import {
   saveStreamCheckConfig,
   type StreamCheckConfig,
 } from "@/lib/api/model-test";
+import type { ManagementTarget } from "@/lib/api/remote";
 
-export function ModelTestConfigPanel() {
+interface ModelTestConfigPanelProps {
+  target?: ManagementTarget;
+}
+
+export function ModelTestConfigPanel({ target }: ModelTestConfigPanelProps) {
   const { t } = useTranslation();
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -25,14 +30,14 @@ export function ModelTestConfigPanel() {
   });
 
   useEffect(() => {
-    loadConfig();
-  }, []);
+    void loadConfig();
+  }, [target]);
 
   async function loadConfig() {
     try {
       setIsLoading(true);
       setError(null);
-      const data = await getStreamCheckConfig();
+      const data = await getStreamCheckConfig(target);
       setConfig({
         timeoutSecs: String(data.timeoutSecs),
         maxRetries: String(data.maxRetries),
@@ -58,7 +63,7 @@ export function ModelTestConfigPanel() {
         maxRetries: parseNum(config.maxRetries, 1),
         degradedThresholdMs: parseNum(config.degradedThresholdMs, 6000),
       };
-      await saveStreamCheckConfig(parsed);
+      await saveStreamCheckConfig(parsed, target);
       toast.success(t("streamCheck.configSaved"), {
         closeButton: true,
       });

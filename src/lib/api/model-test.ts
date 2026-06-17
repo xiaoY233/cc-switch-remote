@@ -61,7 +61,12 @@ export async function streamCheckAllProviders(
 /**
  * 获取流式检查配置
  */
-export async function getStreamCheckConfig(): Promise<StreamCheckConfig> {
+export async function getStreamCheckConfig(
+  target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+): Promise<StreamCheckConfig> {
+  if (target.type === "remote") {
+    return remoteApi.getStreamCheckConfig(target.profile, target.secret);
+  }
   return invoke("get_stream_check_config");
 }
 
@@ -70,6 +75,15 @@ export async function getStreamCheckConfig(): Promise<StreamCheckConfig> {
  */
 export async function saveStreamCheckConfig(
   config: StreamCheckConfig,
+  target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
 ): Promise<void> {
+  if (target.type === "remote") {
+    await remoteApi.saveStreamCheckConfig(
+      target.profile,
+      config,
+      target.secret,
+    );
+    return;
+  }
   return invoke("save_stream_check_config", { config });
 }

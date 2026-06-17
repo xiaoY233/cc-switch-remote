@@ -849,6 +849,74 @@ pub async fn remote_stream_check_provider(
 }
 
 #[tauri::command]
+pub async fn remote_get_stream_check_config(
+    profile: RemoteHostProfile,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<crate::services::stream_check::StreamCheckConfig, String> {
+    run_remote_helper_json(
+        profile,
+        vec!["stream-check".to_string(), "config".to_string()],
+        secret,
+        "Remote stream check config",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_save_stream_check_config(
+    profile: RemoteHostProfile,
+    config: crate::services::stream_check::StreamCheckConfig,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<bool, String> {
+    let config_json = serde_json::to_string(&config).map_err(|e| e.to_string())?;
+    run_remote_helper_json(
+        profile,
+        vec![
+            "stream-check".to_string(),
+            "set-config".to_string(),
+            config_json,
+        ],
+        secret,
+        "Remote stream check config save",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_get_log_config(
+    profile: RemoteHostProfile,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<crate::proxy::types::LogConfig, String> {
+    run_remote_helper_json(
+        profile,
+        vec!["settings".to_string(), "log-config".to_string()],
+        secret,
+        "Remote log config",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_set_log_config(
+    profile: RemoteHostProfile,
+    config: crate::proxy::types::LogConfig,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<bool, String> {
+    let config_json = serde_json::to_string(&config).map_err(|e| e.to_string())?;
+    run_remote_helper_json(
+        profile,
+        vec![
+            "settings".to_string(),
+            "set-log-config".to_string(),
+            config_json,
+        ],
+        secret,
+        "Remote log config save",
+    )
+    .await
+}
+
+#[tauri::command]
 pub async fn remote_import_providers(
     profile: RemoteHostProfile,
     app: String,

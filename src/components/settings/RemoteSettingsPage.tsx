@@ -5,7 +5,6 @@ import {
   AlertTriangle,
   ChevronDown,
   Copy,
-  Database,
   Download,
   Globe,
   Loader2,
@@ -26,12 +25,17 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleRow } from "@/components/ui/toggle-row";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { AppVisibilitySettings } from "@/components/settings/AppVisibilitySettings";
 import { CodexAuthSettings } from "@/components/settings/CodexAuthSettings";
 import { ImportExportSection } from "@/components/settings/ImportExportSection";
 import { SkillStorageLocationSettings } from "@/components/settings/SkillStorageLocationSettings";
 import { SkillSyncMethodSettings } from "@/components/settings/SkillSyncMethodSettings";
 import { WindowSettings } from "@/components/settings/WindowSettings";
+import { AdvancedSettingsAccordion } from "@/components/settings/AdvancedSettingsAccordion";
+import { RemoteDirectorySettings } from "@/components/settings/RemoteDirectorySettings";
+import { LogConfigPanel } from "@/components/settings/LogConfigPanel";
+import { ModelTestConfigPanel } from "@/components/usage/ModelTestConfigPanel";
 import { AutoFailoverConfigPanel } from "@/components/proxy/AutoFailoverConfigPanel";
 import { FailoverQueueManager } from "@/components/proxy/FailoverQueueManager";
 import { ProxyPanel } from "@/components/proxy/ProxyPanel";
@@ -69,6 +73,10 @@ import type { Settings, SkillStorageLocation } from "@/types";
 import type { MigrationResult } from "@/lib/api/skills";
 import type { ToolInstallation } from "@/lib/api/settings";
 import { POSIX_ONE_CLICK_INSTALL_COMMANDS } from "@/lib/toolInstallCommands";
+import {
+  shouldConfirmRemoteFailoverToggle,
+  shouldConfirmRemoteRoutingStart,
+} from "@/components/settings/remoteRoutingGuards";
 
 interface RemoteSettingsPageProps {
   open: boolean;
@@ -136,6 +144,8 @@ export function RemoteSettingsPage({
   const settingsCapability = health?.capabilities.includes("settings") ?? false;
   const pluginCapability = health?.capabilities.includes("plugin") ?? false;
   const skillsCapability = health?.capabilities.includes("skills") ?? false;
+  const streamCheckCapability =
+    health?.capabilities.includes("stream-check") ?? false;
   const routingCapability =
     health?.capabilities.includes("routing-config") ?? false;
   const routingRuntimeCapability =
@@ -582,9 +592,7 @@ export function RemoteSettingsPage({
               routingRuntimeCapability={routingRuntimeCapability}
               settings={remoteSettings}
               isSavingSettings={isSavingRemoteSettings}
-              onSaveSettings={(updates) => {
-                void saveRemoteSettings(updates);
-              }}
+              onSaveSettings={saveRemoteSettings}
               target={target}
             />
           </TabsContent>
@@ -596,32 +604,44 @@ export function RemoteSettingsPage({
               transition={{ duration: 0.3 }}
               className="space-y-4"
             >
-              <Accordion
-                type="multiple"
+              <AdvancedSettingsAccordion
+                targetMode="remote"
                 defaultValue={["data"]}
-                className="space-y-4"
-              >
-                <AccordionItem
-                  value="data"
-                  className="rounded-xl glass-card overflow-hidden"
-                >
-                  <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
-                    <div className="flex items-center gap-3">
-                      <Database className="h-5 w-5 text-blue-500" />
-                      <div className="text-left">
-                        <h3 className="text-base font-semibold">
-                          {t("settings.advanced.data.title")}
-                        </h3>
-                        <p className="text-sm text-muted-foreground font-normal">
-                          {t("remote.settings.data.description", {
-                            defaultValue:
-                              "导入或导出当前远程服务器自己的 CC Switch 数据",
-                          })}
-                        </p>
+                descriptions={{
+                  data: t("remote.settings.data.description", {
+                    defaultValue:
+                      "导入或导出当前远程服务器自己的 CC Switch 数据",
+                  }),
+                }}
+                childrenBySection={{
+                  directory:
+                    !helperReady || !settingsCapability ? (
+                      <div className="rounded-xl border border-border bg-card/50 px-4 py-3 text-sm text-muted-foreground">
+                        {!helperReady
+                          ? t("remote.settings.environment.helperRequired", {
+                              defaultValue:
+                                "请先完成健康检查并安装可用的远程 Helper。",
+                            })
+                          : t("remote.settings.general.unsupported", {
+                              defaultValue:
+                                "当前远程 Helper 不支持通用设置管理。请更新到包含 settings capability 的新版 Helper。",
+                            })}
                       </div>
-                    </div>
-                  </AccordionTrigger>
-                  <AccordionContent className="px-6 pb-6 pt-4 border-t border-border/50">
+                    ) : isLoadingRemoteSettings || !remoteSettings ? (
+                      <div className="flex items-center gap-2 rounded-xl border border-border bg-card/50 px-4 py-3 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        {t("remote.settings.general.loading", {
+                          defaultValue: "正在加载远程设置...",
+                        })}
+                      </div>
+                    ) : (
+                      <RemoteDirectorySettings
+                        settings={remoteSettings}
+                        isSaving={isSavingRemoteSettings}
+                        onSave={saveRemoteSettings}
+                      />
+                    ),
+                  data: (
                     <ImportExportSection
                       status={importExport.status}
                       selectedFile={importExport.selectedFile}
@@ -633,9 +653,44 @@ export function RemoteSettingsPage({
                       onExport={importExport.exportConfig}
                       onClear={importExport.clearSelection}
                     />
-                  </AccordionContent>
-                </AccordionItem>
-              </Accordion>
+                  ),
+                  test:
+                    !helperReady || !streamCheckCapability ? (
+                      <div className="rounded-xl border border-border bg-card/50 px-4 py-3 text-sm text-muted-foreground">
+                        {!helperReady
+                          ? t("remote.settings.environment.helperRequired", {
+                              defaultValue:
+                                "请先完成健康检查并安装可用的远程 Helper。",
+                            })
+                          : t("remote.settings.advanced.unsupported.test", {
+                              defaultValue:
+                                "当前远程 Helper 不支持模型测试配置。请更新到包含 stream-check capability 的新版 Helper。",
+                            })}
+                      </div>
+                    ) : (
+                      <ModelTestConfigPanel target={target} />
+                    ),
+                  logConfig:
+                    !helperReady || !settingsCapability ? (
+                      <div className="rounded-xl border border-border bg-card/50 px-4 py-3 text-sm text-muted-foreground">
+                        {!helperReady
+                          ? t("remote.settings.environment.helperRequired", {
+                              defaultValue:
+                                "请先完成健康检查并安装可用的远程 Helper。",
+                            })
+                          : t(
+                              "remote.settings.advanced.unsupported.logConfig",
+                              {
+                                defaultValue:
+                                  "当前远程 Helper 不支持日志配置。请更新到包含 settings capability 的新版 Helper。",
+                              },
+                            )}
+                      </div>
+                    ) : (
+                      <LogConfigPanel target={target} />
+                    ),
+                }}
+              />
             </motion.div>
           </TabsContent>
         </div>
@@ -649,7 +704,9 @@ interface RemoteRoutingRuntimePanelProps {
   enabled: boolean;
   settings: Settings | null;
   isSavingSettings: boolean;
-  onSaveSettings: (updates: Partial<Settings>) => void;
+  onSaveSettings: (
+    updates: Partial<Settings>,
+  ) => boolean | void | Promise<boolean | void>;
 }
 
 function RemoteRoutingRuntimePanel({
@@ -660,6 +717,7 @@ function RemoteRoutingRuntimePanel({
   onSaveSettings,
 }: RemoteRoutingRuntimePanelProps) {
   const { t } = useTranslation();
+  const [showProxyConfirm, setShowProxyConfirm] = useState(false);
   const { startProxyServer, stopWithRestore, isStarting, isStopping } =
     useProxyStatus(target);
 
@@ -667,6 +725,10 @@ function RemoteRoutingRuntimePanel({
     if (!enabled || isStarting || isStopping) return;
     try {
       if (checked) {
+        if (settings && shouldConfirmRemoteRoutingStart(settings)) {
+          setShowProxyConfirm(true);
+          return;
+        }
         await startProxyServer();
       } else {
         await stopWithRestore();
@@ -689,6 +751,25 @@ function RemoteRoutingRuntimePanel({
     }
   };
 
+  const handleProxyConfirm = async () => {
+    setShowProxyConfirm(false);
+    try {
+      await onSaveSettings({ proxyConfirmed: true });
+      await startProxyServer();
+    } catch (error) {
+      console.error(
+        "[RemoteRoutingRuntimePanel] Failed to confirm remote routing",
+        error,
+      );
+      toast.error(
+        t("remote.settings.routing.runtimeStartFailed", {
+          defaultValue: "远程路由启动失败",
+        }),
+        { description: extractErrorMessage(error) },
+      );
+    }
+  };
+
   if (!enabled) {
     return (
       <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 px-4 py-3 text-sm text-yellow-700 dark:text-yellow-300">
@@ -701,35 +782,46 @@ function RemoteRoutingRuntimePanel({
   }
 
   return (
-    <div className="space-y-4">
-      {settings ? (
-        <ToggleRow
-          icon={<Server className="h-4 w-4 text-green-500" />}
-          title={t("remote.settings.routing.showRemoteRoutingToggle", {
-            defaultValue: "在主页面显示远程路由开关",
-          })}
-          description={t(
-            "remote.settings.routing.showRemoteRoutingToggleDescription",
-            {
-              defaultValue:
-                "开启后，主页面顶部显示当前应用的远程路由开关；开启应用路由时远程路由服务会自动启动。",
-            },
-          )}
-          checked={!!settings.enableRemoteRoutingToggle}
-          disabled={isSavingSettings}
-          onCheckedChange={(value) =>
-            onSaveSettings({ enableRemoteRoutingToggle: value })
-          }
+    <>
+      <div className="space-y-4">
+        {settings ? (
+          <ToggleRow
+            icon={<Server className="h-4 w-4 text-green-500" />}
+            title={t("remote.settings.routing.showRemoteRoutingToggle", {
+              defaultValue: "在主页面显示远程路由开关",
+            })}
+            description={t(
+              "remote.settings.routing.showRemoteRoutingToggleDescription",
+              {
+                defaultValue:
+                  "开启后，主页面顶部显示当前应用的远程路由开关；开启应用路由时远程路由服务会自动启动。",
+              },
+            )}
+            checked={!!settings.enableRemoteRoutingToggle}
+            disabled={isSavingSettings}
+            onCheckedChange={(value) =>
+              onSaveSettings({ enableRemoteRoutingToggle: value })
+            }
+          />
+        ) : null}
+        <ProxyPanel
+          target={target}
+          enableLocalProxy={false}
+          onEnableLocalProxyChange={() => undefined}
+          onToggleProxy={handleToggleProxy}
+          isProxyPending={isStarting || isStopping}
         />
-      ) : null}
-      <ProxyPanel
-        target={target}
-        enableLocalProxy={false}
-        onEnableLocalProxyChange={() => undefined}
-        onToggleProxy={handleToggleProxy}
-        isProxyPending={isStarting || isStopping}
+      </div>
+      <ConfirmDialog
+        isOpen={showProxyConfirm}
+        variant="info"
+        title={t("confirm.proxy.title")}
+        message={t("confirm.proxy.message")}
+        confirmText={t("confirm.proxy.confirm")}
+        onConfirm={() => void handleProxyConfirm()}
+        onCancel={() => setShowProxyConfirm(false)}
       />
-    </div>
+    </>
   );
 }
 
@@ -739,7 +831,9 @@ interface RemoteRoutingSettingsSectionProps {
   routingRuntimeCapability: boolean;
   settings: Settings | null;
   isSavingSettings: boolean;
-  onSaveSettings: (updates: Partial<Settings>) => void;
+  onSaveSettings: (
+    updates: Partial<Settings>,
+  ) => boolean | void | Promise<boolean | void>;
   target: Extract<ManagementTarget, { type: "remote" }>;
 }
 
@@ -753,6 +847,7 @@ function RemoteRoutingSettingsSection({
   target,
 }: RemoteRoutingSettingsSectionProps) {
   const { t } = useTranslation();
+  const [showFailoverConfirm, setShowFailoverConfirm] = useState(false);
   const { isRunning } = useProxyStatus(target);
   const { data: claudeAppConfig } = useAppProxyConfig("claude", target);
   const { data: codexAppConfig } = useAppProxyConfig("codex", target);
@@ -778,6 +873,22 @@ function RemoteRoutingSettingsSection({
       </div>
     );
   }
+
+  const handleRemoteFailoverToggleChange = (checked: boolean) => {
+    if (shouldConfirmRemoteFailoverToggle(settings, checked)) {
+      setShowFailoverConfirm(true);
+      return;
+    }
+    void onSaveSettings({ enableRemoteFailoverToggle: checked });
+  };
+
+  const handleFailoverConfirm = async () => {
+    setShowFailoverConfirm(false);
+    await onSaveSettings({
+      failoverConfirmed: true,
+      enableRemoteFailoverToggle: true,
+    });
+  };
 
   return (
     <motion.div
@@ -860,9 +971,7 @@ function RemoteRoutingSettingsSection({
                   )}
                   checked={!!settings.enableRemoteFailoverToggle}
                   disabled={isSavingSettings}
-                  onCheckedChange={(value) =>
-                    onSaveSettings({ enableRemoteFailoverToggle: value })
-                  }
+                  onCheckedChange={handleRemoteFailoverToggleChange}
                 />
               ) : null}
               <div className="flex items-start gap-3 rounded-lg border border-border/60 bg-muted/20 p-3 text-sm text-muted-foreground">
@@ -960,6 +1069,15 @@ function RemoteRoutingSettingsSection({
           </AccordionContent>
         </AccordionItem>
       </Accordion>
+      <ConfirmDialog
+        isOpen={showFailoverConfirm}
+        variant="info"
+        title={t("confirm.failover.title")}
+        message={t("confirm.failover.message")}
+        confirmText={t("confirm.failover.confirm")}
+        onConfirm={() => void handleFailoverConfirm()}
+        onCancel={() => setShowFailoverConfirm(false)}
+      />
     </motion.div>
   );
 }
