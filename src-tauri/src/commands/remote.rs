@@ -139,11 +139,18 @@ pub async fn remote_install_helper(
     secret: Option<RemoteConnectionSecret>,
 ) -> Result<RemoteHealth, String> {
     validate_profile(&profile).map_err(|e| e.to_string())?;
+    let profile_id = profile.id.clone();
     let status: serde_json::Value = tokio::task::spawn_blocking(move || {
         install_helper_json(&profile, secret.as_ref()).map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| format!("Remote helper install task failed: {e}"))??;
+
+    // The install command verifies the newly downloaded binary through a
+    // one-shot SSH command. Any existing persistent session still runs the old
+    // helper process, so close it only after a successful install. The next
+    // remote command will start a fresh session with the updated helper.
+    remote_session_manager().close(&profile_id).await;
 
     let latest = fetch_remote_helper_latest(&status).await;
     Ok(remote_health_from_status_with_latest_result(status, latest))
