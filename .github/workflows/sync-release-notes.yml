@@ -1,0 +1,98 @@
+name: Sync Release Notes
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/release-notes/*.md"
+      - ".github/workflows/sync-release-notes.yml"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to update, for example v3.16.7
+        required: true
+        type: string
+      notes_file:
+        description: Release note file path
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-release-notes-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  sync-release-notes:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Sync release notes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          INPUT_NOTES_FILE: ${{ github.event.inputs.notes_file }}
+        run: |
+          set -euo pipefail
+
+          files=()
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            if [ -n "${INPUT_NOTES_FILE:-}" ]; then
+              files+=("$INPUT_NOTES_FILE")
+            else
+              files+=("docs/release-notes/${INPUT_TAG}-zh.md")
+            fi
+          else
+            while IFS= read -r file; do
+              [ -n "$file" ] && files+=("$file")
+            done < <(git diff --name-only "$BEFORE_SHA" "$AFTER_SHA" -- 'docs/release-notes/*.md')
+          fi
+
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No release note files changed."
+            exit 0
+          fi
+
+          for file in "${files[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "Skipping missing file: $file"
+              continue
+            fi
+
+            base="$(basename "$file" .md)"
+            if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "${INPUT_TAG:-}" ]; then
+              tag="$INPUT_TAG"
+            else
+              tag="$base"
+              tag="${tag%-zh}"
+              tag="${tag%-en}"
+              tag="${tag%-ja}"
+            fi
+
+            if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "Release $tag does not exist; skipping $file."
+              continue
+            fi
+
+            title="$(sed -n '1s/^# //p' "$file")"
+            if [ -z "$title" ]; then
+              title="CC Switch Remote $tag"
+            fi
+
+            gh release edit "$tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$title" \
+              --notes-file "$file"
+            echo "Updated release $tag from $file."
+          done

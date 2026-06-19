@@ -7,18 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [3.16.7] - 2026-06-19
 
-This release prepares CC Switch Remote for a full application and helper release on top of upstream CC Switch v3.16.3. It keeps the upstream local experience while continuing the remote-management product branch: local and remote targets remain independent, remote hosts own their own state, and remote actions run through the Rust helper over SSH.
+This release covers the full `v3.16.6...v3.16.7` range: 9 commits and 95 changed files on top of upstream CC Switch v3.16.3. It continues the remote-management product branch by expanding remote settings, advanced settings, authentication, usage statistics, routing parity, helper lifecycle handling, release documentation, and the remote feature support matrix.
 
 ### Added
 
-- **README hero screenshot and Chinese documentation**: Added a current desktop screenshot as the README lead image and rewrote the Chinese README around the CC Switch Remote product direction, remote-management workflow, helper release model, download assets, development commands and upstream-sync strategy.
-- **Remote user manual coverage**: Added a Chinese remote-management manual section covering remote target setup, helper lifecycle, supported feature areas, local-only behavior, release validation and troubleshooting.
-- **Release documentation path**: Documented the v3.16.7 release model, including the upstream baseline, separate helper release, updater metadata expectations and full-version validation checklist.
+- **Remote Advanced Settings Parity**: Added remote support for configuration directory overrides, CC Switch app config directory reads, backup and restore, cloud sync settings, and remote log configuration through helper commands and target-aware settings APIs.
+- **Remote Usage Statistics**: Added remote usage dashboard support, including remote data sources, request logs, provider/model statistics, pricing configuration, usage refresh events, and target-isolated query caches.
+- **Remote Managed Authentication**: Added remote managed auth commands and UI integration for Codex OAuth, Copilot, and related authentication state.
+- **Remote Feature Parity Matrix**: Added `docs/remote-feature-parity.md` to track parity, remote-adapted, local-only, and next-stage remote capabilities explicitly.
+- **README Hero Screenshot and Chinese Documentation**: Added a current desktop screenshot as the README lead image and rewrote the Chinese README around the CC Switch Remote product direction, remote-management workflow, helper release model, download assets, development commands, and upstream-sync strategy.
+- **Remote User Manual Coverage**: Added a Chinese remote-management manual section covering remote target setup, helper lifecycle, supported feature areas, local-only behavior, release validation, and troubleshooting.
+- **Release Notes Sync Workflow**: Added a lightweight workflow to sync `docs/release-notes/*.md` into the matching GitHub Release body without rebuilding application artifacts.
 
 ### Changed
 
-- **Project wording**: Updated documentation from upstream CC Switch wording to CC Switch Remote wording where the current branch is the remote-management product branch.
-- **Release notes expectation**: Release notes now explicitly describe user-facing changes and remote-helper requirements instead of relying on download-only release text.
+- **Remote Settings Navigation and Routing Alignment**: Aligned remote settings navigation and remote routing controls with the local settings structure, including home-page routing/failover display semantics and route-start-before-enable behavior.
+- **Helper Install and Build Display**: Improved helper install/update fallback behavior, remote session restart after helper installation, clearer health panel states, and cleaner helper version/build display.
+- **Target-Aware UI and API Plumbing**: Extended settings, usage, backup, cloud sync, model test, pricing, auth, and routing APIs to keep local and remote state separated.
+- **Project Wording**: Updated documentation from upstream CC Switch wording to CC Switch Remote wording where the current branch is the remote-management product branch.
+- **Release Notes Scope**: Release notes now describe the full previous-version-to-current-version range instead of only the final release-preparation commit.
 
 ### Notes
 
