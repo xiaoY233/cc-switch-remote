@@ -92,6 +92,7 @@ pub enum RemoteCapability {
     CloudSync,
     Tools,
     StreamCheck,
+    Usage,
     Settings,
     SettingsAppConfigDir,
     Plugin,

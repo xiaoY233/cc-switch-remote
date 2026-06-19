@@ -9,6 +9,8 @@ import {
 } from "@/components/ui/table";
 import { useModelStats } from "@/lib/query/usage";
 import { fmtUsd } from "./format";
+import { LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
+import type { ManagementTarget } from "@/lib/api/remote";
 import type { UsageRangeSelection } from "@/types/usage";
 
 interface ModelStatsTableProps {
@@ -17,6 +19,7 @@ interface ModelStatsTableProps {
   providerName?: string;
   model?: string;
   refreshIntervalMs: number;
+  target?: ManagementTarget;
 }
 
 export function ModelStatsTable({
@@ -25,6 +28,7 @@ export function ModelStatsTable({
   providerName,
   model,
   refreshIntervalMs,
+  target = LOCAL_MANAGEMENT_TARGET,
 }: ModelStatsTableProps) {
   const { t } = useTranslation();
   const { data: stats, isLoading } = useModelStats(
@@ -33,6 +37,7 @@ export function ModelStatsTable({
     {
       refetchInterval: refreshIntervalMs > 0 ? refreshIntervalMs : false,
     },
+    target,
   );
 
   if (isLoading) {

@@ -16,7 +16,7 @@ use crate::{
 use indexmap::IndexMap;
 #[cfg(feature = "proxy-runtime")]
 use once_cell::sync::Lazy;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -692,6 +692,164 @@ pub fn get_log_config() -> Result<crate::proxy::types::LogConfig, String> {
     db.get_log_config().map_err(|e| e.to_string())
 }
 
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageQueryParams {
+    pub start_date: Option<i64>,
+    pub end_date: Option<i64>,
+    pub app_type: Option<String>,
+    pub provider_name: Option<String>,
+    pub model: Option<String>,
+}
+
+fn parse_usage_params(params_json: &str) -> Result<UsageQueryParams, String> {
+    if params_json.trim().is_empty() || params_json == "-" {
+        return Ok(UsageQueryParams::default());
+    }
+    serde_json::from_str(params_json).map_err(|e| e.to_string())
+}
+
+pub fn usage_summary(
+    params_json: &str,
+) -> Result<crate::services::usage_stats::UsageSummary, String> {
+    let params = parse_usage_params(params_json)?;
+    let db = Database::init().map_err(|e| e.to_string())?;
+    db.get_usage_summary(
+        params.start_date,
+        params.end_date,
+        params.app_type.as_deref(),
+        params.provider_name.as_deref(),
+        params.model.as_deref(),
+    )
+    .map_err(|e| e.to_string())
+}
+
+pub fn usage_summary_by_app(
+    params_json: &str,
+) -> Result<Vec<crate::services::usage_stats::UsageSummaryByApp>, String> {
+    let params = parse_usage_params(params_json)?;
+    let db = Database::init().map_err(|e| e.to_string())?;
+    db.get_usage_summary_by_app(
+        params.start_date,
+        params.end_date,
+        params.provider_name.as_deref(),
+        params.model.as_deref(),
+    )
+    .map_err(|e| e.to_string())
+}
+
+pub fn usage_trends(
+    params_json: &str,
+) -> Result<Vec<crate::services::usage_stats::DailyStats>, String> {
+    let params = parse_usage_params(params_json)?;
+    let db = Database::init().map_err(|e| e.to_string())?;
+    db.get_daily_trends(
+        params.start_date,
+        params.end_date,
+        params.app_type.as_deref(),
+        params.provider_name.as_deref(),
+        params.model.as_deref(),
+    )
+    .map_err(|e| e.to_string())
+}
+
+pub fn usage_provider_stats(
+    params_json: &str,
+) -> Result<Vec<crate::services::usage_stats::ProviderStats>, String> {
+    let params = parse_usage_params(params_json)?;
+    let db = Database::init().map_err(|e| e.to_string())?;
+    db.get_provider_stats(
+        params.start_date,
+        params.end_date,
+        params.app_type.as_deref(),
+        params.provider_name.as_deref(),
+        params.model.as_deref(),
+    )
+    .map_err(|e| e.to_string())
+}
+
+pub fn usage_model_stats(
+    params_json: &str,
+) -> Result<Vec<crate::services::usage_stats::ModelStats>, String> {
+    let params = parse_usage_params(params_json)?;
+    let db = Database::init().map_err(|e| e.to_string())?;
+    db.get_model_stats(
+        params.start_date,
+        params.end_date,
+        params.app_type.as_deref(),
+        params.provider_name.as_deref(),
+        params.model.as_deref(),
+    )
+    .map_err(|e| e.to_string())
+}
+
+pub fn usage_request_logs(
+    filters_json: &str,
+    page: u32,
+    page_size: u32,
+) -> Result<crate::services::usage_stats::PaginatedLogs, String> {
+    let filters: crate::services::usage_stats::LogFilters =
+        if filters_json.trim().is_empty() || filters_json == "-" {
+            Default::default()
+        } else {
+            serde_json::from_str(filters_json).map_err(|e| e.to_string())?
+        };
+    let db = Database::init().map_err(|e| e.to_string())?;
+    db.get_request_logs(&filters, page, page_size)
+        .map_err(|e| e.to_string())
+}
+
+pub fn usage_request_detail(
+    request_id: &str,
+) -> Result<Option<crate::services::usage_stats::RequestLogDetail>, String> {
+    let db = Database::init().map_err(|e| e.to_string())?;
+    db.get_request_detail(request_id).map_err(|e| e.to_string())
+}
+
+pub fn usage_data_sources() -> Result<Vec<crate::services::session_usage::DataSourceSummary>, String>
+{
+    let db = Database::init().map_err(|e| e.to_string())?;
+    crate::services::session_usage::get_data_source_breakdown(&db).map_err(|e| e.to_string())
+}
+
+pub fn usage_sync_session() -> Result<crate::services::session_usage::SessionSyncResult, String> {
+    let db = Database::init().map_err(|e| e.to_string())?;
+    crate::services::session_usage_sync::sync_all_session_usage(&db).map_err(|e| e.to_string())
+}
+
+pub fn usage_model_pricing() -> Result<Vec<crate::services::usage_pricing::ModelPricingInfo>, String>
+{
+    let db = Database::init().map_err(|e| e.to_string())?;
+    crate::services::usage_pricing::get_model_pricing(&db).map_err(|e| e.to_string())
+}
+
+pub fn usage_update_model_pricing(
+    model_id: &str,
+    display_name: &str,
+    input_cost: &str,
+    output_cost: &str,
+    cache_read_cost: &str,
+    cache_creation_cost: &str,
+) -> Result<(), String> {
+    let db = Database::init().map_err(|e| e.to_string())?;
+    crate::services::usage_pricing::update_model_pricing(
+        &db,
+        model_id.to_string(),
+        display_name.to_string(),
+        input_cost.to_string(),
+        output_cost.to_string(),
+        cache_read_cost.to_string(),
+        cache_creation_cost.to_string(),
+    )
+    .map_err(|e| e.to_string())
+}
+
+pub fn usage_delete_model_pricing(model_id: &str) -> Result<(), String> {
+    let db = Database::init().map_err(|e| e.to_string())?;
+    crate::services::usage_pricing::delete_model_pricing(&db, model_id.to_string())
+        .map_err(|e| e.to_string())
+}
+
 pub fn save_log_config(config_json: &str) -> Result<bool, String> {
     let config: crate::proxy::types::LogConfig =
         serde_json::from_str(config_json).map_err(|e| e.to_string())?;
@@ -789,6 +947,38 @@ pub fn get_routing_app_config(
     let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
     runtime
         .block_on(db.get_proxy_config_for_app(app_type))
+        .map_err(|e| e.to_string())
+}
+
+pub fn get_default_cost_multiplier(app_type: &str) -> Result<String, String> {
+    let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+    runtime
+        .block_on(db.get_default_cost_multiplier(app_type))
+        .map_err(|e| e.to_string())
+}
+
+pub fn set_default_cost_multiplier(app_type: &str, value: &str) -> Result<(), String> {
+    let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+    runtime
+        .block_on(db.set_default_cost_multiplier(app_type, value))
+        .map_err(|e| e.to_string())
+}
+
+pub fn get_pricing_model_source(app_type: &str) -> Result<String, String> {
+    let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+    runtime
+        .block_on(db.get_pricing_model_source(app_type))
+        .map_err(|e| e.to_string())
+}
+
+pub fn set_pricing_model_source(app_type: &str, value: &str) -> Result<(), String> {
+    let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+    runtime
+        .block_on(db.set_pricing_model_source(app_type, value))
         .map_err(|e| e.to_string())
 }
 

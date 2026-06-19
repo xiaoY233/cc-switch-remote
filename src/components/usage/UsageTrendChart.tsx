@@ -18,6 +18,8 @@ import {
   parseFiniteNumber,
 } from "./format";
 import { resolveUsageRange } from "@/lib/usageRange";
+import { LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
+import type { ManagementTarget } from "@/lib/api/remote";
 import type { UsageRangeSelection } from "@/types/usage";
 
 interface UsageTrendChartProps {
@@ -27,6 +29,7 @@ interface UsageTrendChartProps {
   providerName?: string;
   model?: string;
   refreshIntervalMs: number;
+  target?: ManagementTarget;
 }
 
 export function UsageTrendChart({
@@ -36,6 +39,7 @@ export function UsageTrendChart({
   providerName,
   model,
   refreshIntervalMs,
+  target = LOCAL_MANAGEMENT_TARGET,
 }: UsageTrendChartProps) {
   const { t, i18n } = useTranslation();
   const { startDate, endDate } = resolveUsageRange(range);
@@ -45,6 +49,7 @@ export function UsageTrendChart({
     {
       refetchInterval: refreshIntervalMs > 0 ? refreshIntervalMs : false,
     },
+    target,
   );
 
   if (isLoading) {

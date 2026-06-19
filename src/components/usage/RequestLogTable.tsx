@@ -26,6 +26,8 @@ import {
 } from "@/types/usage";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { UsageDateRangePicker } from "./UsageDateRangePicker";
+import { LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
+import type { ManagementTarget } from "@/lib/api/remote";
 import {
   fmtInt,
   fmtUsd,
@@ -41,6 +43,7 @@ interface RequestLogTableProps {
   model?: string;
   refreshIntervalMs: number;
   onRangeChange?: (range: UsageRangeSelection) => void;
+  target?: ManagementTarget;
 }
 
 export function RequestLogTable({
@@ -51,6 +54,7 @@ export function RequestLogTable({
   model,
   refreshIntervalMs,
   onRangeChange,
+  target = LOCAL_MANAGEMENT_TARGET,
 }: RequestLogTableProps) {
   const { t, i18n } = useTranslation();
 
@@ -79,6 +83,7 @@ export function RequestLogTable({
     options: {
       refetchInterval: refreshIntervalMs > 0 ? refreshIntervalMs : false,
     },
+    target,
   });
 
   const logs = result?.data ?? [];

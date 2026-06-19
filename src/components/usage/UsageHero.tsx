@@ -6,6 +6,8 @@ import { useUsageSummaryByApp } from "@/lib/query/usage";
 import { cn } from "@/lib/utils";
 import { APP_ICON_MAP } from "@/config/appConfig";
 import type { AppId } from "@/lib/api/types";
+import { LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
+import type { ManagementTarget } from "@/lib/api/remote";
 import {
   Activity,
   ArrowDownToLine,
@@ -36,6 +38,7 @@ interface UsageHeroProps {
   providerName?: string;
   model?: string;
   refreshIntervalMs: number;
+  target?: ManagementTarget;
 }
 
 interface TitleTheme {
@@ -164,6 +167,7 @@ export function UsageHero({
   providerName,
   model,
   refreshIntervalMs,
+  target = LOCAL_MANAGEMENT_TARGET,
 }: UsageHeroProps) {
   const { t, i18n } = useTranslation();
   const lang = getResolvedLang(i18n);
@@ -174,6 +178,7 @@ export function UsageHero({
     {
       refetchInterval: refreshIntervalMs > 0 ? refreshIntervalMs : false,
     },
+    target,
   );
 
   // No client-side filtering: Hero's totals must match the Trend/Logs/Stats

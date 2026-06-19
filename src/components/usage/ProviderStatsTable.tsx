@@ -9,6 +9,8 @@ import {
 } from "@/components/ui/table";
 import { useProviderStats } from "@/lib/query/usage";
 import { fmtUsd } from "./format";
+import { LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
+import type { ManagementTarget } from "@/lib/api/remote";
 import type { UsageRangeSelection } from "@/types/usage";
 
 interface ProviderStatsTableProps {
@@ -17,6 +19,7 @@ interface ProviderStatsTableProps {
   providerName?: string;
   model?: string;
   refreshIntervalMs: number;
+  target?: ManagementTarget;
 }
 
 export function ProviderStatsTable({
@@ -25,6 +28,7 @@ export function ProviderStatsTable({
   providerName,
   model,
   refreshIntervalMs,
+  target = LOCAL_MANAGEMENT_TARGET,
 }: ProviderStatsTableProps) {
   const { t } = useTranslation();
   const { data: stats, isLoading } = useProviderStats(
@@ -33,6 +37,7 @@ export function ProviderStatsTable({
     {
       refetchInterval: refreshIntervalMs > 0 ? refreshIntervalMs : false,
     },
+    target,
   );
 
   if (isLoading) {

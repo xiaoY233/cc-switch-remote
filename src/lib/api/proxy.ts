@@ -149,7 +149,17 @@ export const proxyApi = {
   // ========== 计费默认配置 API ==========
 
   // 获取默认成本倍率
-  async getDefaultCostMultiplier(appType: string): Promise<string> {
+  async getDefaultCostMultiplier(
+    appType: string,
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+  ): Promise<string> {
+    if (target.type === "remote") {
+      return remoteApi.getDefaultCostMultiplier(
+        target.profile,
+        appType,
+        target.secret,
+      );
+    }
     return invoke("get_default_cost_multiplier", { appType });
   },
 
@@ -157,17 +167,48 @@ export const proxyApi = {
   async setDefaultCostMultiplier(
     appType: string,
     value: string,
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
   ): Promise<void> {
+    if (target.type === "remote") {
+      return remoteApi.setDefaultCostMultiplier(
+        target.profile,
+        appType,
+        value,
+        target.secret,
+      );
+    }
     return invoke("set_default_cost_multiplier", { appType, value });
   },
 
   // 获取计费模式来源
-  async getPricingModelSource(appType: string): Promise<string> {
+  async getPricingModelSource(
+    appType: string,
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+  ): Promise<string> {
+    if (target.type === "remote") {
+      return remoteApi.getPricingModelSource(
+        target.profile,
+        appType,
+        target.secret,
+      );
+    }
     return invoke("get_pricing_model_source", { appType });
   },
 
   // 设置计费模式来源
-  async setPricingModelSource(appType: string, value: string): Promise<void> {
+  async setPricingModelSource(
+    appType: string,
+    value: string,
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+  ): Promise<void> {
+    if (target.type === "remote") {
+      return remoteApi.setPricingModelSource(
+        target.profile,
+        appType,
+        value,
+        target.secret,
+      );
+    }
     return invoke("set_pricing_model_source", { appType, value });
   },
 };

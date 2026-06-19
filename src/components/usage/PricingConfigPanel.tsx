@@ -28,6 +28,8 @@ import {
 } from "@/components/ui/select";
 import { useModelPricing, useDeleteModelPricing } from "@/lib/query/usage";
 import { PricingEditModal } from "./PricingEditModal";
+import { LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
+import type { ManagementTarget } from "@/lib/api/remote";
 import { isNonNegativeDecimalString, type ModelPricing } from "@/types/usage";
 import { Plus, Pencil, Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -44,10 +46,16 @@ interface AppConfig {
 
 type AppConfigState = Record<PricingApp, AppConfig>;
 
-export function PricingConfigPanel() {
+interface PricingConfigPanelProps {
+  target?: ManagementTarget;
+}
+
+export function PricingConfigPanel({
+  target = LOCAL_MANAGEMENT_TARGET,
+}: PricingConfigPanelProps) {
   const { t } = useTranslation();
-  const { data: pricing, isLoading, error } = useModelPricing();
-  const deleteMutation = useDeleteModelPricing();
+  const { data: pricing, isLoading, error } = useModelPricing(target);
+  const deleteMutation = useDeleteModelPricing(target);
   const [editingModel, setEditingModel] = useState<ModelPricing | null>(null);
   const [isAddingNew, setIsAddingNew] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
@@ -83,8 +91,8 @@ export function PricingConfigPanel() {
         const results = await Promise.all(
           PRICING_APPS.map(async (app) => {
             const [multiplier, source] = await Promise.all([
-              proxyApi.getDefaultCostMultiplier(app),
-              proxyApi.getPricingModelSource(app),
+              proxyApi.getDefaultCostMultiplier(app, target),
+              proxyApi.getPricingModelSource(app, target),
             ]);
             return {
               app,
@@ -130,7 +138,7 @@ export function PricingConfigPanel() {
     return () => {
       isMounted = false;
     };
-  }, [t]);
+  }, [t, target]);
 
   // 保存所有配置
   const handleSaveAll = async () => {
@@ -158,8 +166,9 @@ export function PricingConfigPanel() {
           proxyApi.setDefaultCostMultiplier(
             app,
             appConfigs[app].multiplier.trim(),
+            target,
           ),
-          proxyApi.setPricingModelSource(app, appConfigs[app].source),
+          proxyApi.setPricingModelSource(app, appConfigs[app].source, target),
         ]),
       );
       toast.success(t("settings.globalProxy.pricingSaved"));
@@ -445,6 +454,7 @@ export function PricingConfigPanel() {
             setEditingModel(null);
             setIsAddingNew(false);
           }}
+          target={target}
         />
       )}
 

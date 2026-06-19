@@ -18,6 +18,10 @@ use crate::services::skill::{
     DiscoverableSkill, ImportSkillSelection, MigrationResult, SkillBackupEntry, SkillRepo,
     SkillStorageLocation, SkillUninstallResult, SkillUpdateInfo,
 };
+use crate::services::usage_stats::{
+    DailyStats, LogFilters, ModelStats, PaginatedLogs, ProviderStats, RequestLogDetail,
+    UsageSummary, UsageSummaryByApp,
+};
 use crate::services::{ProviderSortUpdate, SwitchResult};
 use crate::session_manager;
 use crate::settings::{AppSettings, S3SyncSettings, WebDavSyncSettings};
@@ -923,6 +927,7 @@ fn parse_remote_capability(value: &str) -> Option<RemoteCapability> {
         "cloud-sync" => Some(RemoteCapability::CloudSync),
         "tools" => Some(RemoteCapability::Tools),
         "stream-check" => Some(RemoteCapability::StreamCheck),
+        "usage" => Some(RemoteCapability::Usage),
         "settings" => Some(RemoteCapability::Settings),
         "settings-app-config-dir" => Some(RemoteCapability::SettingsAppConfigDir),
         "plugin" => Some(RemoteCapability::Plugin),
@@ -1019,6 +1024,349 @@ where
         .execute_json(profile, secret, helper_args)
         .await
         .map_err(|e| format!("{task_name} task failed: {e}"))
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RemoteUsageQueryParams {
+    start_date: Option<i64>,
+    end_date: Option<i64>,
+    app_type: Option<String>,
+    provider_name: Option<String>,
+    model: Option<String>,
+}
+
+fn serialize_remote_usage_params(
+    start_date: Option<i64>,
+    end_date: Option<i64>,
+    app_type: Option<String>,
+    provider_name: Option<String>,
+    model: Option<String>,
+) -> Result<String, String> {
+    serde_json::to_string(&RemoteUsageQueryParams {
+        start_date,
+        end_date,
+        app_type,
+        provider_name,
+        model,
+    })
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn remote_get_usage_summary(
+    profile: RemoteHostProfile,
+    start_date: Option<i64>,
+    end_date: Option<i64>,
+    app_type: Option<String>,
+    provider_name: Option<String>,
+    model: Option<String>,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<UsageSummary, String> {
+    let params =
+        serialize_remote_usage_params(start_date, end_date, app_type, provider_name, model)?;
+    run_remote_helper_json(
+        profile,
+        vec!["usage".to_string(), "summary".to_string(), params],
+        secret,
+        "Remote usage summary",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_get_usage_summary_by_app(
+    profile: RemoteHostProfile,
+    start_date: Option<i64>,
+    end_date: Option<i64>,
+    provider_name: Option<String>,
+    model: Option<String>,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Vec<UsageSummaryByApp>, String> {
+    let params = serialize_remote_usage_params(start_date, end_date, None, provider_name, model)?;
+    run_remote_helper_json(
+        profile,
+        vec!["usage".to_string(), "summary-by-app".to_string(), params],
+        secret,
+        "Remote usage summary by app",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_get_usage_trends(
+    profile: RemoteHostProfile,
+    start_date: Option<i64>,
+    end_date: Option<i64>,
+    app_type: Option<String>,
+    provider_name: Option<String>,
+    model: Option<String>,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Vec<DailyStats>, String> {
+    let params =
+        serialize_remote_usage_params(start_date, end_date, app_type, provider_name, model)?;
+    run_remote_helper_json(
+        profile,
+        vec!["usage".to_string(), "trends".to_string(), params],
+        secret,
+        "Remote usage trends",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_get_provider_stats(
+    profile: RemoteHostProfile,
+    start_date: Option<i64>,
+    end_date: Option<i64>,
+    app_type: Option<String>,
+    provider_name: Option<String>,
+    model: Option<String>,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Vec<ProviderStats>, String> {
+    let params =
+        serialize_remote_usage_params(start_date, end_date, app_type, provider_name, model)?;
+    run_remote_helper_json(
+        profile,
+        vec!["usage".to_string(), "provider-stats".to_string(), params],
+        secret,
+        "Remote usage provider stats",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_get_model_stats(
+    profile: RemoteHostProfile,
+    start_date: Option<i64>,
+    end_date: Option<i64>,
+    app_type: Option<String>,
+    provider_name: Option<String>,
+    model: Option<String>,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Vec<ModelStats>, String> {
+    let params =
+        serialize_remote_usage_params(start_date, end_date, app_type, provider_name, model)?;
+    run_remote_helper_json(
+        profile,
+        vec!["usage".to_string(), "model-stats".to_string(), params],
+        secret,
+        "Remote usage model stats",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_get_request_logs(
+    profile: RemoteHostProfile,
+    filters: LogFilters,
+    page: u32,
+    page_size: u32,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<PaginatedLogs, String> {
+    let filters_json = serde_json::to_string(&filters).map_err(|e| e.to_string())?;
+    run_remote_helper_json(
+        profile,
+        vec![
+            "usage".to_string(),
+            "request-logs".to_string(),
+            filters_json,
+            page.to_string(),
+            page_size.to_string(),
+        ],
+        secret,
+        "Remote usage request logs",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_get_request_detail(
+    profile: RemoteHostProfile,
+    request_id: String,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Option<RequestLogDetail>, String> {
+    run_remote_helper_json(
+        profile,
+        vec![
+            "usage".to_string(),
+            "request-detail".to_string(),
+            request_id,
+        ],
+        secret,
+        "Remote usage request detail",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_get_usage_data_sources(
+    profile: RemoteHostProfile,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Vec<crate::services::session_usage::DataSourceSummary>, String> {
+    run_remote_helper_json(
+        profile,
+        vec!["usage".to_string(), "data-sources".to_string()],
+        secret,
+        "Remote usage data sources",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_sync_session_usage(
+    profile: RemoteHostProfile,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<crate::services::session_usage::SessionSyncResult, String> {
+    run_remote_helper_json(
+        profile,
+        vec!["usage".to_string(), "sync-session".to_string()],
+        secret,
+        "Remote usage session sync",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_get_model_pricing(
+    profile: RemoteHostProfile,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Vec<crate::services::usage_pricing::ModelPricingInfo>, String> {
+    run_remote_helper_json(
+        profile,
+        vec!["usage".to_string(), "model-pricing".to_string()],
+        secret,
+        "Remote usage model pricing",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_update_model_pricing(
+    profile: RemoteHostProfile,
+    model_id: String,
+    display_name: String,
+    input_cost: String,
+    output_cost: String,
+    cache_read_cost: String,
+    cache_creation_cost: String,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<(), String> {
+    run_remote_helper_json(
+        profile,
+        vec![
+            "usage".to_string(),
+            "update-model-pricing".to_string(),
+            model_id,
+            display_name,
+            input_cost,
+            output_cost,
+            cache_read_cost,
+            cache_creation_cost,
+        ],
+        secret,
+        "Remote usage model pricing update",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_delete_model_pricing(
+    profile: RemoteHostProfile,
+    model_id: String,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<(), String> {
+    run_remote_helper_json(
+        profile,
+        vec![
+            "usage".to_string(),
+            "delete-model-pricing".to_string(),
+            model_id,
+        ],
+        secret,
+        "Remote usage model pricing delete",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_get_default_cost_multiplier(
+    profile: RemoteHostProfile,
+    app_type: String,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<String, String> {
+    run_remote_helper_json(
+        profile,
+        vec![
+            "routing-config".to_string(),
+            "default-cost-multiplier".to_string(),
+            app_type,
+        ],
+        secret,
+        "Remote default cost multiplier",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_set_default_cost_multiplier(
+    profile: RemoteHostProfile,
+    app_type: String,
+    value: String,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<(), String> {
+    run_remote_helper_json(
+        profile,
+        vec![
+            "routing-config".to_string(),
+            "set-default-cost-multiplier".to_string(),
+            app_type,
+            value,
+        ],
+        secret,
+        "Remote default cost multiplier update",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_get_pricing_model_source(
+    profile: RemoteHostProfile,
+    app_type: String,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<String, String> {
+    run_remote_helper_json(
+        profile,
+        vec![
+            "routing-config".to_string(),
+            "pricing-model-source".to_string(),
+            app_type,
+        ],
+        secret,
+        "Remote pricing model source",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_set_pricing_model_source(
+    profile: RemoteHostProfile,
+    app_type: String,
+    value: String,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<(), String> {
+    run_remote_helper_json(
+        profile,
+        vec![
+            "routing-config".to_string(),
+            "set-pricing-model-source".to_string(),
+            app_type,
+            value,
+        ],
+        secret,
+        "Remote pricing model source update",
+    )
+    .await
 }
 
 #[tauri::command]
@@ -2572,9 +2920,18 @@ mod tests {
         assert!(command.contains("'\"settings\"'"));
         assert!(command.contains("'\"plugin\"'"));
         assert!(command.contains("'\"session\"'"));
+        assert!(command.contains("'\"usage\"'"));
         assert!(command.contains(&REMOTE_HELPER_REQUIRED_CAPABILITIES.join(", ")));
         assert!(!command.contains("rustup.rs"));
         assert!(!command.contains("cargo install --git"));
+    }
+
+    #[test]
+    fn parses_usage_capability() {
+        assert_eq!(
+            parse_remote_capability("usage"),
+            Some(RemoteCapability::Usage)
+        );
     }
 
     #[tokio::test]

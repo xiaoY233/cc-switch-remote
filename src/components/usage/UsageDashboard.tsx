@@ -5,6 +5,7 @@ import { UsageTrendChart } from "./UsageTrendChart";
 import { RequestLogTable } from "./RequestLogTable";
 import { ProviderStatsTable } from "./ProviderStatsTable";
 import { ModelStatsTable } from "./ModelStatsTable";
+import { DataSourceBar } from "./DataSourceBar";
 import {
   KNOWN_APP_TYPES,
   type AppType,
@@ -43,6 +44,8 @@ import { getLocaleFromLanguage } from "./format";
 import { getUsageRangePresetLabel, resolveUsageRange } from "@/lib/usageRange";
 import { UsageDateRangePicker } from "./UsageDateRangePicker";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
+import type { ManagementTarget } from "@/lib/api/remote";
 
 const APP_FILTER_OPTIONS: AppTypeFilter[] = ["all", ...KNOWN_APP_TYPES];
 
@@ -64,7 +67,13 @@ const encodeOptionValue = (name: string) => `${DYNAMIC_OPTION_PREFIX}${name}`;
 const decodeOptionValue = (value: string) =>
   value === "all" ? undefined : value.slice(DYNAMIC_OPTION_PREFIX.length);
 
-export function UsageDashboard() {
+interface UsageDashboardProps {
+  target?: ManagementTarget;
+}
+
+export function UsageDashboard({
+  target = LOCAL_MANAGEMENT_TARGET,
+}: UsageDashboardProps) {
   const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
   const [range, setRange] = useState<UsageRangeSelection>({ preset: "today" });
@@ -93,11 +102,11 @@ export function UsageDashboard() {
 
   // 后端写入新日志时 emit `usage-log-recorded`，本 hook 立刻 invalidate 所有
   // usage 查询，实现实时刷新（仅在 Dashboard 挂载时生效，离开页面自动取消监听）
-  useUsageEventBridge();
+  useUsageEventBridge(target);
 
   const changeRefreshInterval = (next: number) => {
     setRefreshIntervalMs(next);
-    queryClient.invalidateQueries({ queryKey: usageKeys.all });
+    queryClient.invalidateQueries({ queryKey: usageKeys.all(target) });
   };
 
   const language = i18n.resolvedLanguage || i18n.language || "en";
@@ -125,11 +134,13 @@ export function UsageDashboard() {
     range,
     { appType },
     optionsRefetch,
+    target,
   );
   const { data: modelOptionsData } = useModelStats(
     range,
     { appType, providerName },
     optionsRefetch,
+    target,
   );
 
   const providerOptions = useMemo(() => {
@@ -290,7 +301,10 @@ export function UsageDashboard() {
         providerName={providerName}
         model={model}
         refreshIntervalMs={refreshIntervalMs}
+        target={target}
       />
+
+      <DataSourceBar refreshIntervalMs={refreshIntervalMs} target={target} />
 
       <UsageTrendChart
         range={range}
@@ -299,6 +313,7 @@ export function UsageDashboard() {
         providerName={providerName}
         model={model}
         refreshIntervalMs={refreshIntervalMs}
+        target={target}
       />
 
       <div className="space-y-4">
@@ -334,6 +349,7 @@ export function UsageDashboard() {
                 model={model}
                 refreshIntervalMs={refreshIntervalMs}
                 onRangeChange={setRange}
+                target={target}
               />
             </TabsContent>
 
@@ -344,6 +360,7 @@ export function UsageDashboard() {
                 providerName={providerName}
                 model={model}
                 refreshIntervalMs={refreshIntervalMs}
+                target={target}
               />
             </TabsContent>
 
@@ -354,6 +371,7 @@ export function UsageDashboard() {
                 providerName={providerName}
                 model={model}
                 refreshIntervalMs={refreshIntervalMs}
+                target={target}
               />
             </TabsContent>
           </motion.div>
@@ -379,7 +397,7 @@ export function UsageDashboard() {
             </div>
           </AccordionTrigger>
           <AccordionContent className="px-6 pb-6 pt-4 border-t border-border/50">
-            <PricingConfigPanel />
+            <PricingConfigPanel target={target} />
           </AccordionContent>
         </AccordionItem>
       </Accordion>

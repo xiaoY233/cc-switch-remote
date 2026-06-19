@@ -38,6 +38,7 @@ import { RemoteDirectorySettings } from "@/components/settings/RemoteDirectorySe
 import { WebdavSyncSection } from "@/components/settings/WebdavSyncSection";
 import { LogConfigPanel } from "@/components/settings/LogConfigPanel";
 import { ModelTestConfigPanel } from "@/components/usage/ModelTestConfigPanel";
+import { UsageDashboard } from "@/components/usage/UsageDashboard";
 import { AutoFailoverConfigPanel } from "@/components/proxy/AutoFailoverConfigPanel";
 import { FailoverQueueManager } from "@/components/proxy/FailoverQueueManager";
 import { ProxyPanel } from "@/components/proxy/ProxyPanel";
@@ -96,7 +97,8 @@ function coerceRemoteTab(tab: string | undefined): string {
   return tab === "general" ||
     tab === "data" ||
     tab === "environment" ||
-    tab === "routing"
+    tab === "routing" ||
+    tab === "usage"
     ? tab
     : "environment";
 }
@@ -154,6 +156,7 @@ export function RemoteSettingsPage({
     health?.capabilities.includes("cloud-sync") ?? false;
   const streamCheckCapability =
     health?.capabilities.includes("stream-check") ?? false;
+  const usageCapability = health?.capabilities.includes("usage") ?? false;
   const routingCapability =
     health?.capabilities.includes("routing-config") ?? false;
   const routingRuntimeCapability =
@@ -443,7 +446,7 @@ export function RemoteSettingsPage({
         onValueChange={setActiveTab}
         className="flex flex-col h-full"
       >
-        <TabsList className="grid w-full grid-cols-4 mb-6 glass rounded-lg">
+        <TabsList className="grid w-full grid-cols-5 mb-6 glass rounded-lg">
           <TabsTrigger value="environment">
             {t("remote.settings.tabs.remote", { defaultValue: "远程" })}
           </TabsTrigger>
@@ -452,6 +455,9 @@ export function RemoteSettingsPage({
           </TabsTrigger>
           <TabsTrigger value="routing">
             {t("settings.tabProxy", { defaultValue: "代理" })}
+          </TabsTrigger>
+          <TabsTrigger value="usage">
+            {t("usage.title")}
           </TabsTrigger>
           <TabsTrigger value="data">
             {t("settings.tabAdvanced", { defaultValue: "高级" })}
@@ -603,6 +609,23 @@ export function RemoteSettingsPage({
               onSaveSettings={saveRemoteSettings}
               target={target}
             />
+          </TabsContent>
+
+          <TabsContent value="usage" className="mt-0 pb-4">
+            {!helperReady || !usageCapability ? (
+              <div className="rounded-xl border border-border bg-card/50 px-4 py-3 text-sm text-muted-foreground">
+                {!helperReady
+                  ? t("remote.settings.environment.helperRequired", {
+                      defaultValue: "请先完成健康检查并安装可用的远程 Helper。",
+                    })
+                  : t("remote.settings.usage.unsupported", {
+                      defaultValue:
+                        "当前远程 Helper 不支持使用统计。请更新到包含 usage capability 的新版 Helper。",
+                    })}
+              </div>
+            ) : (
+              <UsageDashboard target={target} />
+            )}
           </TabsContent>
 
           <TabsContent value="data" className="space-y-4 mt-0 pb-4">

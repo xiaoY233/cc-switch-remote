@@ -48,6 +48,86 @@ mod tests {
             Some("routing_auto_failover_set_failed")
         );
     }
+
+    #[test]
+    fn status_advertises_usage_capability() {
+        let response = run_command(&["status".to_string()]);
+        let capabilities = response
+            .get("data")
+            .and_then(|data| data.get("capabilities"))
+            .and_then(Value::as_array)
+            .expect("status capabilities");
+
+        assert!(capabilities.iter().any(|capability| capability == "usage"));
+    }
+
+    #[test]
+    fn usage_request_logs_rejects_invalid_pagination() {
+        let args = vec![
+            "usage".to_string(),
+            "request-logs".to_string(),
+            "{}".to_string(),
+            "page".to_string(),
+            "20".to_string(),
+        ];
+
+        let response = run_command(&args);
+
+        assert_eq!(response.get("ok").and_then(Value::as_bool), Some(false));
+        assert_eq!(
+            response
+                .get("error")
+                .and_then(|error| error.get("code"))
+                .and_then(Value::as_str),
+            Some("usage_request_logs_failed")
+        );
+    }
+
+    #[test]
+    fn usage_sync_session_returns_stable_empty_result() {
+        let dir = tempfile::tempdir().expect("temp test home");
+        let previous_home = std::env::var_os("CC_SWITCH_TEST_HOME");
+        let previous_xdg_data_home = std::env::var_os("XDG_DATA_HOME");
+        let previous_opencode_db = std::env::var_os("OPENCODE_DB");
+        let previous_disable_sync = std::env::var_os("CC_SWITCH_DISABLE_SESSION_SYNC_FOR_TESTS");
+        std::env::set_var("CC_SWITCH_TEST_HOME", dir.path());
+        std::env::set_var("XDG_DATA_HOME", dir.path().join("xdg-data"));
+        std::env::set_var("OPENCODE_DB", dir.path().join("missing-opencode.db"));
+        std::env::set_var("CC_SWITCH_DISABLE_SESSION_SYNC_FOR_TESTS", "1");
+
+        let response = run_command(&["usage".to_string(), "sync-session".to_string()]);
+
+        match previous_home {
+            Some(value) => std::env::set_var("CC_SWITCH_TEST_HOME", value),
+            None => std::env::remove_var("CC_SWITCH_TEST_HOME"),
+        }
+        match previous_xdg_data_home {
+            Some(value) => std::env::set_var("XDG_DATA_HOME", value),
+            None => std::env::remove_var("XDG_DATA_HOME"),
+        }
+        match previous_opencode_db {
+            Some(value) => std::env::set_var("OPENCODE_DB", value),
+            None => std::env::remove_var("OPENCODE_DB"),
+        }
+        match previous_disable_sync {
+            Some(value) => std::env::set_var("CC_SWITCH_DISABLE_SESSION_SYNC_FOR_TESTS", value),
+            None => std::env::remove_var("CC_SWITCH_DISABLE_SESSION_SYNC_FOR_TESTS"),
+        }
+
+        assert_eq!(response.get("ok").and_then(Value::as_bool), Some(true));
+        assert_eq!(
+            response
+                .get("data")
+                .and_then(|data| data.get("imported"))
+                .and_then(Value::as_u64),
+            Some(0)
+        );
+        assert!(response
+            .get("data")
+            .and_then(|data| data.get("errors"))
+            .and_then(Value::as_array)
+            .is_some());
+    }
 }
 
 pub fn run_entry(args: &[String]) -> CliRunResult {
@@ -359,6 +439,126 @@ pub(crate) fn run_command(args: &[String]) -> Value {
                 }
             }
         }
+        [group, cmd, params_json] if group == "usage" && cmd == "summary" => {
+            match commands::usage_summary(params_json) {
+                Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize usage summary"),
+                Err(message) => serde_json::to_value(types::err::<()>("usage_summary_failed", message))
+                    .expect("serialize usage summary error"),
+            }
+        }
+        [group, cmd, params_json] if group == "usage" && cmd == "summary-by-app" => {
+            match commands::usage_summary_by_app(params_json) {
+                Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize usage summary by app"),
+                Err(message) => serde_json::to_value(types::err::<()>("usage_summary_by_app_failed", message))
+                    .expect("serialize usage summary by app error"),
+            }
+        }
+        [group, cmd, params_json] if group == "usage" && cmd == "trends" => {
+            match commands::usage_trends(params_json) {
+                Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize usage trends"),
+                Err(message) => serde_json::to_value(types::err::<()>("usage_trends_failed", message))
+                    .expect("serialize usage trends error"),
+            }
+        }
+        [group, cmd, params_json] if group == "usage" && cmd == "provider-stats" => {
+            match commands::usage_provider_stats(params_json) {
+                Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize usage provider stats"),
+                Err(message) => serde_json::to_value(types::err::<()>("usage_provider_stats_failed", message))
+                    .expect("serialize usage provider stats error"),
+            }
+        }
+        [group, cmd, params_json] if group == "usage" && cmd == "model-stats" => {
+            match commands::usage_model_stats(params_json) {
+                Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize usage model stats"),
+                Err(message) => serde_json::to_value(types::err::<()>("usage_model_stats_failed", message))
+                    .expect("serialize usage model stats error"),
+            }
+        }
+        [group, cmd, filters_json, page, page_size] if group == "usage" && cmd == "request-logs" => {
+            match (page.parse::<u32>(), page_size.parse::<u32>()) {
+                (Ok(page), Ok(page_size)) => match commands::usage_request_logs(filters_json, page, page_size) {
+                    Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize usage request logs"),
+                    Err(message) => serde_json::to_value(types::err::<()>("usage_request_logs_failed", message))
+                        .expect("serialize usage request logs error"),
+                },
+                _ => serde_json::to_value(types::err::<()>(
+                    "usage_request_logs_failed",
+                    "Invalid request log pagination arguments",
+                ))
+                .expect("serialize usage request logs pagination error"),
+            }
+        }
+        [group, cmd, request_id] if group == "usage" && cmd == "request-detail" => {
+            match commands::usage_request_detail(request_id) {
+                Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize usage request detail"),
+                Err(message) => serde_json::to_value(types::err::<()>("usage_request_detail_failed", message))
+                    .expect("serialize usage request detail error"),
+            }
+        }
+        [group, cmd] if group == "usage" && cmd == "data-sources" => {
+            match commands::usage_data_sources() {
+                Ok(value) => {
+                    serde_json::to_value(types::ok(value)).expect("serialize usage data sources")
+                }
+                Err(message) => {
+                    serde_json::to_value(types::err::<()>("usage_data_sources_failed", message))
+                        .expect("serialize usage data sources error")
+                }
+            }
+        }
+        [group, cmd] if group == "usage" && cmd == "sync-session" => {
+            match commands::usage_sync_session() {
+                Ok(value) => {
+                    serde_json::to_value(types::ok(value)).expect("serialize usage session sync")
+                }
+                Err(message) => {
+                    serde_json::to_value(types::err::<()>("usage_session_sync_failed", message))
+                        .expect("serialize usage session sync error")
+                }
+            }
+        }
+        [group, cmd] if group == "usage" && cmd == "model-pricing" => {
+            match commands::usage_model_pricing() {
+                Ok(value) => {
+                    serde_json::to_value(types::ok(value)).expect("serialize usage model pricing")
+                }
+                Err(message) => {
+                    serde_json::to_value(types::err::<()>("usage_model_pricing_failed", message))
+                        .expect("serialize usage model pricing error")
+                }
+            }
+        }
+        [group, cmd, model_id, display_name, input_cost, output_cost, cache_read_cost, cache_creation_cost]
+            if group == "usage" && cmd == "update-model-pricing" =>
+        {
+            match commands::usage_update_model_pricing(
+                model_id,
+                display_name,
+                input_cost,
+                output_cost,
+                cache_read_cost,
+                cache_creation_cost,
+            ) {
+                Ok(value) => serde_json::to_value(types::ok(value))
+                    .expect("serialize usage model pricing update"),
+                Err(message) => serde_json::to_value(types::err::<()>(
+                    "usage_model_pricing_update_failed",
+                    message,
+                ))
+                .expect("serialize usage model pricing update error"),
+            }
+        }
+        [group, cmd, model_id] if group == "usage" && cmd == "delete-model-pricing" => {
+            match commands::usage_delete_model_pricing(model_id) {
+                Ok(value) => serde_json::to_value(types::ok(value))
+                    .expect("serialize usage model pricing delete"),
+                Err(message) => serde_json::to_value(types::err::<()>(
+                    "usage_model_pricing_delete_failed",
+                    message,
+                ))
+                .expect("serialize usage model pricing delete error"),
+            }
+        }
         [group, cmd] if group == "settings" && cmd == "get" => {
             serde_json::to_value(types::ok(commands::get_settings())).expect("serialize settings")
         }
@@ -613,6 +813,54 @@ pub(crate) fn run_command(args: &[String]) -> Value {
                     serde_json::to_value(types::err::<()>("routing_app_get_failed", message))
                         .expect("serialize routing app config error")
                 }
+            }
+        }
+        [group, cmd, app_type] if group == "routing-config" && cmd == "default-cost-multiplier" => {
+            match commands::get_default_cost_multiplier(app_type) {
+                Ok(value) => serde_json::to_value(types::ok(value))
+                    .expect("serialize default cost multiplier"),
+                Err(message) => serde_json::to_value(types::err::<()>(
+                    "routing_default_cost_multiplier_get_failed",
+                    message,
+                ))
+                .expect("serialize default cost multiplier error"),
+            }
+        }
+        [group, cmd, app_type, value]
+            if group == "routing-config" && cmd == "set-default-cost-multiplier" =>
+        {
+            match commands::set_default_cost_multiplier(app_type, value) {
+                Ok(value) => serde_json::to_value(types::ok(value))
+                    .expect("serialize default cost multiplier update"),
+                Err(message) => serde_json::to_value(types::err::<()>(
+                    "routing_default_cost_multiplier_set_failed",
+                    message,
+                ))
+                .expect("serialize default cost multiplier update error"),
+            }
+        }
+        [group, cmd, app_type] if group == "routing-config" && cmd == "pricing-model-source" => {
+            match commands::get_pricing_model_source(app_type) {
+                Ok(value) => serde_json::to_value(types::ok(value))
+                    .expect("serialize pricing model source"),
+                Err(message) => serde_json::to_value(types::err::<()>(
+                    "routing_pricing_model_source_get_failed",
+                    message,
+                ))
+                .expect("serialize pricing model source error"),
+            }
+        }
+        [group, cmd, app_type, value]
+            if group == "routing-config" && cmd == "set-pricing-model-source" =>
+        {
+            match commands::set_pricing_model_source(app_type, value) {
+                Ok(value) => serde_json::to_value(types::ok(value))
+                    .expect("serialize pricing model source update"),
+                Err(message) => serde_json::to_value(types::err::<()>(
+                    "routing_pricing_model_source_set_failed",
+                    message,
+                ))
+                .expect("serialize pricing model source update error"),
             }
         }
         [group, cmd, app_type] if group == "routing-config" && cmd == "failover-queue" => {
@@ -1356,7 +1604,7 @@ pub(crate) fn run_command(args: &[String]) -> Value {
         }
         _ => serde_json::to_value(types::err::<()>(
             "unsupported_command",
-            "Supported commands: status, providers, universal-providers, routing-config, routing-runtime, sessions, hermes, openclaw, mcp, prompts, skills, import-export, cloud-sync, tools, settings, plugin, stream-check",
+            "Supported commands: status, providers, universal-providers, routing-config, routing-runtime, sessions, hermes, openclaw, mcp, prompts, skills, import-export, cloud-sync, tools, settings, plugin, stream-check, usage",
         ))
         .expect("serialize error response"),
     }

@@ -1,10 +1,9 @@
 //! 使用统计相关命令
 
 use crate::error::AppError;
+use crate::services::usage_pricing::{self, ModelPricingInfo};
 use crate::services::usage_stats::*;
 use crate::store::AppState;
-use rust_decimal::Decimal;
-use std::str::FromStr;
 use tauri::State;
 
 /// 获取使用量汇总
@@ -123,51 +122,7 @@ pub fn get_request_detail(
 /// 获取模型定价列表
 #[tauri::command]
 pub fn get_model_pricing(state: State<'_, AppState>) -> Result<Vec<ModelPricingInfo>, AppError> {
-    log::info!("获取模型定价列表");
-    state.db.ensure_model_pricing_seeded()?;
-
-    let db = state.db.clone();
-    let conn = crate::database::lock_conn!(db.conn);
-
-    // 检查表是否存在
-    let table_exists: bool = conn
-        .query_row(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='model_pricing'",
-            [],
-            |row| row.get::<_, i64>(0).map(|count| count > 0),
-        )
-        .unwrap_or(false);
-
-    if !table_exists {
-        log::error!("model_pricing 表不存在,可能需要重启应用以触发数据库迁移");
-        return Ok(Vec::new());
-    }
-
-    let mut stmt = conn.prepare(
-        "SELECT model_id, display_name, input_cost_per_million, output_cost_per_million,
-                cache_read_cost_per_million, cache_creation_cost_per_million
-         FROM model_pricing
-         ORDER BY display_name",
-    )?;
-
-    let rows = stmt.query_map([], |row| {
-        Ok(ModelPricingInfo {
-            model_id: row.get(0)?,
-            display_name: row.get(1)?,
-            input_cost_per_million: row.get(2)?,
-            output_cost_per_million: row.get(3)?,
-            cache_read_cost_per_million: row.get(4)?,
-            cache_creation_cost_per_million: row.get(5)?,
-        })
-    })?;
-
-    let mut pricing = Vec::new();
-    for row in rows {
-        pricing.push(row?);
-    }
-
-    log::info!("成功获取 {} 条模型定价数据", pricing.len());
-    Ok(pricing)
+    usage_pricing::get_model_pricing(&state.db)
 }
 
 /// 更新模型定价
@@ -181,70 +136,15 @@ pub fn update_model_pricing(
     cache_read_cost: String,
     cache_creation_cost: String,
 ) -> Result<(), AppError> {
-    let db = state.db.clone();
-    let model_id = model_id.trim().to_string();
-    let display_name = display_name.trim().to_string();
-    if model_id.is_empty() {
-        return Err(AppError::localized(
-            "usage.modelIdRequired",
-            "模型 ID 不能为空",
-            "Model ID is required",
-        ));
-    }
-    if display_name.is_empty() {
-        return Err(AppError::localized(
-            "usage.displayNameRequired",
-            "显示名称不能为空",
-            "Display name is required",
-        ));
-    }
-
-    for (label, value) in [
-        ("input_cost", &input_cost),
-        ("output_cost", &output_cost),
-        ("cache_read_cost", &cache_read_cost),
-        ("cache_creation_cost", &cache_creation_cost),
-    ] {
-        let parsed = Decimal::from_str(value.trim()).map_err(|e| {
-            AppError::localized(
-                "usage.invalidPrice",
-                format!("{label} 价格无效: {value} - {e}"),
-                format!("{label} price is invalid: {value} - {e}"),
-            )
-        })?;
-        if parsed < Decimal::ZERO {
-            return Err(AppError::localized(
-                "usage.invalidPrice",
-                format!("{label} 价格必须为非负数: {value}"),
-                format!("{label} price must be non-negative: {value}"),
-            ));
-        }
-    }
-
-    {
-        let conn = crate::database::lock_conn!(db.conn);
-        conn.execute(
-            "INSERT OR REPLACE INTO model_pricing (
-                model_id, display_name, input_cost_per_million, output_cost_per_million,
-                cache_read_cost_per_million, cache_creation_cost_per_million
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            rusqlite::params![
-                model_id,
-                display_name,
-                input_cost.trim(),
-                output_cost.trim(),
-                cache_read_cost.trim(),
-                cache_creation_cost.trim()
-            ],
-        )
-        .map_err(|e| AppError::Database(format!("更新模型定价失败: {e}")))?;
-    }
-
-    if let Err(e) = db.backfill_missing_usage_costs_for_model(&model_id) {
-        log::warn!("模型定价更新后回填历史用量成本失败 (model_id={model_id}): {e}");
-    }
-
-    Ok(())
+    usage_pricing::update_model_pricing(
+        &state.db,
+        model_id,
+        display_name,
+        input_cost,
+        output_cost,
+        cache_read_cost,
+        cache_creation_cost,
+    )
 }
 
 /// 检查 Provider 使用限额
@@ -260,17 +160,7 @@ pub fn check_provider_limits(
 /// 删除模型定价
 #[tauri::command]
 pub fn delete_model_pricing(state: State<'_, AppState>, model_id: String) -> Result<(), AppError> {
-    let db = state.db.clone();
-    let conn = crate::database::lock_conn!(db.conn);
-
-    conn.execute(
-        "DELETE FROM model_pricing WHERE model_id = ?1",
-        rusqlite::params![model_id],
-    )
-    .map_err(|e| AppError::Database(format!("删除模型定价失败: {e}")))?;
-
-    log::info!("已删除模型定价: {model_id}");
-    Ok(())
+    usage_pricing::delete_model_pricing(&state.db, model_id)
 }
 
 /// 手动触发会话日志同步
@@ -278,49 +168,7 @@ pub fn delete_model_pricing(state: State<'_, AppState>, model_id: String) -> Res
 pub fn sync_session_usage(
     state: State<'_, AppState>,
 ) -> Result<crate::services::session_usage::SessionSyncResult, AppError> {
-    // 同步 Claude 会话日志
-    let mut result = crate::services::session_usage::sync_claude_session_logs(&state.db)?;
-
-    // 同步 Codex 使用数据
-    match crate::services::session_usage_codex::sync_codex_usage(&state.db) {
-        Ok(codex_result) => {
-            result.imported += codex_result.imported;
-            result.skipped += codex_result.skipped;
-            result.files_scanned += codex_result.files_scanned;
-            result.errors.extend(codex_result.errors);
-        }
-        Err(e) => {
-            result.errors.push(format!("Codex 同步失败: {e}"));
-        }
-    }
-
-    // 同步 Gemini 使用数据
-    match crate::services::session_usage_gemini::sync_gemini_usage(&state.db) {
-        Ok(gemini_result) => {
-            result.imported += gemini_result.imported;
-            result.skipped += gemini_result.skipped;
-            result.files_scanned += gemini_result.files_scanned;
-            result.errors.extend(gemini_result.errors);
-        }
-        Err(e) => {
-            result.errors.push(format!("Gemini 同步失败: {e}"));
-        }
-    }
-
-    // 同步 OpenCode 使用数据
-    match crate::services::session_usage_opencode::sync_opencode_usage(&state.db) {
-        Ok(opencode_result) => {
-            result.imported += opencode_result.imported;
-            result.skipped += opencode_result.skipped;
-            result.files_scanned += opencode_result.files_scanned;
-            result.errors.extend(opencode_result.errors);
-        }
-        Err(e) => {
-            result.errors.push(format!("OpenCode 同步失败: {e}"));
-        }
-    }
-
-    Ok(result)
+    crate::services::session_usage_sync::sync_all_session_usage(&state.db)
 }
 
 /// 获取数据来源分布
@@ -329,16 +177,4 @@ pub fn get_usage_data_sources(
     state: State<'_, AppState>,
 ) -> Result<Vec<crate::services::session_usage::DataSourceSummary>, AppError> {
     crate::services::session_usage::get_data_source_breakdown(&state.db)
-}
-
-/// 模型定价信息
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ModelPricingInfo {
-    pub model_id: String,
-    pub display_name: String,
-    pub input_cost_per_million: String,
-    pub output_cost_per_million: String,
-    pub cache_read_cost_per_million: String,
-    pub cache_creation_cost_per_million: String,
 }

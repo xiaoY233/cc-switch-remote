@@ -1,7 +1,9 @@
 import { useEffect } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useQueryClient } from "@tanstack/react-query";
+import { LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
 import { usageKeys } from "@/lib/query/usage";
+import type { ManagementTarget } from "@/lib/api/remote";
 
 /**
  * 监听后端 `usage-log-recorded` 事件，收到后立刻 invalidate 所有
@@ -12,10 +14,16 @@ import { usageKeys } from "@/lib/query/usage";
  *
  * 该 hook 只挂在 UsageDashboard 上，避免在主界面其他位置无意义触发。
  */
-export function useUsageEventBridge() {
+export function useUsageEventBridge(
+  target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+) {
   const queryClient = useQueryClient();
 
   useEffect(() => {
+    if (target.type === "remote") {
+      return;
+    }
+
     let unlisten: UnlistenFn | undefined;
     let disposed = false;
 
@@ -23,7 +31,9 @@ export function useUsageEventBridge() {
       const off = await listen("usage-log-recorded", () => {
         // invalidate 整个 usage 命名空间：summary / trends / providerStats /
         // modelStats / logs 全部跟着重拉
-        queryClient.invalidateQueries({ queryKey: usageKeys.all });
+        queryClient.invalidateQueries({
+          queryKey: usageKeys.all(LOCAL_MANAGEMENT_TARGET),
+        });
       });
 
       if (disposed) {
@@ -37,5 +47,5 @@ export function useUsageEventBridge() {
       disposed = true;
       unlisten?.();
     };
-  }, [queryClient]);
+  }, [queryClient, target.type]);
 }

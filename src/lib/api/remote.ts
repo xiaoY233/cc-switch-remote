@@ -54,6 +54,19 @@ import type {
   RectifierConfig,
   ToolInstallationReport,
 } from "./settings";
+import type {
+  DailyStats,
+  DataSourceSummary,
+  LogFilters,
+  ModelPricing,
+  ModelStats,
+  PaginatedLogs,
+  ProviderStats,
+  RequestLog,
+  SessionSyncResult,
+  UsageSummary,
+  UsageSummaryByApp,
+} from "@/types/usage";
 
 export type RemoteAuthMethod =
   | { type: "sshAgent" }
@@ -763,6 +776,248 @@ export const remoteApi = {
     return invoke<boolean>("remote_save_stream_check_config", {
       profile,
       config,
+      secret,
+    });
+  },
+
+  getUsageSummary(
+    profile: RemoteHostProfile,
+    startDate?: number,
+    endDate?: number,
+    appType?: string,
+    providerName?: string,
+    model?: string,
+    secret?: RemoteConnectionSecret,
+  ): Promise<UsageSummary> {
+    return invoke<UsageSummary>("remote_get_usage_summary", {
+      profile,
+      startDate,
+      endDate,
+      appType,
+      providerName,
+      model,
+      secret,
+    });
+  },
+
+  getUsageSummaryByApp(
+    profile: RemoteHostProfile,
+    startDate?: number,
+    endDate?: number,
+    providerName?: string,
+    model?: string,
+    secret?: RemoteConnectionSecret,
+  ): Promise<UsageSummaryByApp[]> {
+    return invoke<UsageSummaryByApp[]>("remote_get_usage_summary_by_app", {
+      profile,
+      startDate,
+      endDate,
+      providerName,
+      model,
+      secret,
+    });
+  },
+
+  getUsageTrends(
+    profile: RemoteHostProfile,
+    startDate?: number,
+    endDate?: number,
+    appType?: string,
+    providerName?: string,
+    model?: string,
+    secret?: RemoteConnectionSecret,
+  ): Promise<DailyStats[]> {
+    return invoke<DailyStats[]>("remote_get_usage_trends", {
+      profile,
+      startDate,
+      endDate,
+      appType,
+      providerName,
+      model,
+      secret,
+    });
+  },
+
+  getProviderStats(
+    profile: RemoteHostProfile,
+    startDate?: number,
+    endDate?: number,
+    appType?: string,
+    providerName?: string,
+    model?: string,
+    secret?: RemoteConnectionSecret,
+  ): Promise<ProviderStats[]> {
+    return invoke<ProviderStats[]>("remote_get_provider_stats", {
+      profile,
+      startDate,
+      endDate,
+      appType,
+      providerName,
+      model,
+      secret,
+    });
+  },
+
+  getModelStats(
+    profile: RemoteHostProfile,
+    startDate?: number,
+    endDate?: number,
+    appType?: string,
+    providerName?: string,
+    model?: string,
+    secret?: RemoteConnectionSecret,
+  ): Promise<ModelStats[]> {
+    return invoke<ModelStats[]>("remote_get_model_stats", {
+      profile,
+      startDate,
+      endDate,
+      appType,
+      providerName,
+      model,
+      secret,
+    });
+  },
+
+  getRequestLogs(
+    profile: RemoteHostProfile,
+    filters: LogFilters,
+    page: number,
+    pageSize: number,
+    secret?: RemoteConnectionSecret,
+  ): Promise<PaginatedLogs> {
+    return invoke<PaginatedLogs>("remote_get_request_logs", {
+      profile,
+      filters,
+      page,
+      pageSize,
+      secret,
+    });
+  },
+
+  getRequestDetail(
+    profile: RemoteHostProfile,
+    requestId: string,
+    secret?: RemoteConnectionSecret,
+  ): Promise<RequestLog | null> {
+    return invoke<RequestLog | null>("remote_get_request_detail", {
+      profile,
+      requestId,
+      secret,
+    });
+  },
+
+  getDataSourceBreakdown(
+    profile: RemoteHostProfile,
+    secret?: RemoteConnectionSecret,
+  ): Promise<DataSourceSummary[]> {
+    return invoke<DataSourceSummary[]>("remote_get_usage_data_sources", {
+      profile,
+      secret,
+    });
+  },
+
+  getModelPricing(
+    profile: RemoteHostProfile,
+    secret?: RemoteConnectionSecret,
+  ): Promise<ModelPricing[]> {
+    return invoke<ModelPricing[]>("remote_get_model_pricing", {
+      profile,
+      secret,
+    });
+  },
+
+  updateModelPricing(
+    profile: RemoteHostProfile,
+    modelId: string,
+    displayName: string,
+    inputCost: string,
+    outputCost: string,
+    cacheReadCost: string,
+    cacheCreationCost: string,
+    secret?: RemoteConnectionSecret,
+  ): Promise<void> {
+    return invoke<void>("remote_update_model_pricing", {
+      profile,
+      modelId,
+      displayName,
+      inputCost,
+      outputCost,
+      cacheReadCost,
+      cacheCreationCost,
+      secret,
+    });
+  },
+
+  deleteModelPricing(
+    profile: RemoteHostProfile,
+    modelId: string,
+    secret?: RemoteConnectionSecret,
+  ): Promise<void> {
+    return invoke<void>("remote_delete_model_pricing", {
+      profile,
+      modelId,
+      secret,
+    });
+  },
+
+  syncSessionUsage(
+    profile: RemoteHostProfile,
+    secret?: RemoteConnectionSecret,
+  ): Promise<SessionSyncResult> {
+    return invoke<SessionSyncResult>("remote_sync_session_usage", {
+      profile,
+      secret,
+    });
+  },
+
+  getDefaultCostMultiplier(
+    profile: RemoteHostProfile,
+    appType: string,
+    secret?: RemoteConnectionSecret,
+  ): Promise<string> {
+    return invoke<string>("remote_get_default_cost_multiplier", {
+      profile,
+      appType,
+      secret,
+    });
+  },
+
+  setDefaultCostMultiplier(
+    profile: RemoteHostProfile,
+    appType: string,
+    value: string,
+    secret?: RemoteConnectionSecret,
+  ): Promise<void> {
+    return invoke<void>("remote_set_default_cost_multiplier", {
+      profile,
+      appType,
+      value,
+      secret,
+    });
+  },
+
+  getPricingModelSource(
+    profile: RemoteHostProfile,
+    appType: string,
+    secret?: RemoteConnectionSecret,
+  ): Promise<string> {
+    return invoke<string>("remote_get_pricing_model_source", {
+      profile,
+      appType,
+      secret,
+    });
+  },
+
+  setPricingModelSource(
+    profile: RemoteHostProfile,
+    appType: string,
+    value: string,
+    secret?: RemoteConnectionSecret,
+  ): Promise<void> {
+    return invoke<void>("remote_set_pricing_model_source", {
+      profile,
+      appType,
+      value,
       secret,
     });
   },

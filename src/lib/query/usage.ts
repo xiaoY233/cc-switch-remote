@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { usageApi } from "@/lib/api/usage";
 import { resolveUsageRange } from "@/lib/usageRange";
+import { LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
+import type { ManagementTarget } from "@/lib/api/remote";
 import type {
   LogFilters,
   UsageRangeSelection,
@@ -20,6 +22,7 @@ type RequestLogsQueryArgs = {
   page?: number;
   pageSize?: number;
   options?: UsageQueryOptions;
+  target?: ManagementTarget;
 };
 
 type RequestLogsKey = {
@@ -32,17 +35,25 @@ type RequestLogsKey = {
   statusCode?: number;
 };
 
+function usageTargetKey(target: ManagementTarget = LOCAL_MANAGEMENT_TARGET) {
+  return target.type === "remote"
+    ? (["remote", target.profile.id] as const)
+    : (["local"] as const);
+}
+
 // Query keys
 export const usageKeys = {
-  all: ["usage"] as const,
+  all: (target: ManagementTarget = LOCAL_MANAGEMENT_TARGET) =>
+    ["usage", ...usageTargetKey(target)] as const,
   summary: (
     preset: UsageRangeSelection["preset"],
     customStartDate: number | undefined,
     customEndDate: number | undefined,
     filters?: UsageScopeFilters,
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
   ) =>
     [
-      ...usageKeys.all,
+      ...usageKeys.all(target),
       "summary",
       preset,
       customStartDate ?? 0,
@@ -56,9 +67,10 @@ export const usageKeys = {
     customStartDate: number | undefined,
     customEndDate: number | undefined,
     filters?: UsageScopeFilters,
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
   ) =>
     [
-      ...usageKeys.all,
+      ...usageKeys.all(target),
       "summary-by-app",
       preset,
       customStartDate ?? 0,
@@ -71,9 +83,10 @@ export const usageKeys = {
     customStartDate: number | undefined,
     customEndDate: number | undefined,
     filters?: UsageScopeFilters,
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
   ) =>
     [
-      ...usageKeys.all,
+      ...usageKeys.all(target),
       "trends",
       preset,
       customStartDate ?? 0,
@@ -87,9 +100,10 @@ export const usageKeys = {
     customStartDate: number | undefined,
     customEndDate: number | undefined,
     filters?: UsageScopeFilters,
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
   ) =>
     [
-      ...usageKeys.all,
+      ...usageKeys.all(target),
       "provider-stats",
       preset,
       customStartDate ?? 0,
@@ -103,9 +117,10 @@ export const usageKeys = {
     customStartDate: number | undefined,
     customEndDate: number | undefined,
     filters?: UsageScopeFilters,
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
   ) =>
     [
-      ...usageKeys.all,
+      ...usageKeys.all(target),
       "model-stats",
       preset,
       customStartDate ?? 0,
@@ -114,9 +129,14 @@ export const usageKeys = {
       filters?.providerName ?? null,
       filters?.model ?? null,
     ] as const,
-  logs: (key: RequestLogsKey, page: number, pageSize: number) =>
+  logs: (
+    key: RequestLogsKey,
+    page: number,
+    pageSize: number,
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+  ) =>
     [
-      ...usageKeys.all,
+      ...usageKeys.all(target),
       "logs",
       key.preset,
       key.customStartDate ?? 0,
@@ -128,13 +148,16 @@ export const usageKeys = {
       page,
       pageSize,
     ] as const,
-  detail: (requestId: string) =>
-    [...usageKeys.all, "detail", requestId] as const,
-  pricing: () => [...usageKeys.all, "pricing"] as const,
+  detail: (
+    requestId: string,
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+  ) => [...usageKeys.all(target), "detail", requestId] as const,
+  pricing: (target: ManagementTarget = LOCAL_MANAGEMENT_TARGET) =>
+    [...usageKeys.all(target), "pricing"] as const,
   limits: (providerId: string, appType: string) =>
-    [...usageKeys.all, "limits", providerId, appType] as const,
+    [...usageKeys.all(), "limits", providerId, appType] as const,
   script: (providerId: string, appType: string) =>
-    [...usageKeys.all, providerId, appType] as const,
+    [...usageKeys.all(), providerId, appType] as const,
 };
 
 /** 把 UI 侧的 "all" 哨兵归一成 undefined（后端语义：不过滤）。 */
@@ -151,6 +174,7 @@ export function useUsageSummary(
   range: UsageRangeSelection,
   filters?: UsageScopeFilters,
   options?: UsageQueryOptions,
+  target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
 ) {
   const effective = normalizeScopeFilters(filters);
   return useQuery({
@@ -159,6 +183,7 @@ export function useUsageSummary(
       range.customStartDate,
       range.customEndDate,
       effective,
+      target,
     ),
     queryFn: () => {
       const { startDate, endDate } = resolveUsageRange(range);
@@ -168,6 +193,7 @@ export function useUsageSummary(
         effective.appType,
         effective.providerName,
         effective.model,
+        target,
       );
     },
     refetchInterval: options?.refetchInterval ?? DEFAULT_REFETCH_INTERVAL_MS,
@@ -179,6 +205,7 @@ export function useUsageSummaryByApp(
   range: UsageRangeSelection,
   filters?: Pick<UsageScopeFilters, "providerName" | "model">,
   options?: UsageQueryOptions,
+  target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
 ) {
   return useQuery({
     queryKey: usageKeys.summaryByApp(
@@ -186,6 +213,7 @@ export function useUsageSummaryByApp(
       range.customStartDate,
       range.customEndDate,
       filters,
+      target,
     ),
     queryFn: () => {
       const { startDate, endDate } = resolveUsageRange(range);
@@ -194,6 +222,7 @@ export function useUsageSummaryByApp(
         endDate,
         filters?.providerName,
         filters?.model,
+        target,
       );
     },
     refetchInterval: options?.refetchInterval ?? DEFAULT_REFETCH_INTERVAL_MS,
@@ -205,6 +234,7 @@ export function useUsageTrends(
   range: UsageRangeSelection,
   filters?: UsageScopeFilters,
   options?: UsageQueryOptions,
+  target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
 ) {
   const effective = normalizeScopeFilters(filters);
   return useQuery({
@@ -213,6 +243,7 @@ export function useUsageTrends(
       range.customStartDate,
       range.customEndDate,
       effective,
+      target,
     ),
     queryFn: () => {
       const { startDate, endDate } = resolveUsageRange(range);
@@ -222,6 +253,7 @@ export function useUsageTrends(
         effective.appType,
         effective.providerName,
         effective.model,
+        target,
       );
     },
     refetchInterval: options?.refetchInterval ?? DEFAULT_REFETCH_INTERVAL_MS,
@@ -233,6 +265,7 @@ export function useProviderStats(
   range: UsageRangeSelection,
   filters?: UsageScopeFilters,
   options?: UsageQueryOptions,
+  target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
 ) {
   const effective = normalizeScopeFilters(filters);
   return useQuery({
@@ -241,6 +274,7 @@ export function useProviderStats(
       range.customStartDate,
       range.customEndDate,
       effective,
+      target,
     ),
     queryFn: () => {
       const { startDate, endDate } = resolveUsageRange(range);
@@ -250,6 +284,7 @@ export function useProviderStats(
         effective.appType,
         effective.providerName,
         effective.model,
+        target,
       );
     },
     refetchInterval: options?.refetchInterval ?? DEFAULT_REFETCH_INTERVAL_MS,
@@ -261,6 +296,7 @@ export function useModelStats(
   range: UsageRangeSelection,
   filters?: UsageScopeFilters,
   options?: UsageQueryOptions,
+  target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
 ) {
   const effective = normalizeScopeFilters(filters);
   return useQuery({
@@ -269,6 +305,7 @@ export function useModelStats(
       range.customStartDate,
       range.customEndDate,
       effective,
+      target,
     ),
     queryFn: () => {
       const { startDate, endDate } = resolveUsageRange(range);
@@ -278,6 +315,7 @@ export function useModelStats(
         effective.appType,
         effective.providerName,
         effective.model,
+        target,
       );
     },
     refetchInterval: options?.refetchInterval ?? DEFAULT_REFETCH_INTERVAL_MS,
@@ -291,6 +329,7 @@ export function useRequestLogs({
   page = 0,
   pageSize = 20,
   options,
+  target = LOCAL_MANAGEMENT_TARGET,
 }: RequestLogsQueryArgs) {
   const key: RequestLogsKey = {
     preset: range.preset,
@@ -303,28 +342,33 @@ export function useRequestLogs({
   };
 
   return useQuery({
-    queryKey: usageKeys.logs(key, page, pageSize),
+    queryKey: usageKeys.logs(key, page, pageSize, target),
     queryFn: () => {
       const effectiveFilters = { ...filters, ...resolveUsageRange(range) };
-      return usageApi.getRequestLogs(effectiveFilters, page, pageSize);
+      return usageApi.getRequestLogs(effectiveFilters, page, pageSize, target);
     },
     refetchInterval: options?.refetchInterval ?? DEFAULT_REFETCH_INTERVAL_MS, // 每30秒自动刷新
     refetchIntervalInBackground: options?.refetchIntervalInBackground ?? false,
   });
 }
 
-export function useRequestDetail(requestId: string) {
+export function useRequestDetail(
+  requestId: string,
+  target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+) {
   return useQuery({
-    queryKey: usageKeys.detail(requestId),
-    queryFn: () => usageApi.getRequestDetail(requestId),
+    queryKey: usageKeys.detail(requestId, target),
+    queryFn: () => usageApi.getRequestDetail(requestId, target),
     enabled: !!requestId,
   });
 }
 
-export function useModelPricing() {
+export function useModelPricing(
+  target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+) {
   return useQuery({
-    queryKey: usageKeys.pricing(),
-    queryFn: usageApi.getModelPricing,
+    queryKey: usageKeys.pricing(target),
+    queryFn: () => usageApi.getModelPricing(target),
   });
 }
 
@@ -336,7 +380,9 @@ export function useProviderLimits(providerId: string, appType: string) {
   });
 }
 
-export function useUpdateModelPricing() {
+export function useUpdateModelPricing(
+  target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+) {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -355,20 +401,23 @@ export function useUpdateModelPricing() {
         params.outputCost,
         params.cacheReadCost,
         params.cacheCreationCost,
+        target,
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: usageKeys.all });
+      queryClient.invalidateQueries({ queryKey: usageKeys.all(target) });
     },
   });
 }
 
-export function useDeleteModelPricing() {
+export function useDeleteModelPricing(
+  target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (modelId: string) => usageApi.deleteModelPricing(modelId),
+    mutationFn: (modelId: string) => usageApi.deleteModelPricing(modelId, target),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: usageKeys.all });
+      queryClient.invalidateQueries({ queryKey: usageKeys.all(target) });
     },
   });
 }

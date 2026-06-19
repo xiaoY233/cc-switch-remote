@@ -22,6 +22,7 @@ pub mod session_usage;
 pub mod session_usage_codex;
 pub mod session_usage_gemini;
 pub mod session_usage_opencode;
+pub mod session_usage_sync;
 pub mod skill;
 pub mod speedtest;
 pub mod sql_helpers;
@@ -29,6 +30,7 @@ pub mod stream_check;
 pub mod subscription;
 pub mod sync_protocol;
 pub mod usage_cache;
+pub mod usage_pricing;
 pub mod usage_stats;
 pub mod webdav;
 #[cfg(feature = "desktop")]

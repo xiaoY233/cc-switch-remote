@@ -16,6 +16,8 @@ import type {
 import type { UsageResult } from "@/types";
 import type { AppId } from "./types";
 import type { TemplateType } from "@/config/constants";
+import { LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
+import { remoteApi, type ManagementTarget } from "./remote";
 
 export const usageApi = {
   // Provider usage script methods
@@ -54,7 +56,19 @@ export const usageApi = {
     appType?: string,
     providerName?: string,
     model?: string,
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
   ): Promise<UsageSummary> => {
+    if (target.type === "remote") {
+      return remoteApi.getUsageSummary(
+        target.profile,
+        startDate,
+        endDate,
+        appType,
+        providerName,
+        model,
+        target.secret,
+      );
+    }
     return invoke("get_usage_summary", {
       startDate,
       endDate,
@@ -69,7 +83,18 @@ export const usageApi = {
     endDate?: number,
     providerName?: string,
     model?: string,
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
   ): Promise<UsageSummaryByApp[]> => {
+    if (target.type === "remote") {
+      return remoteApi.getUsageSummaryByApp(
+        target.profile,
+        startDate,
+        endDate,
+        providerName,
+        model,
+        target.secret,
+      );
+    }
     return invoke("get_usage_summary_by_app", {
       startDate,
       endDate,
@@ -84,7 +109,19 @@ export const usageApi = {
     appType?: string,
     providerName?: string,
     model?: string,
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
   ): Promise<DailyStats[]> => {
+    if (target.type === "remote") {
+      return remoteApi.getUsageTrends(
+        target.profile,
+        startDate,
+        endDate,
+        appType,
+        providerName,
+        model,
+        target.secret,
+      );
+    }
     return invoke("get_usage_trends", {
       startDate,
       endDate,
@@ -100,7 +137,19 @@ export const usageApi = {
     appType?: string,
     providerName?: string,
     model?: string,
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
   ): Promise<ProviderStats[]> => {
+    if (target.type === "remote") {
+      return remoteApi.getProviderStats(
+        target.profile,
+        startDate,
+        endDate,
+        appType,
+        providerName,
+        model,
+        target.secret,
+      );
+    }
     return invoke("get_provider_stats", {
       startDate,
       endDate,
@@ -116,7 +165,19 @@ export const usageApi = {
     appType?: string,
     providerName?: string,
     model?: string,
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
   ): Promise<ModelStats[]> => {
+    if (target.type === "remote") {
+      return remoteApi.getModelStats(
+        target.profile,
+        startDate,
+        endDate,
+        appType,
+        providerName,
+        model,
+        target.secret,
+      );
+    }
     return invoke("get_model_stats", {
       startDate,
       endDate,
@@ -130,7 +191,17 @@ export const usageApi = {
     filters: LogFilters,
     page: number = 0,
     pageSize: number = 20,
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
   ): Promise<PaginatedLogs> => {
+    if (target.type === "remote") {
+      return remoteApi.getRequestLogs(
+        target.profile,
+        filters,
+        page,
+        pageSize,
+        target.secret,
+      );
+    }
     return invoke("get_request_logs", {
       filters,
       page,
@@ -138,11 +209,26 @@ export const usageApi = {
     });
   },
 
-  getRequestDetail: async (requestId: string): Promise<RequestLog | null> => {
+  getRequestDetail: async (
+    requestId: string,
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+  ): Promise<RequestLog | null> => {
+    if (target.type === "remote") {
+      return remoteApi.getRequestDetail(
+        target.profile,
+        requestId,
+        target.secret,
+      );
+    }
     return invoke("get_request_detail", { requestId });
   },
 
-  getModelPricing: async (): Promise<ModelPricing[]> => {
+  getModelPricing: async (
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+  ): Promise<ModelPricing[]> => {
+    if (target.type === "remote") {
+      return remoteApi.getModelPricing(target.profile, target.secret);
+    }
     return invoke("get_model_pricing");
   },
 
@@ -153,7 +239,20 @@ export const usageApi = {
     outputCost: string,
     cacheReadCost: string,
     cacheCreationCost: string,
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
   ): Promise<void> => {
+    if (target.type === "remote") {
+      return remoteApi.updateModelPricing(
+        target.profile,
+        modelId,
+        displayName,
+        inputCost,
+        outputCost,
+        cacheReadCost,
+        cacheCreationCost,
+        target.secret,
+      );
+    }
     return invoke("update_model_pricing", {
       modelId,
       displayName,
@@ -164,7 +263,17 @@ export const usageApi = {
     });
   },
 
-  deleteModelPricing: async (modelId: string): Promise<void> => {
+  deleteModelPricing: async (
+    modelId: string,
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+  ): Promise<void> => {
+    if (target.type === "remote") {
+      return remoteApi.deleteModelPricing(
+        target.profile,
+        modelId,
+        target.secret,
+      );
+    }
     return invoke("delete_model_pricing", { modelId });
   },
 
@@ -176,11 +285,21 @@ export const usageApi = {
   },
 
   // Session usage sync
-  syncSessionUsage: async (): Promise<SessionSyncResult> => {
+  syncSessionUsage: async (
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+  ): Promise<SessionSyncResult> => {
+    if (target.type === "remote") {
+      return remoteApi.syncSessionUsage(target.profile, target.secret);
+    }
     return invoke("sync_session_usage");
   },
 
-  getDataSourceBreakdown: async (): Promise<DataSourceSummary[]> => {
+  getDataSourceBreakdown: async (
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+  ): Promise<DataSourceSummary[]> => {
+    if (target.type === "remote") {
+      return remoteApi.getDataSourceBreakdown(target.profile, target.secret);
+    }
     return invoke("get_usage_data_sources");
   },
 };

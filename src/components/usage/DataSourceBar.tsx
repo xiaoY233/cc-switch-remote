@@ -2,6 +2,8 @@ import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { usageApi } from "@/lib/api/usage";
 import { usageKeys } from "@/lib/query/usage";
+import { LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
+import type { ManagementTarget } from "@/lib/api/remote";
 import { Database, FileText, RefreshCw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
@@ -9,6 +11,7 @@ import { toast } from "sonner";
 
 interface DataSourceBarProps {
   refreshIntervalMs: number;
+  target?: ManagementTarget;
 }
 
 const DATA_SOURCE_ICONS: Record<string, React.ReactNode> = {
@@ -20,14 +23,17 @@ const DATA_SOURCE_ICONS: Record<string, React.ReactNode> = {
   opencode_session: <FileText className="h-3.5 w-3.5" />,
 };
 
-export function DataSourceBar({ refreshIntervalMs }: DataSourceBarProps) {
+export function DataSourceBar({
+  refreshIntervalMs,
+  target = LOCAL_MANAGEMENT_TARGET,
+}: DataSourceBarProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [syncing, setSyncing] = useState(false);
 
   const { data: sources } = useQuery({
-    queryKey: [...usageKeys.all, "data-sources"],
-    queryFn: usageApi.getDataSourceBreakdown,
+    queryKey: [...usageKeys.all(target), "data-sources"],
+    queryFn: () => usageApi.getDataSourceBreakdown(target),
     refetchInterval: refreshIntervalMs > 0 ? refreshIntervalMs : false,
     refetchIntervalInBackground: false,
   });
@@ -35,7 +41,7 @@ export function DataSourceBar({ refreshIntervalMs }: DataSourceBarProps) {
   const handleSync = async () => {
     setSyncing(true);
     try {
-      const result = await usageApi.syncSessionUsage();
+      const result = await usageApi.syncSessionUsage(target);
       if (result.imported > 0) {
         toast.success(
           t("usage.sessionSync.imported", {
@@ -44,7 +50,9 @@ export function DataSourceBar({ refreshIntervalMs }: DataSourceBarProps) {
           }),
         );
         // Refresh all usage data
-        queryClient.invalidateQueries({ queryKey: usageKeys.all });
+        queryClient.invalidateQueries({
+          queryKey: usageKeys.all(target),
+        });
       } else {
         toast.info(
           t("usage.sessionSync.upToDate", {

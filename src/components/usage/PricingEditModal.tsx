@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useUpdateModelPricing } from "@/lib/query/usage";
+import { LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
+import type { ManagementTarget } from "@/lib/api/remote";
 import { isNonNegativeDecimalString, type ModelPricing } from "@/types/usage";
 
 interface PricingEditModalProps {
@@ -14,6 +16,7 @@ interface PricingEditModalProps {
   model: ModelPricing;
   isNew?: boolean;
   onClose: () => void;
+  target?: ManagementTarget;
 }
 
 const PRICE_INPUT_STEP = "0.0001";
@@ -23,9 +26,10 @@ export function PricingEditModal({
   model,
   isNew = false,
   onClose,
+  target = LOCAL_MANAGEMENT_TARGET,
 }: PricingEditModalProps) {
   const { t } = useTranslation();
-  const updatePricing = useUpdateModelPricing();
+  const updatePricing = useUpdateModelPricing(target);
 
   const [formData, setFormData] = useState({
     modelId: model.modelId,
