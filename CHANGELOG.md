@@ -1,9 +1,30 @@
 # Changelog
 
-All notable changes to CC Switch will be documented in this file.
+All notable changes to CC Switch Remote will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [3.16.7] - 2026-06-19
+
+This release prepares CC Switch Remote for a full application and helper release on top of upstream CC Switch v3.16.3. It keeps the upstream local experience while continuing the remote-management product branch: local and remote targets remain independent, remote hosts own their own state, and remote actions run through the Rust helper over SSH.
+
+### Added
+
+- **README hero screenshot and Chinese documentation**: Added a current desktop screenshot as the README lead image and rewrote the Chinese README around the CC Switch Remote product direction, remote-management workflow, helper release model, download assets, development commands and upstream-sync strategy.
+- **Remote user manual coverage**: Added a Chinese remote-management manual section covering remote target setup, helper lifecycle, supported feature areas, local-only behavior, release validation and troubleshooting.
+- **Release documentation path**: Documented the v3.16.7 release model, including the upstream baseline, separate helper release, updater metadata expectations and full-version validation checklist.
+
+### Changed
+
+- **Project wording**: Updated documentation from upstream CC Switch wording to CC Switch Remote wording where the current branch is the remote-management product branch.
+- **Release notes expectation**: Release notes now explicitly describe user-facing changes and remote-helper requirements instead of relying on download-only release text.
+
+### Notes
+
+- **Upstream baseline**: CC Switch v3.16.3.
+- **Remote helper**: Published separately through the `remote-helper-latest` release. Install or update the helper from the Remote Servers page after upgrading the desktop app.
+- **macOS**: Current builds are not Apple Developer ID signed or notarized; first launch may require manual approval in macOS system settings.
 
 ## [3.16.3] - 2026-06-14
 

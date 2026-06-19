@@ -1,6 +1,6 @@
-# CC Switch User Manual / 用户手册 / ユーザーマニュアル
+# CC Switch Remote User Manual / 用户手册 / ユーザーマニュアル
 
-> Claude Code / Claude Desktop / Codex / Gemini CLI / OpenCode / OpenClaw / Hermes
+> Local and remote management for Claude Code / Claude Desktop / Codex / Gemini CLI / OpenCode / OpenClaw / Hermes
 
 ## Language / 语言 / 言語
 
@@ -12,11 +12,12 @@
 
 ## Version / 版本 / バージョン
 
-- Documentation version: v3.16.0
-- Last updated: 2026-05-29
-- Compatible with CC Switch v3.16.0+
+- Documentation version: v3.16.7
+- Last updated: 2026-06-19
+- Compatible with CC Switch Remote v3.16.7+
 
 ## Links
 
-- [GitHub Issues](https://github.com/farion1231/cc-switch/issues)
-- [GitHub Repository](https://github.com/farion1231/cc-switch)
+- [GitHub Issues](https://github.com/xiaoY233/cc-switch-remote/issues)
+- [GitHub Repository](https://github.com/xiaoY233/cc-switch-remote)
+- [Remote Feature Parity](../remote-feature-parity.md)

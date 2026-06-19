@@ -11,7 +11,9 @@
 
 CC Switch Remote is a remote-management focused fork of CC Switch. It keeps the upstream local desktop experience while adding an independent remote target mode backed by a Rust CLI helper installed on each server.
 
-[Download](https://github.com/xiaoY233/cc-switch-remote/releases/latest) | [Changelog](CHANGELOG.md) | [User Manual](docs/user-manual/en/README.md)
+[Download](https://github.com/xiaoY233/cc-switch-remote/releases/latest) | [Changelog](CHANGELOG.md) | [User Manual](docs/user-manual/en/README.md) | [中文文档](README_ZH.md)
+
+![CC Switch Remote desktop screenshot](assets/screenshots/cc-switch-remote-hero-zh.png)
 
 </div>
 

@@ -1,11 +1,11 @@
-# CC Switch 用户手册
+# CC Switch Remote 用户手册
 
-> Claude Code / Claude Desktop / Codex / Gemini CLI / OpenCode / OpenClaw / Hermes 全方位辅助工具
+> Claude Code / Claude Desktop / Codex / Gemini CLI / OpenCode / OpenClaw / Hermes 的本地与远程管理控制台
 
 ## 目录结构
 
 ```
-📚 CC Switch 用户手册
+📚 CC Switch Remote 用户手册
 │
 ├── 1. 快速入门
 │   ├── 1.1 软件介绍
@@ -36,11 +36,14 @@
 │   ├── 4.4 用量统计
 │   └── 4.5 模型检查
 │
-└── 5. 常见问题
-    ├── 5.1 配置文件说明
-    ├── 5.2 FAQ
-    ├── 5.3 深度链接协议
-    └── 5.4 环境变量冲突
+├── 5. 常见问题
+│   ├── 5.1 配置文件说明
+│   ├── 5.2 FAQ
+│   ├── 5.3 深度链接协议
+│   └── 5.4 环境变量冲突
+│
+└── 6. 远程管理
+    └── 6.1 远程服务器管理
 ```
 
 ## 文件列表
@@ -95,6 +98,12 @@
 | [5.3-deeplink.md](./5-faq/5.3-deeplink.md) | 深度链接协议、生成和使用方法 |
 | [5.4-env-conflict.md](./5-faq/5.4-env-conflict.md) | 环境变量冲突检测与处理 |
 
+### 6. 远程管理
+
+| 文件 | 内容 |
+|------|------|
+| [6.1-remote-management.md](./6-remote-management.md) | 远程服务器、Helper、远程供应商、远程设置、远程路由、工具环境与发布检查 |
+
 ## 快速链接
 
 - **新用户**：从 [1.1 软件介绍](./1-getting-started/1.1-introduction.md) 开始
@@ -102,13 +111,22 @@
 - **配置供应商**：查看 [2.1 添加供应商](./2-providers/2.1-add.md)
 - **使用 Claude Desktop**：查看 [2.6 Claude Desktop](./2-providers/2.6-claude-desktop.md)
 - **使用代理**：查看 [4.1 代理服务](./4-proxy/4.1-service.md)
+- **远程管理**：查看 [6.1 远程服务器管理](./6-remote-management.md)
+- **远程功能对齐**：查看 [远程功能对齐表](../../remote-feature-parity.md)
 - **遇到问题**：查看 [5.2 FAQ](./5-faq/5.2-questions.md)
 
 ## 版本信息
 
-- 文档版本：v3.16.0
-- 最后更新：2026-05-29
-- 适用于 CC Switch v3.16.0+
+- 文档版本：v3.16.7
+- 最后更新：2026-06-19
+- 适用于 CC Switch Remote v3.16.7+
+
+### CC Switch Remote 重点
+
+- **本地 / 远程目标独立**：本地数据留在本机，远程数据留在远程主机。
+- **远程 Helper 执行真实动作**：远程管理通过 SSH 调用远程 Rust Helper，不从桌面端直接拼路径写远程文件。
+- **复用本地页面能力**：远程供应商、远程设置、远程路由、MCP、Prompts、Skills、会话和工具环境应尽量复用本地页面结构和业务逻辑。
+- **Helper 独立发布**：桌面应用升级后，需要在远程服务器页面检查 Helper 是否也是最新构建。
 
 ### v3.16.0 亮点
 
@@ -130,5 +148,5 @@
 
 欢迎提交 Issue 或 PR 改进文档：
 
-- [GitHub Issues](https://github.com/farion1231/cc-switch/issues)
-- [GitHub Repository](https://github.com/farion1231/cc-switch)
+- [GitHub Issues](https://github.com/xiaoY233/cc-switch-remote/issues)
+- [GitHub Repository](https://github.com/xiaoY233/cc-switch-remote)
