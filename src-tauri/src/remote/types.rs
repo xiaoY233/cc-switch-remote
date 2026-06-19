@@ -93,6 +93,7 @@ pub enum RemoteCapability {
     Tools,
     StreamCheck,
     Usage,
+    Auth,
     Settings,
     SettingsAppConfigDir,
     Plugin,

@@ -64,6 +64,11 @@ export const EXPECTED_REMOTE_CAPABILITIES = [
     defaultLabel: "云同步",
   },
   {
+    id: "auth",
+    labelKey: "remote.capabilities.auth",
+    defaultLabel: "认证管理",
+  },
+  {
     id: "settings",
     labelKey: "remote.capabilities.settings",
     defaultLabel: "通用设置",

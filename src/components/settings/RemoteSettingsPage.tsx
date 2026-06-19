@@ -27,6 +27,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleRow } from "@/components/ui/toggle-row";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { AppVisibilitySettings } from "@/components/settings/AppVisibilitySettings";
+import { AuthCenterPanel } from "@/components/settings/AuthCenterPanel";
 import { CodexAuthSettings } from "@/components/settings/CodexAuthSettings";
 import { ImportExportSection } from "@/components/settings/ImportExportSection";
 import { BackupListSection } from "@/components/settings/BackupListSection";
@@ -97,6 +98,7 @@ function coerceRemoteTab(tab: string | undefined): string {
   return tab === "general" ||
     tab === "data" ||
     tab === "environment" ||
+    tab === "auth" ||
     tab === "routing" ||
     tab === "usage"
     ? tab
@@ -157,6 +159,7 @@ export function RemoteSettingsPage({
   const streamCheckCapability =
     health?.capabilities.includes("stream-check") ?? false;
   const usageCapability = health?.capabilities.includes("usage") ?? false;
+  const authCapability = health?.capabilities.includes("auth") ?? false;
   const routingCapability =
     health?.capabilities.includes("routing-config") ?? false;
   const routingRuntimeCapability =
@@ -446,7 +449,7 @@ export function RemoteSettingsPage({
         onValueChange={setActiveTab}
         className="flex flex-col h-full"
       >
-        <TabsList className="grid w-full grid-cols-5 mb-6 glass rounded-lg">
+        <TabsList className="grid w-full grid-cols-6 mb-6 glass rounded-lg">
           <TabsTrigger value="environment">
             {t("remote.settings.tabs.remote", { defaultValue: "远程" })}
           </TabsTrigger>
@@ -455,6 +458,9 @@ export function RemoteSettingsPage({
           </TabsTrigger>
           <TabsTrigger value="routing">
             {t("settings.tabProxy", { defaultValue: "代理" })}
+          </TabsTrigger>
+          <TabsTrigger value="auth">
+            {t("settings.tabAuth", { defaultValue: "认证" })}
           </TabsTrigger>
           <TabsTrigger value="usage">
             {t("usage.title")}
@@ -609,6 +615,23 @@ export function RemoteSettingsPage({
               onSaveSettings={saveRemoteSettings}
               target={target}
             />
+          </TabsContent>
+
+          <TabsContent value="auth" className="space-y-4 mt-0 pb-4">
+            {!helperReady || !authCapability ? (
+              <div className="rounded-xl border border-border bg-card/50 px-4 py-3 text-sm text-muted-foreground">
+                {!helperReady
+                  ? t("remote.settings.environment.helperRequired", {
+                      defaultValue: "请先完成健康检查并安装可用的远程 Helper。",
+                    })
+                  : t("remote.settings.auth.unsupported", {
+                      defaultValue:
+                        "当前远程 Helper 不支持认证管理。请更新到包含 auth capability 的新版 Helper。",
+                    })}
+              </div>
+            ) : (
+              <AuthCenterPanel target={target} />
+            )}
           </TabsContent>
 
           <TabsContent value="usage" className="mt-0 pb-4">

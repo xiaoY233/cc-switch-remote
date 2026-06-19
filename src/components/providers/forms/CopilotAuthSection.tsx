@@ -25,9 +25,11 @@ import {
 import { useCopilotAuth } from "./hooks/useCopilotAuth";
 import { copyText } from "@/lib/clipboard";
 import type { GitHubAccount } from "@/lib/api";
+import type { ManagementTarget } from "@/lib/api";
 
 interface CopilotAuthSectionProps {
   className?: string;
+  target?: ManagementTarget;
   /** 当前选中的 GitHub 账号 ID */
   selectedAccountId?: string | null;
   /** 账号选择回调 */
@@ -41,6 +43,7 @@ interface CopilotAuthSectionProps {
  */
 export const CopilotAuthSection: React.FC<CopilotAuthSectionProps> = ({
   className,
+  target,
   selectedAccountId,
   onAccountSelect,
 }) => {
@@ -77,7 +80,7 @@ export const CopilotAuthSection: React.FC<CopilotAuthSectionProps> = ({
     setDefaultAccount,
     cancelAuth,
     logout,
-  } = useCopilotAuth(effectiveGithubDomain);
+  } = useCopilotAuth(effectiveGithubDomain, target);
 
   // 复制用户码
   const copyUserCode = async () => {

@@ -2914,6 +2914,9 @@
         "saveFailed": "远程设置保存失败",
         "skillsUnsupported": "当前远程 Helper 不支持 Skills 存储位置迁移。"
       },
+      "auth": {
+        "unsupported": "当前远程 Helper 不支持认证管理。请更新到包含 auth capability 的新版 Helper。"
+      },
       "data": {
         "description": "导入或导出当前远程服务器自己的 CC Switch 数据"
       },
@@ -2978,6 +2981,7 @@
       "tools": "环境检查更新",
       "importExport": "导入 / 导出",
       "cloudSync": "云同步",
+      "auth": "认证管理",
       "settings": "通用设置",
       "settingsAppConfigDir": "CC Switch 配置目录",
       "plugin": "Claude 插件"

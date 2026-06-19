@@ -2914,6 +2914,9 @@
         "saveFailed": "リモート設定の保存に失敗しました",
         "skillsUnsupported": "現在のリモート Helper は Skills 保存先の移行をサポートしていません。"
       },
+      "auth": {
+        "unsupported": "現在のリモート Helper は認証管理をサポートしていません。auth capability を含む Helper に更新してください。"
+      },
       "data": {
         "description": "選択中のリモートサーバー自身の CC Switch データをインポートまたはエクスポートします"
       },
@@ -2978,6 +2981,7 @@
       "tools": "環境チェック更新",
       "importExport": "インポート / エクスポート",
       "cloudSync": "クラウド同期",
+      "auth": "認証管理",
       "settings": "一般設定",
       "settingsAppConfigDir": "CC Switch 設定ディレクトリ",
       "plugin": "Claude プラグイン"

@@ -14,12 +14,16 @@ use crate::{
     ProviderService,
 };
 use indexmap::IndexMap;
-#[cfg(feature = "proxy-runtime")]
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::str::FromStr;
 use std::sync::Arc;
+
+use crate::proxy::providers::codex_oauth_auth::{CodexOAuthError, CodexOAuthManager};
+use crate::proxy::providers::copilot_auth::{
+    CopilotAuthError, CopilotAuthManager, GitHubAccount, GitHubDeviceCodeResponse,
+};
 
 #[cfg(feature = "proxy-runtime")]
 static ROUTING_RUNTIME: Lazy<Result<tokio::runtime::Runtime, String>> =
@@ -30,6 +34,16 @@ static ROUTING_STATE: Lazy<Result<AppState, String>> = Lazy::new(|| {
     Ok(AppState::new(db))
 });
 
+static AUTH_RUNTIME: Lazy<Result<tokio::runtime::Runtime, String>> =
+    Lazy::new(|| tokio::runtime::Runtime::new().map_err(|e| e.to_string()));
+static COPILOT_AUTH_MANAGER: Lazy<CopilotAuthManager> =
+    Lazy::new(|| CopilotAuthManager::new(crate::config::get_app_config_dir()));
+static CODEX_OAUTH_MANAGER: Lazy<CodexOAuthManager> =
+    Lazy::new(|| CodexOAuthManager::new(crate::config::get_app_config_dir()));
+
+const AUTH_PROVIDER_GITHUB_COPILOT: &str = "github_copilot";
+const AUTH_PROVIDER_CODEX_OAUTH: &str = "codex_oauth";
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StatusPayload {
@@ -38,6 +52,36 @@ pub struct StatusPayload {
     pub platform: String,
     pub arch: String,
     pub capabilities: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ManagedAuthAccount {
+    pub id: String,
+    pub provider: String,
+    pub login: String,
+    pub avatar_url: Option<String>,
+    pub authenticated_at: i64,
+    pub is_default: bool,
+    pub github_domain: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ManagedAuthStatus {
+    pub provider: String,
+    pub authenticated: bool,
+    pub default_account_id: Option<String>,
+    pub migration_error: Option<String>,
+    pub accounts: Vec<ManagedAuthAccount>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ManagedAuthDeviceCodeResponse {
+    pub provider: String,
+    pub device_code: String,
+    pub user_code: String,
+    pub verification_uri: String,
+    pub expires_in: u64,
+    pub interval: u64,
 }
 
 pub fn status_payload() -> StatusPayload {
@@ -50,6 +94,260 @@ pub fn status_payload() -> StatusPayload {
         arch: std::env::consts::ARCH.to_string(),
         capabilities: crate::remote_capabilities::remote_helper_capabilities(),
     }
+}
+
+fn auth_runtime() -> Result<&'static tokio::runtime::Runtime, String> {
+    AUTH_RUNTIME.as_ref().map_err(Clone::clone)
+}
+
+fn ensure_auth_provider(auth_provider: &str) -> Result<&'static str, String> {
+    match auth_provider {
+        AUTH_PROVIDER_GITHUB_COPILOT => Ok(AUTH_PROVIDER_GITHUB_COPILOT),
+        AUTH_PROVIDER_CODEX_OAUTH => Ok(AUTH_PROVIDER_CODEX_OAUTH),
+        _ => Err(format!("Unsupported auth provider: {auth_provider}")),
+    }
+}
+
+fn map_auth_account(
+    provider: &str,
+    account: GitHubAccount,
+    default_account_id: Option<&str>,
+) -> ManagedAuthAccount {
+    ManagedAuthAccount {
+        is_default: default_account_id == Some(account.id.as_str()),
+        id: account.id,
+        provider: provider.to_string(),
+        login: account.login,
+        avatar_url: account.avatar_url,
+        authenticated_at: account.authenticated_at,
+        github_domain: account.github_domain,
+    }
+}
+
+fn map_device_code_response(
+    provider: &str,
+    response: GitHubDeviceCodeResponse,
+) -> ManagedAuthDeviceCodeResponse {
+    ManagedAuthDeviceCodeResponse {
+        provider: provider.to_string(),
+        device_code: response.device_code,
+        user_code: response.user_code,
+        verification_uri: response.verification_uri,
+        expires_in: response.expires_in,
+        interval: response.interval,
+    }
+}
+
+pub fn auth_start_login(
+    auth_provider: &str,
+    github_domain: Option<&str>,
+) -> Result<ManagedAuthDeviceCodeResponse, String> {
+    let auth_provider = ensure_auth_provider(auth_provider)?;
+    auth_runtime()?.block_on(async {
+        match auth_provider {
+            AUTH_PROVIDER_GITHUB_COPILOT => {
+                let response = COPILOT_AUTH_MANAGER
+                    .start_device_flow(github_domain)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                Ok(map_device_code_response(auth_provider, response))
+            }
+            AUTH_PROVIDER_CODEX_OAUTH => {
+                let response = CODEX_OAUTH_MANAGER
+                    .start_device_flow()
+                    .await
+                    .map_err(|e| e.to_string())?;
+                Ok(map_device_code_response(auth_provider, response))
+            }
+            _ => unreachable!(),
+        }
+    })
+}
+
+pub fn auth_poll_for_account(
+    auth_provider: &str,
+    device_code: &str,
+    github_domain: Option<&str>,
+) -> Result<Option<ManagedAuthAccount>, String> {
+    let auth_provider = ensure_auth_provider(auth_provider)?;
+    auth_runtime()?.block_on(async {
+        match auth_provider {
+            AUTH_PROVIDER_GITHUB_COPILOT => {
+                match COPILOT_AUTH_MANAGER
+                    .poll_for_token(device_code, github_domain)
+                    .await
+                {
+                    Ok(account) => {
+                        let default_account_id =
+                            COPILOT_AUTH_MANAGER.get_status().await.default_account_id;
+                        Ok(account.map(|account| {
+                            map_auth_account(
+                                auth_provider,
+                                account,
+                                default_account_id.as_deref(),
+                            )
+                        }))
+                    }
+                    Err(CopilotAuthError::AuthorizationPending) => Ok(None),
+                    Err(e) => Err(e.to_string()),
+                }
+            }
+            AUTH_PROVIDER_CODEX_OAUTH => {
+                match CODEX_OAUTH_MANAGER.poll_for_token(device_code).await {
+                    Ok(account) => {
+                        let default_account_id =
+                            CODEX_OAUTH_MANAGER.get_status().await.default_account_id;
+                        Ok(account.map(|account| {
+                            map_auth_account(
+                                auth_provider,
+                                account,
+                                default_account_id.as_deref(),
+                            )
+                        }))
+                    }
+                    Err(CodexOAuthError::AuthorizationPending) => Ok(None),
+                    Err(e) => Err(e.to_string()),
+                }
+            }
+            _ => unreachable!(),
+        }
+    })
+}
+
+pub fn auth_list_accounts(auth_provider: &str) -> Result<Vec<ManagedAuthAccount>, String> {
+    let auth_provider = ensure_auth_provider(auth_provider)?;
+    auth_runtime()?.block_on(async {
+        match auth_provider {
+            AUTH_PROVIDER_GITHUB_COPILOT => {
+                let status = COPILOT_AUTH_MANAGER.get_status().await;
+                let default_account_id = status.default_account_id.clone();
+                Ok(status
+                    .accounts
+                    .into_iter()
+                    .map(|account| {
+                        map_auth_account(auth_provider, account, default_account_id.as_deref())
+                    })
+                    .collect())
+            }
+            AUTH_PROVIDER_CODEX_OAUTH => {
+                let status = CODEX_OAUTH_MANAGER.get_status().await;
+                let default_account_id = status.default_account_id.clone();
+                Ok(status
+                    .accounts
+                    .into_iter()
+                    .map(|account| {
+                        map_auth_account(auth_provider, account, default_account_id.as_deref())
+                    })
+                    .collect())
+            }
+            _ => unreachable!(),
+        }
+    })
+}
+
+pub fn auth_get_status(auth_provider: &str) -> Result<ManagedAuthStatus, String> {
+    let auth_provider = ensure_auth_provider(auth_provider)?;
+    auth_runtime()?.block_on(async {
+        match auth_provider {
+            AUTH_PROVIDER_GITHUB_COPILOT => {
+                let status = COPILOT_AUTH_MANAGER.get_status().await;
+                let default_account_id = status.default_account_id.clone();
+                Ok(ManagedAuthStatus {
+                    provider: auth_provider.to_string(),
+                    authenticated: status.authenticated,
+                    default_account_id: default_account_id.clone(),
+                    migration_error: status.migration_error,
+                    accounts: status
+                        .accounts
+                        .into_iter()
+                        .map(|account| {
+                            map_auth_account(
+                                auth_provider,
+                                account,
+                                default_account_id.as_deref(),
+                            )
+                        })
+                        .collect(),
+                })
+            }
+            AUTH_PROVIDER_CODEX_OAUTH => {
+                let status = CODEX_OAUTH_MANAGER.get_status().await;
+                let default_account_id = status.default_account_id.clone();
+                Ok(ManagedAuthStatus {
+                    provider: auth_provider.to_string(),
+                    authenticated: status.authenticated,
+                    default_account_id: default_account_id.clone(),
+                    migration_error: None,
+                    accounts: status
+                        .accounts
+                        .into_iter()
+                        .map(|account| {
+                            map_auth_account(
+                                auth_provider,
+                                account,
+                                default_account_id.as_deref(),
+                            )
+                        })
+                        .collect(),
+                })
+            }
+            _ => unreachable!(),
+        }
+    })
+}
+
+pub fn auth_remove_account(auth_provider: &str, account_id: &str) -> Result<bool, String> {
+    let auth_provider = ensure_auth_provider(auth_provider)?;
+    auth_runtime()?.block_on(async {
+        match auth_provider {
+            AUTH_PROVIDER_GITHUB_COPILOT => COPILOT_AUTH_MANAGER
+                .remove_account(account_id)
+                .await
+                .map_err(|e| e.to_string())?,
+            AUTH_PROVIDER_CODEX_OAUTH => CODEX_OAUTH_MANAGER
+                .remove_account(account_id)
+                .await
+                .map_err(|e| e.to_string())?,
+            _ => unreachable!(),
+        }
+        Ok(true)
+    })
+}
+
+pub fn auth_set_default_account(auth_provider: &str, account_id: &str) -> Result<bool, String> {
+    let auth_provider = ensure_auth_provider(auth_provider)?;
+    auth_runtime()?.block_on(async {
+        match auth_provider {
+            AUTH_PROVIDER_GITHUB_COPILOT => COPILOT_AUTH_MANAGER
+                .set_default_account(account_id)
+                .await
+                .map_err(|e| e.to_string())?,
+            AUTH_PROVIDER_CODEX_OAUTH => CODEX_OAUTH_MANAGER
+                .set_default_account(account_id)
+                .await
+                .map_err(|e| e.to_string())?,
+            _ => unreachable!(),
+        }
+        Ok(true)
+    })
+}
+
+pub fn auth_logout(auth_provider: &str) -> Result<bool, String> {
+    let auth_provider = ensure_auth_provider(auth_provider)?;
+    auth_runtime()?.block_on(async {
+        match auth_provider {
+            AUTH_PROVIDER_GITHUB_COPILOT => COPILOT_AUTH_MANAGER
+                .clear_auth()
+                .await
+                .map_err(|e| e.to_string())?,
+            AUTH_PROVIDER_CODEX_OAUTH => CODEX_OAUTH_MANAGER
+                .clear_auth()
+                .await
+                .map_err(|e| e.to_string())?,
+            _ => unreachable!(),
+        }
+        Ok(true)
+    })
 }
 
 #[cfg(feature = "proxy-runtime")]

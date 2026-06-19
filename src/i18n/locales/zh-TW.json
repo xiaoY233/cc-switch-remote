@@ -2886,6 +2886,9 @@
         "saveFailed": "遠端設定儲存失敗",
         "skillsUnsupported": "目前遠端 Helper 不支援 Skills 儲存位置遷移。"
       },
+      "auth": {
+        "unsupported": "目前遠端 Helper 不支援驗證管理。請更新到包含 auth capability 的新版 Helper。"
+      },
       "data": {
         "description": "匯入或匯出目前遠端伺服器自己的 CC Switch 資料"
       },
@@ -2950,6 +2953,7 @@
       "tools": "環境檢查更新",
       "importExport": "匯入 / 匯出",
       "cloudSync": "雲端同步",
+      "auth": "驗證管理",
       "settings": "通用設定",
       "settingsAppConfigDir": "CC Switch 設定目錄",
       "plugin": "Claude 外掛"

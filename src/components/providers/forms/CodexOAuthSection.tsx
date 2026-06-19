@@ -24,9 +24,11 @@ import {
 } from "lucide-react";
 import { useCodexOauth } from "./hooks/useCodexOauth";
 import { copyText } from "@/lib/clipboard";
+import type { ManagementTarget } from "@/lib/api";
 
 interface CodexOAuthSectionProps {
   className?: string;
+  target?: ManagementTarget;
   /** 当前选中的 ChatGPT 账号 ID */
   selectedAccountId?: string | null;
   /** 账号选择回调 */
@@ -45,6 +47,7 @@ interface CodexOAuthSectionProps {
  */
 export const CodexOAuthSection: React.FC<CodexOAuthSectionProps> = ({
   className,
+  target,
   selectedAccountId,
   onAccountSelect,
   fastModeEnabled = false,
@@ -69,7 +72,7 @@ export const CodexOAuthSection: React.FC<CodexOAuthSectionProps> = ({
     setDefaultAccount,
     cancelAuth,
     logout,
-  } = useCodexOauth();
+  } = useCodexOauth(target);
 
   const copyUserCode = async () => {
     if (deviceCode?.user_code) {

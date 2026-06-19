@@ -4,8 +4,13 @@ import { Badge } from "@/components/ui/badge";
 import { CodexIcon } from "@/components/BrandIcons";
 import { CopilotAuthSection } from "@/components/providers/forms/CopilotAuthSection";
 import { CodexOAuthSection } from "@/components/providers/forms/CodexOAuthSection";
+import type { ManagementTarget } from "@/lib/api";
 
-export function AuthCenterPanel() {
+interface AuthCenterPanelProps {
+  target?: ManagementTarget;
+}
+
+export function AuthCenterPanel({ target }: AuthCenterPanelProps) {
   const { t } = useTranslation();
 
   return (
@@ -49,7 +54,7 @@ export function AuthCenterPanel() {
           </div>
         </div>
 
-        <CopilotAuthSection />
+        <CopilotAuthSection target={target} />
       </section>
 
       <section className="rounded-xl border border-border/60 bg-card/60 p-6">
@@ -67,7 +72,7 @@ export function AuthCenterPanel() {
           </div>
         </div>
 
-        <CodexOAuthSection />
+        <CodexOAuthSection target={target} />
       </section>
     </div>
   );

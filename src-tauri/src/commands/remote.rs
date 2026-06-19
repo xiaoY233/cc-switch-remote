@@ -190,6 +190,127 @@ pub async fn remote_save_settings(
     .await
 }
 
+#[tauri::command(rename_all = "camelCase")]
+pub async fn remote_auth_start_login(
+    profile: RemoteHostProfile,
+    auth_provider: String,
+    github_domain: Option<String>,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Value, String> {
+    let mut args = vec![
+        "auth".to_string(),
+        "start-login".to_string(),
+        auth_provider,
+    ];
+    args.push(github_domain.unwrap_or_else(|| "-".to_string()));
+    run_remote_helper_json(profile, args, secret, "Remote auth start login").await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn remote_auth_poll_for_account(
+    profile: RemoteHostProfile,
+    auth_provider: String,
+    device_code: String,
+    github_domain: Option<String>,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Option<Value>, String> {
+    let mut args = vec![
+        "auth".to_string(),
+        "poll".to_string(),
+        auth_provider,
+        device_code,
+    ];
+    args.push(github_domain.unwrap_or_else(|| "-".to_string()));
+    run_remote_helper_json(profile, args, secret, "Remote auth poll").await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn remote_auth_list_accounts(
+    profile: RemoteHostProfile,
+    auth_provider: String,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Vec<Value>, String> {
+    run_remote_helper_json(
+        profile,
+        vec!["auth".to_string(), "list".to_string(), auth_provider],
+        secret,
+        "Remote auth list",
+    )
+    .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn remote_auth_get_status(
+    profile: RemoteHostProfile,
+    auth_provider: String,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Value, String> {
+    run_remote_helper_json(
+        profile,
+        vec!["auth".to_string(), "status".to_string(), auth_provider],
+        secret,
+        "Remote auth status",
+    )
+    .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn remote_auth_remove_account(
+    profile: RemoteHostProfile,
+    auth_provider: String,
+    account_id: String,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<bool, String> {
+    run_remote_helper_json(
+        profile,
+        vec![
+            "auth".to_string(),
+            "remove".to_string(),
+            auth_provider,
+            account_id,
+        ],
+        secret,
+        "Remote auth remove account",
+    )
+    .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn remote_auth_set_default_account(
+    profile: RemoteHostProfile,
+    auth_provider: String,
+    account_id: String,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<bool, String> {
+    run_remote_helper_json(
+        profile,
+        vec![
+            "auth".to_string(),
+            "set-default".to_string(),
+            auth_provider,
+            account_id,
+        ],
+        secret,
+        "Remote auth set default account",
+    )
+    .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn remote_auth_logout(
+    profile: RemoteHostProfile,
+    auth_provider: String,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<bool, String> {
+    run_remote_helper_json(
+        profile,
+        vec!["auth".to_string(), "logout".to_string(), auth_provider],
+        secret,
+        "Remote auth logout",
+    )
+    .await
+}
+
 #[tauri::command]
 pub async fn remote_get_app_config_dir(
     profile: RemoteHostProfile,
@@ -928,6 +1049,7 @@ fn parse_remote_capability(value: &str) -> Option<RemoteCapability> {
         "tools" => Some(RemoteCapability::Tools),
         "stream-check" => Some(RemoteCapability::StreamCheck),
         "usage" => Some(RemoteCapability::Usage),
+        "auth" => Some(RemoteCapability::Auth),
         "settings" => Some(RemoteCapability::Settings),
         "settings-app-config-dir" => Some(RemoteCapability::SettingsAppConfigDir),
         "plugin" => Some(RemoteCapability::Plugin),
@@ -2921,6 +3043,7 @@ mod tests {
         assert!(command.contains("'\"plugin\"'"));
         assert!(command.contains("'\"session\"'"));
         assert!(command.contains("'\"usage\"'"));
+        assert!(command.contains("'\"auth\"'"));
         assert!(command.contains(&REMOTE_HELPER_REQUIRED_CAPABILITIES.join(", ")));
         assert!(!command.contains("rustup.rs"));
         assert!(!command.contains("cargo install --git"));
@@ -2931,6 +3054,14 @@ mod tests {
         assert_eq!(
             parse_remote_capability("usage"),
             Some(RemoteCapability::Usage)
+        );
+    }
+
+    #[test]
+    fn parses_auth_capability() {
+        assert_eq!(
+            parse_remote_capability("auth"),
+            Some(RemoteCapability::Auth)
         );
     }
 

@@ -62,6 +62,52 @@ mod tests {
     }
 
     #[test]
+    fn status_advertises_auth_capability() {
+        let response = run_command(&["status".to_string()]);
+        let capabilities = response
+            .get("data")
+            .and_then(|data| data.get("capabilities"))
+            .and_then(Value::as_array)
+            .expect("status capabilities");
+
+        assert!(capabilities.iter().any(|capability| capability == "auth"));
+    }
+
+    #[test]
+    fn auth_status_returns_remote_managed_auth_state() {
+        let dir = tempfile::tempdir().expect("temp test home");
+        let previous_home = std::env::var_os("CC_SWITCH_TEST_HOME");
+        std::env::set_var("CC_SWITCH_TEST_HOME", dir.path());
+
+        let response = run_command(&[
+            "auth".to_string(),
+            "status".to_string(),
+            "github_copilot".to_string(),
+        ]);
+
+        match previous_home {
+            Some(value) => std::env::set_var("CC_SWITCH_TEST_HOME", value),
+            None => std::env::remove_var("CC_SWITCH_TEST_HOME"),
+        }
+
+        assert_eq!(response.get("ok").and_then(Value::as_bool), Some(true));
+        assert_eq!(
+            response
+                .get("data")
+                .and_then(|data| data.get("provider"))
+                .and_then(Value::as_str),
+            Some("github_copilot")
+        );
+        assert_eq!(
+            response
+                .get("data")
+                .and_then(|data| data.get("authenticated"))
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+    }
+
+    #[test]
     fn usage_request_logs_rejects_invalid_pagination() {
         let args = vec![
             "usage".to_string(),
@@ -583,6 +629,89 @@ pub(crate) fn run_command(args: &[String]) -> Value {
                 Err(message) => {
                     serde_json::to_value(types::err::<()>("settings_save_failed", message))
                         .expect("serialize settings error")
+                }
+            }
+        }
+        [group, cmd, auth_provider, github_domain]
+            if group == "auth" && cmd == "start-login" =>
+        {
+            let github_domain = if github_domain == "-" {
+                None
+            } else {
+                Some(github_domain.as_str())
+            };
+            match commands::auth_start_login(auth_provider, github_domain) {
+                Ok(value) => serde_json::to_value(types::ok(value))
+                    .expect("serialize auth start login"),
+                Err(message) => serde_json::to_value(types::err::<()>(
+                    "auth_start_login_failed",
+                    message,
+                ))
+                .expect("serialize auth start login error"),
+            }
+        }
+        [group, cmd, auth_provider, device_code, github_domain]
+            if group == "auth" && cmd == "poll" =>
+        {
+            let github_domain = if github_domain == "-" {
+                None
+            } else {
+                Some(github_domain.as_str())
+            };
+            match commands::auth_poll_for_account(auth_provider, device_code, github_domain) {
+                Ok(value) => {
+                    serde_json::to_value(types::ok(value)).expect("serialize auth poll")
+                }
+                Err(message) => {
+                    serde_json::to_value(types::err::<()>("auth_poll_failed", message))
+                        .expect("serialize auth poll error")
+                }
+            }
+        }
+        [group, cmd, auth_provider] if group == "auth" && cmd == "list" => {
+            match commands::auth_list_accounts(auth_provider) {
+                Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize auth list"),
+                Err(message) => {
+                    serde_json::to_value(types::err::<()>("auth_list_failed", message))
+                        .expect("serialize auth list error")
+                }
+            }
+        }
+        [group, cmd, auth_provider] if group == "auth" && cmd == "status" => {
+            match commands::auth_get_status(auth_provider) {
+                Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize auth status"),
+                Err(message) => {
+                    serde_json::to_value(types::err::<()>("auth_status_failed", message))
+                        .expect("serialize auth status error")
+                }
+            }
+        }
+        [group, cmd, auth_provider, account_id] if group == "auth" && cmd == "remove" => {
+            match commands::auth_remove_account(auth_provider, account_id) {
+                Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize auth remove"),
+                Err(message) => {
+                    serde_json::to_value(types::err::<()>("auth_remove_failed", message))
+                        .expect("serialize auth remove error")
+                }
+            }
+        }
+        [group, cmd, auth_provider, account_id] if group == "auth" && cmd == "set-default" => {
+            match commands::auth_set_default_account(auth_provider, account_id) {
+                Ok(value) => {
+                    serde_json::to_value(types::ok(value)).expect("serialize auth default")
+                }
+                Err(message) => {
+                    serde_json::to_value(types::err::<()>("auth_set_default_failed", message))
+                        .expect("serialize auth default error")
+                }
+            }
+        }
+        [group, cmd, auth_provider] if group == "auth" && cmd == "logout" => {
+            match commands::auth_logout(auth_provider) {
+                Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize auth logout"),
+                Err(message) => {
+                    serde_json::to_value(types::err::<()>("auth_logout_failed", message))
+                        .expect("serialize auth logout error")
                 }
             }
         }
@@ -1604,7 +1733,7 @@ pub(crate) fn run_command(args: &[String]) -> Value {
         }
         _ => serde_json::to_value(types::err::<()>(
             "unsupported_command",
-            "Supported commands: status, providers, universal-providers, routing-config, routing-runtime, sessions, hermes, openclaw, mcp, prompts, skills, import-export, cloud-sync, tools, settings, plugin, stream-check, usage",
+            "Supported commands: status, providers, universal-providers, routing-config, routing-runtime, sessions, hermes, openclaw, mcp, prompts, skills, import-export, cloud-sync, tools, settings, plugin, stream-check, usage, auth",
         ))
         .expect("serialize error response"),
     }

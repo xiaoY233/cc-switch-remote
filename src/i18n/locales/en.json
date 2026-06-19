@@ -2914,6 +2914,9 @@
         "saveFailed": "Failed to save remote settings",
         "skillsUnsupported": "The current remote helper does not support Skills storage migration."
       },
+      "auth": {
+        "unsupported": "The current remote helper does not support authentication management. Update to a helper with the auth capability."
+      },
       "data": {
         "description": "Import or export the selected remote server's own CC Switch data"
       },
@@ -2978,6 +2981,7 @@
       "tools": "Environment Check Updates",
       "importExport": "Import / Export",
       "cloudSync": "Cloud Sync",
+      "auth": "Authentication Management",
       "settings": "General Settings",
       "settingsAppConfigDir": "CC Switch Configuration Directory",
       "plugin": "Claude Plugin"

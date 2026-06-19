@@ -2,7 +2,9 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { authApi, settingsApi } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
+import { getManagementTargetKey, LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
 import type {
+  ManagementTarget,
   ManagedAuthProvider,
   ManagedAuthStatus,
   ManagedAuthDeviceCodeResponse,
@@ -13,9 +15,14 @@ type PollingState = "idle" | "polling" | "success" | "error";
 export function useManagedAuth(
   authProvider: ManagedAuthProvider,
   githubDomain?: string,
+  target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
 ) {
   const queryClient = useQueryClient();
-  const queryKey = ["managed-auth-status", authProvider];
+  const queryKey = [
+    "managed-auth-status",
+    getManagementTargetKey(target),
+    authProvider,
+  ];
 
   const [pollingState, setPollingState] = useState<PollingState>("idle");
   const [deviceCode, setDeviceCode] =
@@ -33,7 +40,7 @@ export function useManagedAuth(
     refetch: refetchStatus,
   } = useQuery<ManagedAuthStatus>({
     queryKey,
-    queryFn: () => authApi.authGetStatus(authProvider),
+    queryFn: () => authApi.authGetStatus(authProvider, target),
     staleTime: 30000,
   });
 
@@ -55,7 +62,7 @@ export function useManagedAuth(
   }, [stopPolling]);
 
   const startLoginMutation = useMutation({
-    mutationFn: () => authApi.authStartLogin(authProvider, githubDomain),
+    mutationFn: () => authApi.authStartLogin(authProvider, githubDomain, target),
     onSuccess: async (response) => {
       setDeviceCode(response);
       setPollingState("polling");
@@ -91,6 +98,7 @@ export function useManagedAuth(
             authProvider,
             response.device_code,
             githubDomain,
+            target,
           );
           if (newAccount) {
             stopPolling();
@@ -128,7 +136,7 @@ export function useManagedAuth(
   });
 
   const logoutMutation = useMutation({
-    mutationFn: () => authApi.authLogout(authProvider),
+    mutationFn: () => authApi.authLogout(authProvider, target),
     onSuccess: async () => {
       setPollingState("idle");
       setDeviceCode(null);
@@ -150,7 +158,7 @@ export function useManagedAuth(
 
   const removeAccountMutation = useMutation({
     mutationFn: (accountId: string) =>
-      authApi.authRemoveAccount(authProvider, accountId),
+      authApi.authRemoveAccount(authProvider, accountId, target),
     onSuccess: async () => {
       setPollingState("idle");
       setDeviceCode(null);
@@ -166,7 +174,7 @@ export function useManagedAuth(
 
   const setDefaultAccountMutation = useMutation({
     mutationFn: (accountId: string) =>
-      authApi.authSetDefaultAccount(authProvider, accountId),
+      authApi.authSetDefaultAccount(authProvider, accountId, target),
     onSuccess: async () => {
       await refetchStatus();
       await queryClient.invalidateQueries({ queryKey });

@@ -1,8 +1,12 @@
 import type { GitHubAccount } from "@/lib/api";
 import { useManagedAuth } from "./useManagedAuth";
+import type { ManagementTarget } from "@/lib/api";
 
-export function useCopilotAuth(githubDomain?: string) {
-  const managedAuth = useManagedAuth("github_copilot", githubDomain);
+export function useCopilotAuth(
+  githubDomain?: string,
+  target?: ManagementTarget,
+) {
+  const managedAuth = useManagedAuth("github_copilot", githubDomain, target);
   const defaultAccount =
     managedAuth.accounts.find(
       (account) => account.id === managedAuth.defaultAccountId,

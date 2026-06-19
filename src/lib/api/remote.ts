@@ -67,6 +67,12 @@ import type {
   UsageSummary,
   UsageSummaryByApp,
 } from "@/types/usage";
+import type {
+  ManagedAuthAccount,
+  ManagedAuthDeviceCodeResponse,
+  ManagedAuthProvider,
+  ManagedAuthStatus,
+} from "./auth";
 
 export type RemoteAuthMethod =
   | { type: "sshAgent" }
@@ -346,6 +352,100 @@ export const remoteApi = {
     return invoke<boolean>("remote_save_settings", {
       profile,
       settings,
+      secret,
+    });
+  },
+
+  authStartLogin(
+    profile: RemoteHostProfile,
+    authProvider: ManagedAuthProvider,
+    githubDomain?: string,
+    secret?: RemoteConnectionSecret,
+  ): Promise<ManagedAuthDeviceCodeResponse> {
+    return invoke<ManagedAuthDeviceCodeResponse>("remote_auth_start_login", {
+      profile,
+      authProvider,
+      githubDomain: githubDomain || null,
+      secret,
+    });
+  },
+
+  authPollForAccount(
+    profile: RemoteHostProfile,
+    authProvider: ManagedAuthProvider,
+    deviceCode: string,
+    githubDomain?: string,
+    secret?: RemoteConnectionSecret,
+  ): Promise<ManagedAuthAccount | null> {
+    return invoke<ManagedAuthAccount | null>("remote_auth_poll_for_account", {
+      profile,
+      authProvider,
+      deviceCode,
+      githubDomain: githubDomain || null,
+      secret,
+    });
+  },
+
+  authListAccounts(
+    profile: RemoteHostProfile,
+    authProvider: ManagedAuthProvider,
+    secret?: RemoteConnectionSecret,
+  ): Promise<ManagedAuthAccount[]> {
+    return invoke<ManagedAuthAccount[]>("remote_auth_list_accounts", {
+      profile,
+      authProvider,
+      secret,
+    });
+  },
+
+  authGetStatus(
+    profile: RemoteHostProfile,
+    authProvider: ManagedAuthProvider,
+    secret?: RemoteConnectionSecret,
+  ): Promise<ManagedAuthStatus> {
+    return invoke<ManagedAuthStatus>("remote_auth_get_status", {
+      profile,
+      authProvider,
+      secret,
+    });
+  },
+
+  authRemoveAccount(
+    profile: RemoteHostProfile,
+    authProvider: ManagedAuthProvider,
+    accountId: string,
+    secret?: RemoteConnectionSecret,
+  ): Promise<void> {
+    return invoke<void>("remote_auth_remove_account", {
+      profile,
+      authProvider,
+      accountId,
+      secret,
+    });
+  },
+
+  authSetDefaultAccount(
+    profile: RemoteHostProfile,
+    authProvider: ManagedAuthProvider,
+    accountId: string,
+    secret?: RemoteConnectionSecret,
+  ): Promise<void> {
+    return invoke<void>("remote_auth_set_default_account", {
+      profile,
+      authProvider,
+      accountId,
+      secret,
+    });
+  },
+
+  authLogout(
+    profile: RemoteHostProfile,
+    authProvider: ManagedAuthProvider,
+    secret?: RemoteConnectionSecret,
+  ): Promise<void> {
+    return invoke<void>("remote_auth_logout", {
+      profile,
+      authProvider,
       secret,
     });
   },
