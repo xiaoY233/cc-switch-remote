@@ -28,6 +28,7 @@ vi.mock("@/hooks/useProxyStatus", () => ({
   useProxyStatus: () => ({
     isRunning: mocks.proxyRunning,
     startProxyServer: mocks.startProxyServer,
+    isStarting: false,
   }),
 }));
 
@@ -77,7 +78,7 @@ describe("RemoteAppRoutingToggle", () => {
     mocks.appConfig = { ...mocks.appConfig, enabled: false };
   });
 
-  it("allows enabling the active app route when the runtime is not yet reported running", async () => {
+  it("starts the remote routing runtime before enabling an active app route", async () => {
     const user = userEvent.setup();
 
     render(<RemoteAppRoutingToggle activeApp="codex" target={target} />);
@@ -87,10 +88,31 @@ describe("RemoteAppRoutingToggle", () => {
 
     await user.click(toggle);
 
-    await waitFor(() =>
+    await waitFor(() => {
+      expect(mocks.startProxyServer).toHaveBeenCalledTimes(1);
       expect(mocks.updateAppConfig).toHaveBeenCalledWith({
         ...mocks.appConfig,
         enabled: true,
+      });
+    });
+    expect(
+      mocks.startProxyServer.mock.invocationCallOrder[0],
+    ).toBeLessThan(mocks.updateAppConfig.mock.invocationCallOrder[0]);
+  });
+
+  it("does not stop the remote routing runtime when disabling an app route", async () => {
+    const user = userEvent.setup();
+    mocks.proxyRunning = true;
+    mocks.appConfig = { ...mocks.appConfig, enabled: true };
+
+    render(<RemoteAppRoutingToggle activeApp="codex" target={target} />);
+
+    await user.click(screen.getByRole("switch"));
+
+    await waitFor(() =>
+      expect(mocks.updateAppConfig).toHaveBeenCalledWith({
+        ...mocks.appConfig,
+        enabled: false,
       }),
     );
     expect(mocks.startProxyServer).not.toHaveBeenCalled();

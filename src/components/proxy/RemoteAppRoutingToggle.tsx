@@ -24,15 +24,18 @@ export function RemoteAppRoutingToggle({
   target,
 }: RemoteAppRoutingToggleProps) {
   const { t } = useTranslation();
-  const { isRunning } = useProxyStatus(target);
+  const { isRunning, startProxyServer, isStarting } = useProxyStatus(target);
   const { data: config, isLoading } = useAppProxyConfig(activeApp, target);
   const updateConfig = useUpdateAppProxyConfig(target);
   const enabled = config?.enabled ?? false;
   const label = appLabel(activeApp);
-  const isPending = isLoading || updateConfig.isPending;
+  const isPending = isLoading || updateConfig.isPending || isStarting;
 
   const handleToggle = async (checked: boolean) => {
     if (!config) return;
+    if (checked && !isRunning) {
+      await startProxyServer();
+    }
     await updateConfig.mutateAsync({ ...config, enabled: checked });
   };
 

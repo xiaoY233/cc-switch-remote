@@ -95,10 +95,10 @@ interface RemoteSettingsPageProps {
 
 function coerceRemoteTab(tab: string | undefined): string {
   if (tab === "proxy") return "routing";
-  if (tab === "advanced") return "data";
+  if (tab === "data") return "advanced";
   if (tab === "about") return "environment";
   return tab === "general" ||
-    tab === "data" ||
+    tab === "advanced" ||
     tab === "environment" ||
     tab === "auth" ||
     tab === "routing" ||
@@ -464,12 +464,10 @@ export function RemoteSettingsPage({
           <TabsTrigger value="auth">
             {t("settings.tabAuth", { defaultValue: "认证" })}
           </TabsTrigger>
-          <TabsTrigger value="usage">
-            {t("usage.title")}
-          </TabsTrigger>
-          <TabsTrigger value="data">
+          <TabsTrigger value="advanced">
             {t("settings.tabAdvanced", { defaultValue: "高级" })}
           </TabsTrigger>
+          <TabsTrigger value="usage">{t("usage.title")}</TabsTrigger>
         </TabsList>
 
         <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-2">
@@ -653,7 +651,7 @@ export function RemoteSettingsPage({
             )}
           </TabsContent>
 
-          <TabsContent value="data" className="space-y-4 mt-0 pb-4">
+          <TabsContent value="advanced" className="space-y-4 mt-0 pb-4">
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}

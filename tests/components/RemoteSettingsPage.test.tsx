@@ -159,6 +159,49 @@ describe("RemoteSettingsPage", () => {
     getInstalledSkillsMock.mockResolvedValue([]);
   });
 
+  it("aligns remote settings tab order with local settings modules", async () => {
+    render(
+      <RemoteSettingsPage
+        open
+        onOpenChange={vi.fn()}
+        target={{ type: "remote", profile, secret: { password: "secret" } }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getSettingsMock).toHaveBeenCalled();
+    });
+
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "远程",
+      "通用",
+      "代理",
+      "认证",
+      "高级",
+      "usage.title",
+    ]);
+  });
+
+  it("maps the legacy remote data tab to the advanced tab", async () => {
+    render(
+      <RemoteSettingsPage
+        open
+        onOpenChange={vi.fn()}
+        defaultTab="data"
+        target={{ type: "remote", profile, secret: { password: "secret" } }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getSettingsMock).toHaveBeenCalled();
+    });
+
+    expect(screen.getByRole("tab", { name: "高级" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
   it("keeps remote homepage routing display settings in the routing tab", async () => {
     const user = userEvent.setup();
     const saveDeferred = createDeferred<boolean>();

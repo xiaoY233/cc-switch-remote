@@ -226,6 +226,7 @@ function App() {
     activeApp === "claude-desktop" ? "claude" : activeApp;
   const [currentView, setCurrentView] = useState<View>(getInitialView);
   const [settingsDefaultTab, setSettingsDefaultTab] = useState("general");
+  const [forceLocalSettings, setForceLocalSettings] = useState(false);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isWindowMaximized, setIsWindowMaximized] = useState(false);
 
@@ -332,6 +333,7 @@ function App() {
   };
 
   const handleManagementTargetChange = (targetKey: string) => {
+    setForceLocalSettings(false);
     if (targetKey === "local") {
       setPasswordPromptProfile(null);
       setActiveTargetKey("local");
@@ -1140,25 +1142,34 @@ function App() {
     const content = (() => {
       switch (currentView) {
         case "settings":
-          if (managementTarget.type === "remote") {
+          const settingsTarget: ManagementTarget = forceLocalSettings
+            ? { type: "local" }
+            : managementTarget;
+          if (settingsTarget.type === "remote") {
             return (
               <RemoteSettingsPage
                 open={true}
-                onOpenChange={() => setCurrentView("providers")}
+                onOpenChange={() => {
+                  setForceLocalSettings(false);
+                  setCurrentView("providers");
+                }}
                 onImportSuccess={handleImportSuccess}
                 onSettingsSaved={handleRemoteSettingsSaved}
                 defaultTab={settingsDefaultTab}
-                target={managementTarget}
+                target={settingsTarget}
               />
             );
           }
           return (
             <SettingsPage
               open={true}
-              onOpenChange={() => setCurrentView("providers")}
+              onOpenChange={() => {
+                setForceLocalSettings(false);
+                setCurrentView("providers");
+              }}
               onImportSuccess={handleImportSuccess}
               defaultTab={settingsDefaultTab}
-              target={managementTarget}
+              target={settingsTarget}
             />
           );
         case "prompts":
@@ -1509,6 +1520,7 @@ function App() {
                   variant="ghost"
                   size="icon"
                   onClick={() => {
+                    setForceLocalSettings(false);
                     setSettingsDefaultTab(
                       managementTarget.type === "remote"
                         ? "environment"
@@ -1541,6 +1553,7 @@ function App() {
                 />
                 <UpdateBadge
                   onClick={() => {
+                    setForceLocalSettings(true);
                     setSettingsDefaultTab("about");
                     setCurrentView("settings");
                   }}
@@ -1549,10 +1562,11 @@ function App() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => {
-                      setSettingsDefaultTab("usage");
-                      setCurrentView("settings");
-                    }}
+                  onClick={() => {
+                    setForceLocalSettings(false);
+                    setSettingsDefaultTab("usage");
+                    setCurrentView("settings");
+                  }}
                     title={t("usage.title", {
                       defaultValue: "使用统计",
                     })}

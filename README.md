@@ -54,8 +54,9 @@ The remote helper is published separately from the desktop application:
 
 Remote feature parity is explicit:
 
-- Supported or actively targeted: providers, MCP, prompts, skills, import/export and health checks
-- Local-only unless a remote-safe equivalent is designed: tray controls, desktop deep links, browser OAuth flows, local terminal launch and local proxy takeover
+- Tracked in [`docs/remote-feature-parity.md`](docs/remote-feature-parity.md)
+- Supported or actively targeted: providers, routing, authentication, usage statistics, MCP, prompts, skills, sessions, Hermes memory, OpenClaw, import/export, backups, cloud sync, tool environment checks and health checks
+- Local-only unless a remote-safe equivalent is designed: tray controls, desktop deep links, desktop app updates, local callback/deeplink OAuth flows, local terminal launch, local UI language/theme and local proxy takeover. Device-code OAuth flows can be remote-managed because the browser only approves a code while the remote helper owns the polling and token storage.
 
 ## Download
 

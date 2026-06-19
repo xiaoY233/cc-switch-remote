@@ -189,9 +189,10 @@ vi.mock("@/components/proxy/ClaudeDesktopRouteToggle", () => ({
 }));
 
 vi.mock("@/components/settings/SettingsPage", () => ({
-  SettingsPage: ({ onImportSuccess, target }: any) => (
+  SettingsPage: ({ defaultTab, onImportSuccess, target }: any) => (
     <div data-testid="settings-page">
       <span data-testid="settings-target">{target?.type ?? "local"}</span>
+      <span data-testid="settings-default-tab">{defaultTab}</span>
       <button onClick={() => onImportSuccess?.()}>
         simulate-import-success
       </button>
@@ -204,10 +205,12 @@ vi.mock("@/components/settings/RemoteSettingsPage", () => ({
     onImportSuccess,
     onOpenChange,
     onSettingsSaved,
+    defaultTab,
     target,
   }: any) => (
     <div data-testid="settings-page">
       <span data-testid="settings-target">{target?.type ?? "local"}</span>
+      <span data-testid="settings-default-tab">{defaultTab}</span>
       <button
         onClick={() =>
           onSettingsSaved?.({
@@ -676,6 +679,36 @@ describe("App integration with MSW", () => {
     );
     expect(updateTrayMenuSpy).not.toHaveBeenCalled();
     updateTrayMenuSpy.mockRestore();
+  });
+
+  it("opens the local About settings from the update badge while managing a remote target", async () => {
+    localStorage.setItem("cc-switch-last-view", "providers");
+    setRemoteProfiles([
+      {
+        id: "remote-1",
+        name: "Remote 1",
+        host: "192.168.1.20",
+        port: 22,
+        username: "root",
+        authMethod: { type: "sshAgent" },
+        helperPath: "~/.local/bin/cc-switch-remote-helper",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]);
+
+    const { default: App } = await import("@/App");
+    renderApp(App);
+
+    fireEvent.click(await screen.findByText("Remote 1"));
+    fireEvent.click(screen.getByText("update-badge"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("settings-target")).toHaveTextContent("local"),
+    );
+    expect(screen.getByTestId("settings-default-tab")).toHaveTextContent(
+      "about",
+    );
   });
 
   it("uses per-host remote app visibility while managing a remote target", async () => {
