@@ -275,6 +275,10 @@ fn helper_install_args_install_cli_and_link_configured_helper_path() {
     assert!(remote_command.contains("fetch_url_to_file()"));
     assert!(remote_command.contains("wget -qO \"$2\" \"$1\""));
     assert!(remote_command.contains("verify_helper_status()"));
+    assert!(remote_command.contains("Remote server cannot download helper"));
+    assert!(remote_command.contains("Remote server failed to query GitHub helper release"));
+    assert!(remote_command.contains("Remote server failed to download the compatible helper asset"));
+    assert!(remote_command.contains("Remote-side helper install failed before verification"));
     assert!(remote_command.contains("grep -q '\"openclaw\"'"));
     assert!(remote_command.contains("grep -q '\"hermes-memory\"'"));
     assert!(remote_command.contains("grep -q '\"settings\"'"));
@@ -415,7 +419,7 @@ fn install_helper_runs_github_release_download_command_without_local_archive() {
         &ssh_path,
         r#"#!/bin/sh
 set -eu
-printf '%s\n' '{"ok":true,"data":{"version":"test","platform":"linux","capabilities":["providers","openclaw","mcp","prompts","skills","sessions","hermes-memory","import-export","tools","settings","plugin","session"]},"error":null}'
+printf '%s\n' '{"ok":true,"data":{"version":"test","platform":"linux","capabilities":["providers","universal-providers","routing-config","openclaw","mcp","prompts","skills","sessions","hermes-memory","import-export","cloud-sync","tools","stream-check","usage","auth","settings","settings-app-config-dir","plugin","session"]},"error":null}'
 "#,
     )
     .expect("write fake ssh");

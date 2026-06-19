@@ -67,7 +67,9 @@ import type {
 import { isUpdateAvailable } from "@/lib/version";
 import {
   formatRemoteCapabilitySummary,
+  formatRemoteHelperBuild,
   formatRemoteHelperLatest,
+  formatRemoteHelperLatestBuild,
   formatRemoteHelperUpdateError,
   formatRemoteHelperVersion,
   formatRemotePlatform,
@@ -1339,6 +1341,8 @@ function RemoteHealthSection({
   const { t } = useTranslation();
   const helperReady = Boolean(health?.reachable && health.helperInstalled);
   const capabilitySummary = formatRemoteCapabilitySummary(health, t);
+  const helperBuildText = formatRemoteHelperBuild(health);
+  const helperLatestBuildText = formatRemoteHelperLatestBuild(health);
   const helperActionLabel = health?.helperUpdateAvailable
     ? t("remote.health.updateHelper", { defaultValue: "更新 Helper" })
     : health?.helperInstalled
@@ -1407,12 +1411,28 @@ function RemoteHealthSection({
               defaultValue: "Helper 版本",
             })}
             value={formatRemoteHelperVersion(health)}
+            description={
+              helperBuildText
+                ? t("remote.health.helperBuild", {
+                    defaultValue: "构建: {{build}}",
+                    build: helperBuildText,
+                  })
+                : undefined
+            }
           />
           <InfoCell
             label={t("remote.health.helperLatestVersion", {
               defaultValue: "最新 Helper",
             })}
             value={formatRemoteHelperLatest(health)}
+            description={
+              helperLatestBuildText
+                ? t("remote.health.helperLatestBuild", {
+                    defaultValue: "最新构建: {{build}}",
+                    build: helperLatestBuildText,
+                  })
+                : undefined
+            }
           />
           <InfoCell
             label={t("remote.health.platform", { defaultValue: "系统" })}
@@ -1460,11 +1480,26 @@ function RemoteHealthSection({
   );
 }
 
-function InfoCell({ label, value }: { label: string; value: string }) {
+function InfoCell({
+  label,
+  value,
+  description,
+}: {
+  label: string;
+  value: string;
+  description?: string;
+}) {
   return (
     <div className="bg-background/70 px-4 py-3 min-w-0">
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-1 truncate text-sm font-medium">{value}</div>
+      <div className="mt-1 truncate text-sm font-medium">
+        <span>{value}</span>
+        {description ? (
+          <span className="ml-1 text-xs font-normal text-muted-foreground">
+            · {description}
+          </span>
+        ) : null}
+      </div>
     </div>
   );
 }

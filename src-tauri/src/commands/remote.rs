@@ -9,10 +9,11 @@ use crate::proxy::types::{
 use crate::proxy::{CircuitBreakerConfig, CircuitBreakerStats};
 use crate::remote::{
     build_helper_install_args, build_ssh_args, delete_profile, delete_profile_secret,
-    install_helper_json, load_profiles, remote_session_manager, run_helper_json,
-    save_profile_secret, upsert_profile, validate_profile, RemoteAuthMethod, RemoteCapability,
-    RemoteConnectionSecret, RemoteHealth, RemoteHelperInstallSource, RemoteHostProfile,
-    RemotePlatform, RemoteSessionStatus,
+    detect_helper_asset_target, install_helper_json, load_profiles, remote_session_manager,
+    run_helper_json, save_profile_secret, upload_helper_bytes_and_verify_json, upsert_profile,
+    validate_profile, RemoteAuthMethod, RemoteCapability, RemoteConnectionSecret, RemoteHealth,
+    RemoteHelperAssetTarget, RemoteHelperInstallSource, RemoteHostProfile, RemotePlatform,
+    RemoteSessionStatus,
 };
 use crate::services::skill::{
     DiscoverableSkill, ImportSkillSelection, MigrationResult, SkillBackupEntry, SkillRepo,
@@ -48,6 +49,7 @@ struct GitHubRelease {
 #[derive(Debug, Deserialize)]
 struct GitHubReleaseAsset {
     name: String,
+    browser_download_url: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -144,11 +146,22 @@ pub async fn remote_install_helper(
 ) -> Result<RemoteHealth, String> {
     validate_profile(&profile).map_err(|e| e.to_string())?;
     let profile_id = profile.id.clone();
-    let status: serde_json::Value = tokio::task::spawn_blocking(move || {
-        install_helper_json(&profile, secret.as_ref()).map_err(|e| e.to_string())
+    let install_profile = profile.clone();
+    let install_secret = secret.clone();
+    let install_result = tokio::task::spawn_blocking(move || {
+        install_helper_json(&install_profile, install_secret.as_ref()).map_err(|e| e.to_string())
     })
     .await
-    .map_err(|e| format!("Remote helper install task failed: {e}"))??;
+    .map_err(|e| format!("Remote helper install task failed: {e}"))?;
+
+    let status: serde_json::Value = match install_result {
+        Ok(status) => status,
+        Err(remote_error) if should_try_local_helper_install_fallback(&remote_error) => {
+            install_helper_from_local_download(profile.clone(), secret.clone(), remote_error)
+                .await?
+        }
+        Err(remote_error) => return Err(remote_error),
+    };
 
     // The install command verifies the newly downloaded binary through a
     // one-shot SSH command. Any existing persistent session still runs the old
@@ -197,11 +210,7 @@ pub async fn remote_auth_start_login(
     github_domain: Option<String>,
     secret: Option<RemoteConnectionSecret>,
 ) -> Result<Value, String> {
-    let mut args = vec![
-        "auth".to_string(),
-        "start-login".to_string(),
-        auth_provider,
-    ];
+    let mut args = vec!["auth".to_string(), "start-login".to_string(), auth_provider];
     args.push(github_domain.unwrap_or_else(|| "-".to_string()));
     run_remote_helper_json(profile, args, secret, "Remote auth start login").await
 }
@@ -868,11 +877,79 @@ async fn fetch_remote_helper_latest(
     };
 
     let source = RemoteHelperInstallSource::from_env();
+    let release = fetch_github_helper_release(&source).await?;
+
+    Ok(select_remote_helper_latest(
+        &release.assets,
+        asset_os,
+        asset_arch,
+    ))
+}
+
+async fn install_helper_from_local_download(
+    profile: RemoteHostProfile,
+    secret: Option<RemoteConnectionSecret>,
+    remote_error: String,
+) -> Result<serde_json::Value, String> {
+    let target_profile = profile.clone();
+    let target_secret = secret.clone();
+    let target = tokio::task::spawn_blocking(move || {
+        detect_helper_asset_target(&target_profile, target_secret.as_ref())
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("Remote helper target detect task failed: {e}"))??;
+
+    let source = RemoteHelperInstallSource::from_env();
+    let release = fetch_github_helper_release(&source)
+        .await
+        .map_err(|e| format!("{remote_error}\nLocal helper download fallback failed: {e}"))?;
+    let asset = select_remote_helper_download_asset(&release.assets, &target).ok_or_else(|| {
+        format!(
+            "{remote_error}\nLocal helper download fallback failed: no compatible asset for {}/{} on {}.",
+            target.asset_os, target.asset_arch, source.release_tag
+        )
+    })?;
+
+    let helper_bytes = reqwest::Client::new()
+        .get(&asset.browser_download_url)
+        .header(reqwest::header::USER_AGENT, GITHUB_API_USER_AGENT)
+        .send()
+        .await
+        .map_err(|e| format!("{remote_error}\nLocal helper download fallback failed: {e}"))?
+        .error_for_status()
+        .map_err(|e| format!("{remote_error}\nLocal helper download fallback failed: {e}"))?
+        .bytes()
+        .await
+        .map_err(|e| format!("{remote_error}\nLocal helper download fallback failed: {e}"))?;
+
+    let upload_profile = profile;
+    let upload_secret = secret;
+    tokio::task::spawn_blocking(move || {
+        upload_helper_bytes_and_verify_json(&upload_profile, upload_secret.as_ref(), &helper_bytes)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("Remote helper local upload task failed: {e}"))?
+    .map_err(|e| format!("{remote_error}\nLocal helper download fallback failed: {e}"))
+}
+
+fn should_try_local_helper_install_fallback(error: &str) -> bool {
+    error.contains("Remote server cannot download helper")
+        || error.contains("Remote server failed to query GitHub helper release")
+        || error.contains("Remote server failed to download the compatible helper asset")
+        || error.contains("No compatible cc-switch-remote helper release asset found")
+        || error.contains("Remote-side helper install failed before verification")
+}
+
+async fn fetch_github_helper_release(
+    source: &RemoteHelperInstallSource,
+) -> Result<GitHubRelease, String> {
     let url = format!(
         "https://api.github.com/repos/{}/releases/tags/{}",
         source.release_repo, source.release_tag
     );
-    let release = reqwest::Client::new()
+    reqwest::Client::new()
         .get(&url)
         .header(reqwest::header::USER_AGENT, GITHUB_API_USER_AGENT)
         .send()
@@ -882,13 +959,33 @@ async fn fetch_remote_helper_latest(
         .map_err(|e| format!("Failed to query helper release: {e}"))?
         .json::<GitHubRelease>()
         .await
-        .map_err(|e| format!("Failed to parse helper release: {e}"))?;
+        .map_err(|e| format!("Failed to parse helper release: {e}"))
+}
 
-    Ok(select_remote_helper_latest(
-        &release.assets,
-        asset_os,
-        asset_arch,
-    ))
+fn select_remote_helper_download_asset<'a>(
+    assets: &'a [GitHubReleaseAsset],
+    target: &RemoteHelperAssetTarget,
+) -> Option<&'a GitHubReleaseAsset> {
+    let preferred_names = [
+        format!(
+            "cc-switch-remote-helper-latest-{}-{}",
+            target.asset_os, target.asset_arch
+        ),
+        format!(
+            "cc-switch-cli-latest-{}-{}",
+            target.asset_os, target.asset_arch
+        ),
+    ];
+
+    preferred_names
+        .iter()
+        .find_map(|name| assets.iter().find(|asset| asset.name == *name))
+        .or_else(|| {
+            assets.iter().find(|asset| {
+                parse_remote_helper_asset(&asset.name, &target.asset_os, &target.asset_arch)
+                    .is_some()
+            })
+        })
 }
 
 fn select_remote_helper_latest(
@@ -3063,6 +3160,47 @@ mod tests {
             parse_remote_capability("auth"),
             Some(RemoteCapability::Auth)
         );
+    }
+
+    #[test]
+    fn selects_latest_helper_alias_for_local_download_fallback() {
+        let assets = vec![
+            GitHubReleaseAsset {
+                name: "cc-switch-remote-helper-6fad8543-Linux-x86_64".to_string(),
+                browser_download_url: "https://example.com/sha".to_string(),
+            },
+            GitHubReleaseAsset {
+                name: "cc-switch-remote-helper-latest-Linux-x86_64".to_string(),
+                browser_download_url: "https://example.com/latest".to_string(),
+            },
+        ];
+        let target = RemoteHelperAssetTarget {
+            asset_os: "Linux".to_string(),
+            asset_arch: "x86_64".to_string(),
+        };
+
+        let asset =
+            select_remote_helper_download_asset(&assets, &target).expect("matching helper asset");
+
+        assert_eq!(asset.name, "cc-switch-remote-helper-latest-Linux-x86_64");
+        assert_eq!(asset.browser_download_url, "https://example.com/latest");
+    }
+
+    #[test]
+    fn local_download_fallback_keeps_sha_asset_as_fallback() {
+        let assets = vec![GitHubReleaseAsset {
+            name: "cc-switch-remote-helper-6fad8543-Linux-arm64".to_string(),
+            browser_download_url: "https://example.com/sha".to_string(),
+        }];
+        let target = RemoteHelperAssetTarget {
+            asset_os: "Linux".to_string(),
+            asset_arch: "arm64".to_string(),
+        };
+
+        let asset =
+            select_remote_helper_download_asset(&assets, &target).expect("matching helper asset");
+
+        assert_eq!(asset.name, "cc-switch-remote-helper-6fad8543-Linux-arm64");
     }
 
     #[tokio::test]

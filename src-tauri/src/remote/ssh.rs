@@ -5,7 +5,9 @@ use crate::remote::types::{
 };
 use crate::remote_capabilities::REMOTE_HELPER_REQUIRED_CAPABILITIES;
 use serde::de::DeserializeOwned;
+use std::io::Write;
 use std::process::Command;
+use std::process::Stdio;
 
 const HELPER_RELEASE_REPO: &str = "xiaoY233/cc-switch-remote";
 const HELPER_RELEASE_TAG: &str = "remote-helper-latest";
@@ -16,6 +18,12 @@ const HELPER_RELEASE_TAG_ENV: &str = "CC_SWITCH_REMOTE_HELPER_RELEASE_TAG";
 pub struct RemoteHelperInstallSource {
     pub release_repo: String,
     pub release_tag: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoteHelperAssetTarget {
+    pub asset_os: String,
+    pub asset_arch: String,
 }
 
 impl Default for RemoteHelperInstallSource {
@@ -148,13 +156,20 @@ pub fn build_helper_install_args_with_source(
             "return 64; ",
             "}}; ",
             "try_release_asset_install() {{ ",
+            "if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then ",
+            "echo 'Remote server cannot download helper: curl or wget is required for remote-side download.' >&2; ",
+            "return 1; ",
+            "fi; ",
             "asset_os=$(uname -s); ",
             "case \"$asset_os\" in Linux) asset_os=Linux ;; Darwin) asset_os=macOS ;; *) asset_os= ;; esac; ",
             "asset_arch=$(uname -m); ",
             "case \"$asset_arch\" in x86_64|amd64) asset_arch=x86_64 ;; arm64|aarch64) asset_arch=arm64 ;; *) asset_arch= ;; esac; ",
-            "if [ -z \"$asset_os\" ] || [ -z \"$asset_arch\" ]; then return 1; fi; ",
+            "if [ -z \"$asset_os\" ] || [ -z \"$asset_arch\" ]; then ",
+            "echo \"Remote helper is not available for this server platform: $(uname -s)/$(uname -m).\" >&2; ",
+            "return 1; ",
+            "fi; ",
             "download_base=https://github.com/{release_repo}/releases/download/{release_tag}; ",
-            "for asset_name in cc-switch-remote-helper-{release_tag}-${{asset_os}}-${{asset_arch}} cc-switch-remote-helper-latest-${{asset_os}}-${{asset_arch}} cc-switch-remote-helper-{release_tag}-${{asset_os}}-universal cc-switch-remote-helper-latest-${{asset_os}}-universal cc-switch-cli-{release_tag}-${{asset_os}}-${{asset_arch}} cc-switch-cli-latest-${{asset_os}}-${{asset_arch}} cc-switch-cli-{release_tag}-${{asset_os}}-universal cc-switch-cli-latest-${{asset_os}}-universal; do ",
+            "for asset_name in cc-switch-remote-helper-latest-${{asset_os}}-${{asset_arch}} cc-switch-remote-helper-{release_tag}-${{asset_os}}-${{asset_arch}} cc-switch-remote-helper-latest-${{asset_os}}-universal cc-switch-remote-helper-{release_tag}-${{asset_os}}-universal cc-switch-cli-latest-${{asset_os}}-${{asset_arch}} cc-switch-cli-{release_tag}-${{asset_os}}-${{asset_arch}} cc-switch-cli-latest-${{asset_os}}-universal cc-switch-cli-{release_tag}-${{asset_os}}-universal; do ",
             "helper_tmp=$(mktemp); ",
             "if fetch_url_to_file \"$download_base/$asset_name\" \"$helper_tmp\" 1>&2; then ",
             "chmod +x \"$helper_tmp\"; ",
@@ -165,10 +180,21 @@ pub fn build_helper_install_args_with_source(
             "done; ",
             "api_url=https://api.github.com/repos/{release_repo}/releases/tags/{release_tag}; ",
             "asset_pattern=\"(cc-switch-remote-helper|cc-switch-cli)-.*-${{asset_os}}-${{asset_arch}}$\"; ",
-            "download_url=$(fetch_url_to_stdout \"$api_url\" | grep -E '\"browser_download_url\":' | sed -E 's/.*\"browser_download_url\": \"([^\"]+)\".*/\\1/' | grep -E \"$asset_pattern\" | tail -1 || true); ",
-            "if [ -z \"$download_url\" ]; then return 1; fi; ",
+            "release_json=$(fetch_url_to_stdout \"$api_url\") || {{ ",
+            "echo 'Remote server failed to query GitHub helper release. The desktop app will try local download fallback when available.' >&2; ",
+            "return 1; ",
+            "}}; ",
+            "download_url=$(printf '%s\\n' \"$release_json\" | grep -E '\"browser_download_url\":' | sed -E 's/.*\"browser_download_url\": \"([^\"]+)\".*/\\1/' | grep -E \"$asset_pattern\" | tail -1 || true); ",
+            "if [ -z \"$download_url\" ]; then ",
+            "echo 'No compatible cc-switch-remote helper release asset found on GitHub release {release_tag}' >&2; ",
+            "return 1; ",
+            "fi; ",
             "helper_tmp=$(mktemp); ",
-            "fetch_url_to_file \"$download_url\" \"$helper_tmp\" 1>&2; ",
+            "fetch_url_to_file \"$download_url\" \"$helper_tmp\" 1>&2 || {{ ",
+            "rm -f \"$helper_tmp\"; ",
+            "echo 'Remote server failed to download the compatible helper asset from GitHub. The desktop app will try local download fallback when available.' >&2; ",
+            "return 1; ",
+            "}}; ",
             "chmod +x \"$helper_tmp\"; ",
             "mv \"$helper_tmp\" \"$helper_path\"; ",
             "return 0; ",
@@ -177,7 +203,7 @@ pub fn build_helper_install_args_with_source(
             "verify_helper_status; ",
             "exit 0; ",
             "fi; ",
-            "echo 'No compatible cc-switch-remote helper release asset found on GitHub release {release_tag}' >&2; ",
+            "echo 'Remote-side helper install failed before verification.' >&2; ",
             "exit 1"
         ),
         helper_path = helper_path,
@@ -188,6 +214,72 @@ pub fn build_helper_install_args_with_source(
     );
     args.push(command);
     args
+}
+
+pub fn detect_helper_asset_target(
+    profile: &RemoteHostProfile,
+    secret: Option<&RemoteConnectionSecret>,
+) -> Result<RemoteHelperAssetTarget, AppError> {
+    let mut args = build_ssh_base_args(profile);
+    args.push("printf '%s %s\\n' \"$(uname -s)\" \"$(uname -m)\"".to_string());
+
+    let stdout = run_ssh_command(profile, args, secret)?;
+    let mut parts = stdout.split_whitespace();
+    let os = parts.next().unwrap_or_default();
+    let arch = parts.next().unwrap_or_default();
+    helper_asset_target_from_uname(os, arch).ok_or_else(|| {
+        AppError::Message(format!(
+            "Remote helper is not available for this server platform: {os}/{arch}."
+        ))
+    })
+}
+
+pub fn upload_helper_bytes_and_verify_json<T: DeserializeOwned>(
+    profile: &RemoteHostProfile,
+    secret: Option<&RemoteConnectionSecret>,
+    helper_bytes: &[u8],
+) -> Result<T, AppError> {
+    let mut args = build_ssh_base_args(profile);
+    let helper_path = shell_quote_helper_path(&profile.helper_path);
+    args.push(format!(
+        concat!(
+            "set -e; ",
+            "helper_path={helper_path}; ",
+            "helper_dir=$(dirname \"$helper_path\"); ",
+            "mkdir -p \"$helper_dir\" ~/.local/bin; ",
+            "helper_tmp=$(mktemp); ",
+            "cat > \"$helper_tmp\"; ",
+            "chmod +x \"$helper_tmp\"; ",
+            "mv \"$helper_tmp\" \"$helper_path\"; ",
+            "\"$helper_path\" --json status"
+        ),
+        helper_path = helper_path
+    ));
+
+    let stdout = run_ssh_command_with_stdin(profile, args, secret, helper_bytes)?;
+    parse_helper_json(&stdout)
+}
+
+fn helper_asset_target_from_uname(os: &str, arch: &str) -> Option<RemoteHelperAssetTarget> {
+    let asset_os = match os {
+        "Linux" => "Linux",
+        "Darwin" => "macOS",
+        _ => return None,
+    };
+    let asset_arch = if asset_os == "macOS" {
+        "universal"
+    } else {
+        match arch {
+            "x86_64" | "amd64" => "x86_64",
+            "aarch64" | "arm64" => "arm64",
+            _ => return None,
+        }
+    };
+
+    Some(RemoteHelperAssetTarget {
+        asset_os: asset_os.to_string(),
+        asset_arch: asset_arch.to_string(),
+    })
 }
 
 pub fn run_helper_json<T: DeserializeOwned>(
@@ -223,6 +315,49 @@ fn run_ssh_command(
     let output = command
         .output()
         .map_err(|e| AppError::Message(format!("Failed to execute ssh: {e}")))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(AppError::Message(if stderr.is_empty() {
+            format!("Remote ssh command failed with status {}", output.status)
+        } else {
+            normalize_remote_stderr(profile, &stderr)
+        }));
+    }
+
+    String::from_utf8(output.stdout)
+        .map_err(|e| AppError::Message(format!("Remote helper returned invalid UTF-8: {e}")))
+}
+
+fn run_ssh_command_with_stdin(
+    profile: &RemoteHostProfile,
+    args: Vec<String>,
+    secret: Option<&RemoteConnectionSecret>,
+    stdin_bytes: &[u8],
+) -> Result<String, AppError> {
+    let mut command = Command::new("ssh");
+    command.args(args);
+    command.stdin(Stdio::piped());
+    command.stdout(Stdio::piped());
+    command.stderr(Stdio::piped());
+
+    let _askpass = configure_password_auth(profile, secret, &mut command)?;
+    let mut child = command
+        .spawn()
+        .map_err(|e| AppError::Message(format!("Failed to execute ssh: {e}")))?;
+
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| AppError::Message("Failed to open ssh stdin".to_string()))?;
+    stdin
+        .write_all(stdin_bytes)
+        .map_err(|e| AppError::Message(format!("Failed to write helper to ssh stdin: {e}")))?;
+    drop(stdin);
+
+    let output = child
+        .wait_with_output()
+        .map_err(|e| AppError::Message(format!("Failed to wait for ssh: {e}")))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();

@@ -21,7 +21,9 @@ import {
 import {
   canReportRemoteCapabilities,
   EXPECTED_REMOTE_CAPABILITIES,
+  formatRemoteHelperBuild,
   formatRemoteHelperLatest,
+  formatRemoteHelperLatestBuild,
   formatRemoteHelperUpdateError,
   formatRemoteHelperVersion,
   formatRemotePlatform,
@@ -57,6 +59,8 @@ export function RemoteHealthPanel({
   const helperUpdateErrorText = health?.helperUpdateError
     ? formatRemoteHelperUpdateError(health.helperUpdateError, t)
     : null;
+  const helperBuildText = formatRemoteHelperBuild(health);
+  const helperLatestBuildText = formatRemoteHelperLatestBuild(health);
 
   const handleCheck = async () => {
     if (!profile) return;
@@ -166,12 +170,28 @@ export function RemoteHealthPanel({
             defaultValue: "Helper 版本",
           })}
           value={helperVersionText}
+          description={
+            helperBuildText
+              ? t("remote.health.helperBuild", {
+                  defaultValue: "构建: {{build}}",
+                  build: helperBuildText,
+                })
+              : undefined
+          }
         />
         <Metric
           label={t("remote.health.helperLatestVersion", {
             defaultValue: "最新 Helper",
           })}
           value={helperLatestText}
+          description={
+            helperLatestBuildText
+              ? t("remote.health.helperLatestBuild", {
+                  defaultValue: "最新构建: {{build}}",
+                  build: helperLatestBuildText,
+                })
+              : undefined
+          }
         />
         <Metric
           label={t("remote.health.platform", { defaultValue: "平台" })}
@@ -262,15 +282,28 @@ export function RemoteHealthPanel({
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({
+  label,
+  value,
+  description,
+}: {
+  label: string;
+  value: string;
+  description?: string;
+}) {
   return (
     <div className="min-w-0 border-b border-border-default px-4 py-3 sm:border-b-0 sm:border-r sm:last:border-r-0">
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <Terminal className="h-3.5 w-3.5" />
         {label}
       </div>
-      <div className="mt-1 break-all text-sm font-medium text-foreground">
-        {value}
+      <div className="mt-1 text-sm font-medium text-foreground">
+        <span className="break-all">{value}</span>
+        {description ? (
+          <span className="ml-1 whitespace-nowrap text-xs font-normal text-muted-foreground">
+            · {description}
+          </span>
+        ) : null}
       </div>
     </div>
   );

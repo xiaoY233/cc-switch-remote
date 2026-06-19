@@ -104,6 +104,20 @@ export function formatRemoteHelperLatest(health: RemoteHealth | null) {
   return health.helperLatestVersion;
 }
 
+export function formatRemoteHelperBuild(health: RemoteHealth | null) {
+  return shortHelperBuild(health?.helperBuild);
+}
+
+export function formatRemoteHelperLatestBuild(health: RemoteHealth | null) {
+  return shortHelperBuild(health?.helperLatestBuild);
+}
+
+function shortHelperBuild(build: string | undefined) {
+  const trimmed = build?.trim();
+  if (!trimmed) return null;
+  return trimmed.length > 8 ? trimmed.slice(0, 8) : trimmed;
+}
+
 export function formatRemotePlatform(health: RemoteHealth | null) {
   if (!health?.platform) return "-";
   return health.helperArch
