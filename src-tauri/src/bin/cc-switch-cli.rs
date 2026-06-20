@@ -170,7 +170,7 @@ mod app_store {
     }
 
     fn default_app_config_dir() -> PathBuf {
-        helper_home_dir().join(".cc-switch")
+        helper_home_dir().join(".cc-switch-remote")
     }
 
     fn helper_home_dir() -> PathBuf {

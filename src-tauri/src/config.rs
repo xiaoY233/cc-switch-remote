@@ -4,6 +4,9 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+const APP_CONFIG_DIR_NAME: &str = ".cc-switch-remote";
+const LEGACY_APP_CONFIG_DIR_NAME: &str = ".cc-switch";
+
 use crate::error::AppError;
 
 /// 获取用户主目录，带回退和日志
@@ -86,13 +89,70 @@ pub fn get_claude_settings_path() -> PathBuf {
     settings
 }
 
-/// 获取应用配置目录路径 (~/.cc-switch)
+fn default_app_config_dir() -> PathBuf {
+    get_home_dir().join(APP_CONFIG_DIR_NAME)
+}
+
+fn legacy_app_config_dir() -> PathBuf {
+    get_home_dir().join(LEGACY_APP_CONFIG_DIR_NAME)
+}
+
+fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<(), AppError> {
+    std::fs::create_dir_all(destination).map_err(|e| AppError::io(destination, e))?;
+    for entry in std::fs::read_dir(source).map_err(|e| AppError::io(source, e))? {
+        let entry = entry.map_err(|e| AppError::io(source, e))?;
+        let source_path = entry.path();
+        let destination_path = destination.join(entry.file_name());
+        let file_type = entry
+            .file_type()
+            .map_err(|e| AppError::io(&source_path, e))?;
+
+        if file_type.is_dir() {
+            copy_dir_recursive(&source_path, &destination_path)?;
+        } else if file_type.is_file() {
+            std::fs::copy(&source_path, &destination_path)
+                .map_err(|e| AppError::io(&destination_path, e))?;
+        }
+    }
+    Ok(())
+}
+
+/// 初始化 cc-switch-remote 独立配置目录。
+///
+/// 旧版本远程版曾复用上游 `~/.cc-switch`，会把数据库 schema 升级到原版不支持的版本。
+/// 新版本默认使用 `~/.cc-switch-remote`。首次启动时如果新目录不存在但旧目录存在，
+/// 复制一份旧目录作为远程版初始数据，然后两边各自独立演进。
+pub fn ensure_remote_app_config_dir_initialized() -> Result<(), AppError> {
+    if crate::app_store::get_app_config_dir_override().is_some() {
+        return Ok(());
+    }
+
+    let default_dir = default_app_config_dir();
+    if default_dir.exists() {
+        return Ok(());
+    }
+
+    let legacy_dir = legacy_app_config_dir();
+    if !legacy_dir.exists() {
+        return Ok(());
+    }
+
+    copy_dir_recursive(&legacy_dir, &default_dir)?;
+    log::info!(
+        "Initialized cc-switch-remote config directory by copying {} to {}",
+        legacy_dir.display(),
+        default_dir.display()
+    );
+    Ok(())
+}
+
+/// 获取应用配置目录路径 (~/.cc-switch-remote)
 pub fn get_app_config_dir() -> PathBuf {
     if let Some(custom) = crate::app_store::get_app_config_dir_override() {
         return custom;
     }
 
-    let default_dir = get_home_dir().join(".cc-switch");
+    let default_dir = default_app_config_dir();
 
     // 兼容 v3.10.3：当用户环境存在 `HOME` 且与真实用户目录不同，
     // v3.10.3 可能在 `HOME/.cc-switch/` 下创建/使用了数据库。
@@ -105,7 +165,7 @@ pub fn get_app_config_dir() -> PathBuf {
             if let Ok(home_env) = std::env::var("HOME") {
                 let trimmed = home_env.trim();
                 if !trimmed.is_empty() {
-                    let legacy_dir = PathBuf::from(trimmed).join(".cc-switch");
+                    let legacy_dir = PathBuf::from(trimmed).join(APP_CONFIG_DIR_NAME);
                     if legacy_dir.join("cc-switch.db").exists() {
                         log::info!(
                             "Detected v3.10.3 legacy database at {}, using it instead of {}",

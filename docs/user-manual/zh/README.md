@@ -117,9 +117,9 @@
 
 ## 版本信息
 
-- 文档版本：v3.16.7
+- 文档版本：v3.16.8
 - 最后更新：2026-06-19
-- 适用于 CC Switch Remote v3.16.7+
+- 适用于 CC Switch Remote v3.16.8+
 
 ### CC Switch Remote 重点
 

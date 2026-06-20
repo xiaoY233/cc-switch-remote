@@ -309,6 +309,9 @@ pub fn run() {
 
             // 预先刷新 Store 覆盖配置，确保后续路径读取正确（日志/数据库等）
             app_store::refresh_app_config_dir_override(app.handle());
+            if let Err(e) = crate::config::ensure_remote_app_config_dir_initialized() {
+                eprintln!("初始化 cc-switch-remote 配置目录失败: {e}");
+            }
             panic_hook::init_app_config_dir(crate::config::get_app_config_dir());
             #[cfg(target_os = "windows")]
             set_windows_app_user_model_id(app.handle());

@@ -158,7 +158,7 @@ pnpm vitest run src/lib/query/remote.test.ts tests/components/RemoteSettingsPage
 - [中文用户手册](docs/user-manual/zh/README.md)
 - [远程服务器管理指南](docs/guides/remote-server-management-zh.md)
 - [远程功能对齐表](docs/remote-feature-parity.md)
-- [v3.16.7 发布说明](docs/release-notes/v3.16.7-zh.md)
+- [v3.16.8 发布说明](docs/release-notes/v3.16.8-zh.md)
 - [更新日志](CHANGELOG.md)
 
 ## 上游同步

@@ -177,6 +177,16 @@ mod tests {
 }
 
 pub fn run_entry(args: &[String]) -> CliRunResult {
+    if let Err(error) = crate::config::ensure_remote_app_config_dir_initialized() {
+        return CliRunResult::Json(
+            serde_json::to_value(types::err::<()>(
+                "app_config_dir_init_failed",
+                error.to_string(),
+            ))
+            .expect("serialize app config dir init error"),
+        );
+    }
+
     let args = normalize_args(args);
     if args == ["serve"] {
         return match serve::run_stdio() {

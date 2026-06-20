@@ -12,9 +12,9 @@
 
 ## Version / 版本 / バージョン
 
-- Documentation version: v3.16.7
+- Documentation version: v3.16.8
 - Last updated: 2026-06-19
-- Compatible with CC Switch Remote v3.16.7+
+- Compatible with CC Switch Remote v3.16.8+
 
 ## Links
 

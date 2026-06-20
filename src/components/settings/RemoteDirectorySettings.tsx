@@ -185,7 +185,7 @@ export function RemoteDirectorySettings({
           <div className="flex items-center gap-2">
             <Input
               value={appConfigDraft}
-              placeholder="~/.cc-switch"
+              placeholder="~/.cc-switch-remote"
               className="text-xs"
               disabled={isLoadingAppConfigDir || isSavingAppConfigDir}
               onChange={(event) => setAppConfigDraft(event.target.value)}

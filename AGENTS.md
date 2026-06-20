@@ -3,6 +3,7 @@
 ## Remote Server Management
 
 - Treat local and remote management as separate targets. Local state remains in the local CC Switch data directory and must not become the source of truth for a remote server.
+- CC Switch Remote must not mutate the upstream CC Switch app data directory in place. The remote fork defaults to its own `~/.cc-switch-remote` directory; if it needs existing upstream data, copy it into the remote directory first and migrate only the copy.
 - A remote server owns its own CC Switch state, database, tool config files, MCP entries, prompts, and skills. The desktop app stores only remote connection profiles and cached health metadata.
 - Build remote execution around a Rust CLI helper running on the remote host. The helper should reuse the Rust service/core logic that backs the Tauri app instead of reimplementing provider, MCP, prompt, or skill logic in TypeScript.
 - Keep any NPM package as an optional installer or thin wrapper for downloading and invoking the Rust binary. Do not put durable business logic in an NPM implementation.

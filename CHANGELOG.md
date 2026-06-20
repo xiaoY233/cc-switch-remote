@@ -5,6 +5,18 @@ All notable changes to CC Switch Remote will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.16.8] - 2026-06-20
+
+### Fixed
+
+- **Remote fork no longer upgrades the upstream CC Switch database in place**: CC Switch Remote now defaults to `~/.cc-switch-remote` instead of `~/.cc-switch`, preventing the remote fork from migrating the original CC Switch database to a schema version that upstream cannot open.
+- **One-time safe data copy for existing remote users**: On first launch, if `~/.cc-switch-remote` does not exist but legacy `~/.cc-switch` exists, CC Switch Remote copies the old directory into `~/.cc-switch-remote` and migrates the copy only. The original upstream directory is left untouched.
+- **Remote helper uses the isolated directory too**: The pure CLI helper now uses `~/.cc-switch-remote` by default and initializes the isolated directory before handling JSON commands or long-lived `serve` sessions.
+
+### Notes
+
+- Existing upstream CC Switch users who already hit schema mismatch can restore `~/.cc-switch/cc-switch.db` from a schema 10 backup. The schema 11 database can remain under `~/.cc-switch-remote` for CC Switch Remote.
+
 ## [3.16.7] - 2026-06-19
 
 This release covers the full `v3.16.6...v3.16.7` range: 9 commits and 95 changed files on top of upstream CC Switch v3.16.3. It continues the remote-management product branch by expanding remote settings, advanced settings, authentication, usage statistics, routing parity, helper lifecycle handling, release documentation, and the remote feature support matrix.
