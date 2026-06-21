@@ -537,7 +537,7 @@ pub fn create_anthropic_sse_stream_from_responses<E: std::error::Error + Send + 
                                     if !open_indices.remove(&index) {
                                         continue;
                                     }
-                                    if tool_name_by_index.get(&index).map(String::as_str) == Some("Read") {
+                                    if !tool_args_emitted_by_index.contains(&index) {
                                         let raw = data
                                             .get("arguments")
                                             .and_then(|v| v.as_str())
@@ -548,14 +548,20 @@ pub fn create_anthropic_sse_stream_from_responses<E: std::error::Error + Send + 
                                                     .cloned()
                                                     .unwrap_or_default()
                                             });
-                                        let sanitized = sanitize_anthropic_tool_use_input_json("Read", &raw);
-                                        if !sanitized.is_empty() {
+                                        let tool_name =
+                                            tool_name_by_index.get(&index).map(String::as_str);
+                                        let arguments = if tool_name == Some("Read") {
+                                            sanitize_anthropic_tool_use_input_json("Read", &raw)
+                                        } else {
+                                            raw
+                                        };
+                                        if !arguments.is_empty() {
                                             let event = json!({
                                                 "type": "content_block_delta",
                                                 "index": index,
                                                 "delta": {
                                                     "type": "input_json_delta",
-                                                    "partial_json": sanitized
+                                                    "partial_json": arguments
                                                 }
                                             });
                                             let sse = format!("event: content_block_delta\ndata: {}\n\n",
@@ -1022,6 +1028,45 @@ mod tests {
         assert!(merged.contains("\"input\":{}"));
         assert!(merged.contains("\"type\":\"input_json_delta\""));
         assert!(merged.contains("\"partial_json\":\"{\\\"command\\\":\\\"pwd\\\"}\""));
+        assert!(merged.contains("\"stop_reason\":\"tool_use\""));
+    }
+
+    #[tokio::test]
+    async fn test_streaming_function_call_arguments_done_backfills_non_read_tool() {
+        let input = concat!(
+            "event: response.created\n",
+            "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_shell\",\"model\":\"gpt-5-codex\"}}\n\n",
+            "event: response.output_item.added\n",
+            "data: {\"type\":\"response.output_item.added\",\"output_index\":1,\"item\":{\"id\":\"fc_shell\",\"type\":\"function_call\",\"status\":\"in_progress\",\"arguments\":\"\",\"call_id\":\"call_shell\",\"name\":\"Bash\"}}\n\n",
+            "event: response.function_call_arguments.done\n",
+            "data: {\"type\":\"response.function_call_arguments.done\",\"item_id\":\"fc_shell\",\"output_index\":1,\"arguments\":\"{\\\"command\\\":\\\"pwd\\\"}\"}\n\n",
+            "event: response.output_item.done\n",
+            "data: {\"type\":\"response.output_item.done\",\"output_index\":1,\"item\":{\"id\":\"fc_shell\",\"type\":\"function_call\",\"status\":\"completed\",\"arguments\":\"{\\\"command\\\":\\\"pwd\\\"}\",\"call_id\":\"call_shell\",\"name\":\"Bash\"}}\n\n",
+            "event: response.completed\n",
+            "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":7,\"output_tokens\":3}}}\n\n"
+        );
+
+        let upstream = stream::iter(vec![Ok::<_, std::io::Error>(Bytes::from(
+            input.as_bytes().to_vec(),
+        ))]);
+        let converted = create_anthropic_sse_stream_from_responses(upstream);
+        let chunks: Vec<_> = converted.collect().await;
+        let merged = chunks
+            .into_iter()
+            .map(|c| String::from_utf8_lossy(c.unwrap().as_ref()).to_string())
+            .collect::<String>();
+
+        assert!(merged.contains("\"type\":\"tool_use\""));
+        assert!(merged.contains("\"id\":\"call_shell\""));
+        assert!(merged.contains("\"name\":\"Bash\""));
+        assert!(merged.contains("\"type\":\"input_json_delta\""));
+        assert!(merged.contains("\"partial_json\":\"{\\\"command\\\":\\\"pwd\\\"}\""));
+        assert_eq!(
+            merged
+                .matches("\"partial_json\":\"{\\\"command\\\":\\\"pwd\\\"}\"")
+                .count(),
+            1
+        );
         assert!(merged.contains("\"stop_reason\":\"tool_use\""));
     }
 
