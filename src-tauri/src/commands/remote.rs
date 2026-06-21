@@ -1563,6 +1563,7 @@ pub async fn remote_get_model_pricing(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn remote_update_model_pricing(
     profile: RemoteHostProfile,
     model_id: String,
