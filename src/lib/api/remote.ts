@@ -147,6 +147,7 @@ export type RestoreMode = "exact" | "portable-provider";
 export type RestoreRiskKind =
   | "macos-path"
   | "windows-path"
+  | "unix-path"
   | "codex-desktop-runtime"
   | "local-proxy-url"
   | "desktop-only-config"

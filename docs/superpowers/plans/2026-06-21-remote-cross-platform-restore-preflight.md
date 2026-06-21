@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a remote-only preflight and portable restore path that prevents macOS/Windows Codex live-config fragments from being blindly restored onto Linux remote hosts.
+**Goal:** Add a remote-only preflight and portable restore path that prevents source-machine Codex live-config fragments, including macOS/Windows/Linux absolute paths, from being blindly restored onto remote hosts.
 
 **Architecture:** Keep upstream-local SQL import/export, provider storage, and local WebDAV/S3 sync unchanged. Add a focused Rust scanner for SQL provider payloads, expose it through remote commands and helper-only cloud-sync preview/import commands, then update the remote UI to show risks and let users choose exact or portable restore.
 

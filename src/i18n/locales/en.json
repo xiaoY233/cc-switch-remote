@@ -460,6 +460,7 @@
       "riskKinds": {
         "macos-path": "macOS path",
         "windows-path": "Windows path",
+        "unix-path": "Linux/Unix path",
         "codex-desktop-runtime": "Codex desktop runtime",
         "local-proxy-url": "Local proxy URL",
         "desktop-only-config": "Desktop-only config",

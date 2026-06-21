@@ -112,3 +112,51 @@ base_url = "http://127.0.0.1:15721/v1"
             && risk.toml_path == "model_providers.local.base_url"
     }));
 }
+
+#[test]
+fn detects_linux_absolute_paths_for_linux_to_linux_restore() {
+    let sql = sql_with_provider(
+        r#"
+[mcp_servers.local_tool]
+command = "/opt/company/bin/local-mcp"
+args = [ "/home/alice/.config/local-mcp/config.json" ]
+
+[mcp_servers.http_safe]
+type = "http"
+url = "https://mcp.deepwiki.com/mcp"
+"#,
+    );
+
+    let report = preflight_sql(&sql, SourceKind::S3Pull).expect("preflight");
+    assert!(report.risks.iter().any(|risk| {
+        risk.kind == RiskKind::UnixPath && risk.toml_path == "mcp_servers.local_tool.command"
+    }));
+    assert!(report.risks.iter().any(|risk| {
+        risk.kind == RiskKind::UnixPath && risk.toml_path == "mcp_servers.local_tool.args[0]"
+    }));
+    assert!(!report
+        .risks
+        .iter()
+        .any(|risk| risk.toml_path == "mcp_servers.http_safe.url"));
+}
+
+#[test]
+fn portable_transform_removes_linux_path_mcp_but_keeps_http_mcp() {
+    let sql = sql_with_provider(
+        r#"
+[mcp_servers.local_tool]
+command = "/usr/local/bin/local-mcp"
+args = [ "/root/.config/local-mcp/config.json" ]
+
+[mcp_servers.DeepWiki]
+type = "http"
+url = "https://mcp.deepwiki.com/mcp"
+"#,
+    );
+
+    let transformed = transform_sql_for_portable_restore(&sql).expect("transform");
+    assert!(!transformed.contains("/usr/local/bin/local-mcp"));
+    assert!(!transformed.contains("/root/.config/local-mcp/config.json"));
+    assert!(transformed.contains("mcp_servers.DeepWiki"));
+    assert!(transformed.contains("https://mcp.deepwiki.com/mcp"));
+}

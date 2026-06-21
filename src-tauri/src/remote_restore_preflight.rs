@@ -24,6 +24,7 @@ pub enum RestoreMode {
 pub enum RiskKind {
     MacosPath,
     WindowsPath,
+    UnixPath,
     CodexDesktopRuntime,
     LocalProxyUrl,
     DesktopOnlyConfig,
@@ -338,6 +339,14 @@ fn classify_value(
             RiskKind::WindowsPath,
             value,
         ));
+    } else if is_unix_absolute_path_like(value) {
+        risks.push(risk_for_path(
+            source,
+            provider_id,
+            path,
+            RiskKind::UnixPath,
+            value,
+        ));
     } else if value.contains("127.0.0.1:") || value.contains("localhost:") {
         risks.push(risk_for_path(
             source,
@@ -400,6 +409,7 @@ fn clean_codex_config(config: &str) -> Result<String, AppError> {
                     || text.contains(".app/Contents/")
                     || text.contains("C:\\Users\\")
                     || text.contains("\\\\wsl.localhost\\")
+                    || toml_text_contains_unix_absolute_path(&text)
                 {
                     Some(name.to_string())
                 } else {
@@ -414,4 +424,43 @@ fn clean_codex_config(config: &str) -> Result<String, AppError> {
     }
 
     Ok(doc.to_string())
+}
+
+fn is_unix_absolute_path_like(value: &str) -> bool {
+    let trimmed = value.trim();
+    if trimmed.starts_with("http://")
+        || trimmed.starts_with("https://")
+        || trimmed.starts_with("ws://")
+        || trimmed.starts_with("wss://")
+    {
+        return false;
+    }
+
+    trimmed.starts_with("/home/")
+        || trimmed.starts_with("/root/")
+        || trimmed.starts_with("/opt/")
+        || trimmed.starts_with("/usr/local/")
+        || trimmed.starts_with("/var/")
+        || trimmed.starts_with("/tmp/")
+        || trimmed.starts_with("/mnt/")
+        || trimmed.starts_with("/media/")
+        || trimmed.starts_with("/srv/")
+        || trimmed.starts_with("/etc/")
+}
+
+fn toml_text_contains_unix_absolute_path(text: &str) -> bool {
+    [
+        "\"/home/",
+        "\"/root/",
+        "\"/opt/",
+        "\"/usr/local/",
+        "\"/var/",
+        "\"/tmp/",
+        "\"/mnt/",
+        "\"/media/",
+        "\"/srv/",
+        "\"/etc/",
+    ]
+    .iter()
+    .any(|marker| text.contains(marker))
 }

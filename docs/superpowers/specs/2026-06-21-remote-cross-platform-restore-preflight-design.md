@@ -4,15 +4,16 @@
 
 CC Switch SQL backups export the SQLite database, including provider
 `settings_config` payloads. For Codex providers this payload can contain a full
-`config.toml` snapshot. When a backup created on macOS is restored onto a Linux
-remote host, that snapshot can carry macOS-only values such as `/Users/...`,
-`/Applications/...`, Codex Desktop plugin paths, `notify`, `node_repl`, desktop
-preferences, and local app runtime environment variables.
+`config.toml` snapshot. When a backup created on one machine is restored onto a
+different remote host, that snapshot can carry machine-local values such as
+`/Users/...`, `/Applications/...`, `/home/...`, `/root/...`, `/opt/...`, Codex
+Desktop plugin paths, `notify`, `node_repl`, desktop preferences, and local app
+runtime environment variables.
 
 Upstream CC Switch currently does not provide a general cross-platform TOML
 migration layer. Related upstream issues focus on preserving user-owned Codex
 `config.toml` sections during live rewrites, but not on converting macOS live
-config into Linux-compatible remote config.
+config into target-compatible remote config.
 
 This project should avoid changing upstream-local backup, WebDAV sync, provider
 storage, or Codex live write semantics. Those areas are high churn upstream
@@ -21,8 +22,8 @@ optional cleanup layer instead.
 
 ## Goals
 
-- Prevent accidental remote Linux restores that write macOS or Windows local
-  paths into remote Codex live config.
+- Prevent accidental remote restores that write source-machine local paths,
+  including Linux/Unix paths from another server, into remote Codex live config.
 - Keep local SQL backup/restore behavior compatible with upstream.
 - Keep local WebDAV/S3 sync behavior compatible with upstream.
 - Keep provider storage schema unchanged.
@@ -52,6 +53,8 @@ The scanner should identify obvious local-only markers:
 
 - macOS paths: `/Users/`, `/Applications/`, `.app/Contents/`
 - Windows paths: `C:\Users\`, `\\wsl.localhost\`
+- Linux/Unix paths: `/home/...`, `/root/...`, `/opt/...`, `/usr/local/...`,
+  `/var/...`, `/tmp/...`, `/mnt/...`, `/media/...`, `/srv/...`, `/etc/...`
 - Codex Desktop runtime entries: `notify`, `mcp_servers.node_repl`,
   `CODEX_CLI_PATH`, `CODEX_HOME`, `NODE_REPL_*`, `BROWSER_USE_*`
 - local proxy URLs: `127.0.0.1:<port>`, `localhost:<port>` when they point to a
@@ -101,8 +104,9 @@ For Codex, skip by default:
 - `[desktop]`
 - `[plugins]`
 - `[features]` entries known to be Codex Desktop local UI/plugin state
-- stdio MCP entries whose `command` is an absolute local path from another OS
-- env values that contain foreign absolute paths
+- stdio MCP entries whose `command` is an absolute local path from another
+  machine or OS
+- env values that contain source-machine absolute paths
 
 Skipped fields must be included in the restore report.
 
@@ -148,10 +152,11 @@ scanner and transformation behavior have tests.
 Focused tests should cover:
 
 - macOS Codex `notify` and Codex Desktop app bundle paths are detected.
-- Linux restore keeps provider route fields while skipping macOS-only runtime
-  fields in portable mode.
+- Linux restore keeps provider route fields while skipping source-machine
+  runtime fields in portable mode.
 - HTTP MCP server entries are retained.
-- stdio MCP entries with foreign absolute commands are skipped.
+- stdio MCP entries with foreign or source-machine absolute commands are
+  skipped.
 - exact restore leaves SQL unchanged.
 - malformed TOML produces a warning and prevents only portable cleanup for that
   provider.

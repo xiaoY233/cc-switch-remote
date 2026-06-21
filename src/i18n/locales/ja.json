@@ -460,6 +460,7 @@
       "riskKinds": {
         "macos-path": "macOS パス",
         "windows-path": "Windows パス",
+        "unix-path": "Linux/Unix パス",
         "codex-desktop-runtime": "Codex デスクトップ実行環境",
         "local-proxy-url": "ローカルプロキシ URL",
         "desktop-only-config": "デスクトップ専用設定",
