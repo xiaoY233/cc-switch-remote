@@ -26,6 +26,11 @@ export type {
   RemoteHostProfile,
   RemoteSessionStatus,
   RemoteToolVersion,
+  RestoreMode,
+  RestorePreflightReport,
+  RestoreRisk,
+  RestoreRiskKind,
+  RestoreSourceKind,
 } from "./remote";
 export type {
   CopilotDeviceCodeResponse,

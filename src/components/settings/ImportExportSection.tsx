@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import {
   AlertCircle,
+  AlertTriangle,
   CheckCircle2,
   FolderOpen,
   Loader2,
@@ -8,8 +9,22 @@ import {
   XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useTranslation } from "react-i18next";
 import type { ImportStatus } from "@/hooks/useImportExport";
+import type {
+  RestoreMode,
+  RestorePreflightReport,
+  RestoreRiskKind,
+} from "@/lib/api";
 
 interface ImportExportSectionProps {
   status: ImportStatus;
@@ -17,8 +32,12 @@ interface ImportExportSectionProps {
   errorMessage: string | null;
   backupId: string | null;
   isImporting: boolean;
+  restorePreflightReport?: RestorePreflightReport | null;
+  isRestorePreflightOpen?: boolean;
   onSelectFile: () => Promise<void>;
   onImport: () => Promise<void>;
+  onImportWithRestoreMode?: (mode: RestoreMode) => Promise<void>;
+  onCancelRestorePreflight?: () => void;
   onExport: () => Promise<void>;
   onClear: () => void;
 }
@@ -29,8 +48,12 @@ export function ImportExportSection({
   errorMessage,
   backupId,
   isImporting,
+  restorePreflightReport,
+  isRestorePreflightOpen = false,
   onSelectFile,
   onImport,
+  onImportWithRestoreMode,
+  onCancelRestorePreflight,
   onExport,
   onClear,
 }: ImportExportSectionProps) {
@@ -119,8 +142,129 @@ export function ImportExportSection({
           backupId={backupId}
         />
       </div>
+
+      <RemoteRestorePreflightDialog
+        open={isRestorePreflightOpen}
+        report={restorePreflightReport ?? null}
+        isImporting={isImporting}
+        onCancel={onCancelRestorePreflight}
+        onImport={onImportWithRestoreMode}
+      />
     </section>
   );
+}
+
+interface RemoteRestorePreflightDialogProps {
+  open: boolean;
+  report: RestorePreflightReport | null;
+  isImporting: boolean;
+  onCancel?: () => void;
+  onImport?: (mode: RestoreMode) => Promise<void>;
+}
+
+function RemoteRestorePreflightDialog({
+  open,
+  report,
+  isImporting,
+  onCancel,
+  onImport,
+}: RemoteRestorePreflightDialogProps) {
+  const { t } = useTranslation();
+  const risks = report?.risks ?? [];
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && onCancel?.()}>
+      <DialogContent className="max-w-2xl" zIndex="top">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-amber-500" />
+            {t("settings.remoteRestorePreflight.title")}
+          </DialogTitle>
+          <DialogDescription>
+            {t("settings.remoteRestorePreflight.description")}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="max-h-[50vh] space-y-3 overflow-y-auto px-6 py-4">
+          <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+            {t("settings.remoteRestorePreflight.modeHint")}
+          </div>
+
+          {risks.length > 0 ? (
+            <div className="space-y-2">
+              {risks.slice(0, 12).map((risk, index) => (
+                <div
+                  key={`${risk.providerId}-${risk.tomlPath}-${index}`}
+                  className="rounded-lg border border-border bg-background p-3"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="secondary">
+                      {risk.providerId || risk.appType}
+                    </Badge>
+                    <Badge variant="outline">
+                      {restoreRiskKindLabel(t, risk.kind)}
+                    </Badge>
+                    <code className="text-xs text-muted-foreground">
+                      {risk.tomlPath}
+                    </code>
+                  </div>
+                  {risk.valuePreview ? (
+                    <p className="mt-2 break-all text-xs text-muted-foreground">
+                      {risk.valuePreview}
+                    </p>
+                  ) : null}
+                </div>
+              ))}
+              {risks.length > 12 ? (
+                <p className="text-xs text-muted-foreground">
+                  {t("settings.remoteRestorePreflight.moreRisks", {
+                    count: risks.length - 12,
+                  })}
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {t("settings.remoteRestorePreflight.noRisks")}
+            </p>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onCancel}>
+            {t("common.cancel")}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isImporting || !onImport}
+            onClick={() => void onImport?.("exact")}
+          >
+            {t("settings.remoteRestorePreflight.exactRestore")}
+          </Button>
+          <Button
+            type="button"
+            disabled={isImporting || !onImport}
+            onClick={() => void onImport?.("portable-provider")}
+          >
+            {isImporting ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : null}
+            {t("settings.remoteRestorePreflight.portableRestore")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function restoreRiskKindLabel(
+  t: ReturnType<typeof useTranslation>["t"],
+  kind: RestoreRiskKind,
+): string {
+  return t(`settings.remoteRestorePreflight.riskKinds.${kind}`, {
+    defaultValue: kind,
+  });
 }
 
 interface ImportStatusMessageProps {

@@ -448,6 +448,25 @@
     "selectFileFailed": "有効な SQL バックアップファイルを選択してください",
     "configCorrupted": "SQL ファイルが壊れているか形式が無効な可能性があります",
     "backupId": "バックアップ ID",
+    "remoteRestorePreflight": {
+      "title": "リモート復元の事前チェック",
+      "description": "このバックアップにはローカルパス、デスクトップ実行環境、またはローカルプロキシ URL が含まれています。そのままリモート Linux ホストへ復元すると利用できない可能性があります。",
+      "modeHint": "ポータブル復元はプロバイダー、モデル、API URL、安全な HTTP/SSE MCP 設定を保持し、Codex デスクトッププラグイン、node_repl、ローカルパス、デスクトップ外観設定をスキップします。完全復元はすべてをそのままインポートします。",
+      "riskToast": "クロスプラットフォーム復元のリスクが検出されました。完全復元またはポータブル復元を選択してください。",
+      "exactRestore": "完全復元",
+      "portableRestore": "ポータブル復元",
+      "noRisks": "クロスプラットフォーム復元のリスクは見つかりませんでした。",
+      "moreRisks": "ほかに {{count}} 件のリスクがあります。",
+      "riskKinds": {
+        "macos-path": "macOS パス",
+        "windows-path": "Windows パス",
+        "codex-desktop-runtime": "Codex デスクトップ実行環境",
+        "local-proxy-url": "ローカルプロキシ URL",
+        "desktop-only-config": "デスクトップ専用設定",
+        "malformed-toml": "無効な TOML",
+        "unsupported-sql-shape": "未対応の SQL 構造"
+      }
+    },
     "backupManager": {
       "title": "データベースバックアップ",
       "description": "以前の状態に復元するための自動データベーススナップショット",

@@ -704,8 +704,20 @@ export function RemoteSettingsPage({
                       errorMessage={importExport.errorMessage}
                       backupId={importExport.backupId}
                       isImporting={importExport.isImporting}
+                      restorePreflightReport={
+                        importExport.restorePreflightReport
+                      }
+                      isRestorePreflightOpen={
+                        importExport.isRestorePreflightOpen
+                      }
                       onSelectFile={importExport.selectImportFile}
                       onImport={importExport.importConfig}
+                      onImportWithRestoreMode={
+                        importExport.importWithRestoreMode
+                      }
+                      onCancelRestorePreflight={
+                        importExport.cancelRestorePreflight
+                      }
                       onExport={importExport.exportConfig}
                       onClear={importExport.clearSelection}
                     />

@@ -448,6 +448,25 @@
     "selectFileFailed": "請選擇有效的 SQL 備份檔案",
     "configCorrupted": "SQL 檔案可能已損壞或格式不正確",
     "backupId": "備份 ID",
+    "remoteRestorePreflight": {
+      "title": "遠端還原預檢",
+      "description": "匯入到遠端主機前，偵測到備份內包含本機路徑、桌面執行環境或本機代理位址。這些內容直接還原到遠端 Linux 主機上可能無法使用。",
+      "modeHint": "可攜還原會保留供應商、模型、API 位址和安全的 HTTP/SSE MCP 設定，並略過 Codex 桌面外掛、node_repl、本機路徑和桌面外觀等本機專屬欄位。精確還原會原樣匯入。",
+      "riskToast": "偵測到跨平台還原風險，請選擇精確還原或可攜還原。",
+      "exactRestore": "精確還原",
+      "portableRestore": "可攜還原",
+      "noRisks": "未發現需要處理的跨平台風險。",
+      "moreRisks": "還有 {{count}} 條風險未顯示。",
+      "riskKinds": {
+        "macos-path": "macOS 路徑",
+        "windows-path": "Windows 路徑",
+        "codex-desktop-runtime": "Codex 桌面執行環境",
+        "local-proxy-url": "本機代理位址",
+        "desktop-only-config": "桌面端設定",
+        "malformed-toml": "TOML 格式異常",
+        "unsupported-sql-shape": "SQL 結構不支援"
+      }
+    },
     "backupManager": {
       "title": "資料庫備份",
       "description": "自動備份的資料庫快照，可用於還原至之前的狀態",

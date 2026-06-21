@@ -111,6 +111,52 @@ pub async fn download(
     db: &crate::database::Database,
     settings: &mut WebDavSyncSettings,
 ) -> Result<Value, AppError> {
+    download_with_restore_mode(
+        db,
+        settings,
+        crate::remote_restore_preflight::RestoreMode::Exact,
+    )
+    .await
+}
+
+pub async fn preflight_download(
+    settings: &WebDavSyncSettings,
+) -> Result<crate::remote_restore_preflight::RestorePreflightReport, AppError> {
+    settings.validate()?;
+    let auth = auth_for(settings);
+    let snapshot = find_remote_snapshot(settings, &auth)
+        .await?
+        .ok_or_else(|| {
+            localized(
+                "webdav.sync.remote_empty",
+                "远端没有可下载的同步数据",
+                "No downloadable sync data found on the remote.",
+            )
+        })?;
+
+    validate_manifest_compat(&snapshot.manifest, snapshot.layout)?;
+
+    let db_sql = download_and_verify(
+        settings,
+        &auth,
+        snapshot.layout,
+        REMOTE_DB_SQL,
+        &snapshot.manifest.artifacts,
+    )
+    .await?;
+    let sql = String::from_utf8(db_sql)
+        .map_err(|e| AppError::Message(format!("Remote WebDAV SQL is not UTF-8: {e}")))?;
+    crate::remote_restore_preflight::preflight_sql(
+        &sql,
+        crate::remote_restore_preflight::SourceKind::WebDavPull,
+    )
+}
+
+pub async fn download_with_restore_mode(
+    db: &crate::database::Database,
+    settings: &mut WebDavSyncSettings,
+    restore_mode: crate::remote_restore_preflight::RestoreMode,
+) -> Result<Value, AppError> {
     settings.validate()?;
     let auth = auth_for(settings);
     let snapshot = find_remote_snapshot(settings, &auth)
@@ -126,7 +172,7 @@ pub async fn download(
     validate_manifest_compat(&snapshot.manifest, snapshot.layout)?;
 
     // Download and verify artifacts
-    let db_sql = download_and_verify(
+    let mut db_sql = download_and_verify(
         settings,
         &auth,
         snapshot.layout,
@@ -142,6 +188,13 @@ pub async fn download(
         &snapshot.manifest.artifacts,
     )
     .await?;
+
+    if restore_mode == crate::remote_restore_preflight::RestoreMode::PortableProvider {
+        let sql = String::from_utf8(db_sql)
+            .map_err(|e| AppError::Message(format!("Remote WebDAV SQL is not UTF-8: {e}")))?;
+        db_sql =
+            crate::remote_restore_preflight::transform_sql_for_portable_restore(&sql)?.into_bytes();
+    }
 
     // Apply snapshot
     apply_snapshot(db, &db_sql, &skills_zip)?;

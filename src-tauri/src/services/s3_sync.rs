@@ -94,6 +94,53 @@ pub async fn download(
     db: &crate::database::Database,
     settings: &mut S3SyncSettings,
 ) -> Result<Value, AppError> {
+    download_with_restore_mode(
+        db,
+        settings,
+        crate::remote_restore_preflight::RestoreMode::Exact,
+    )
+    .await
+}
+
+pub async fn preflight_download(
+    settings: &S3SyncSettings,
+) -> Result<crate::remote_restore_preflight::RestorePreflightReport, AppError> {
+    settings.validate()?;
+    let creds = creds_for(settings);
+
+    let manifest_key = s3_key(settings, REMOTE_MANIFEST);
+    let (manifest_bytes, _etag) = s3::get_object(&creds, &manifest_key, MAX_MANIFEST_BYTES)
+        .await?
+        .ok_or_else(|| {
+            localized(
+                "s3.sync.remote_empty",
+                "远端没有可下载的同步数据",
+                "No downloadable sync data found on the remote.",
+            )
+        })?;
+
+    let manifest: SyncManifest =
+        serde_json::from_slice(&manifest_bytes).map_err(|e| AppError::Json {
+            path: REMOTE_MANIFEST.to_string(),
+            source: e,
+        })?;
+
+    validate_manifest_compat(&manifest, RemoteLayout::Current)?;
+
+    let db_sql = download_and_verify(settings, &creds, REMOTE_DB_SQL, &manifest.artifacts).await?;
+    let sql = String::from_utf8(db_sql)
+        .map_err(|e| AppError::Message(format!("Remote S3 SQL is not UTF-8: {e}")))?;
+    crate::remote_restore_preflight::preflight_sql(
+        &sql,
+        crate::remote_restore_preflight::SourceKind::S3Pull,
+    )
+}
+
+pub async fn download_with_restore_mode(
+    db: &crate::database::Database,
+    settings: &mut S3SyncSettings,
+    restore_mode: crate::remote_restore_preflight::RestoreMode,
+) -> Result<Value, AppError> {
     settings.validate()?;
     let creds = creds_for(settings);
 
@@ -117,9 +164,17 @@ pub async fn download(
     validate_manifest_compat(&manifest, RemoteLayout::Current)?;
 
     // Download and verify artifacts
-    let db_sql = download_and_verify(settings, &creds, REMOTE_DB_SQL, &manifest.artifacts).await?;
+    let mut db_sql =
+        download_and_verify(settings, &creds, REMOTE_DB_SQL, &manifest.artifacts).await?;
     let skills_zip =
         download_and_verify(settings, &creds, REMOTE_SKILLS_ZIP, &manifest.artifacts).await?;
+
+    if restore_mode == crate::remote_restore_preflight::RestoreMode::PortableProvider {
+        let sql = String::from_utf8(db_sql)
+            .map_err(|e| AppError::Message(format!("Remote S3 SQL is not UTF-8: {e}")))?;
+        db_sql =
+            crate::remote_restore_preflight::transform_sql_for_portable_restore(&sql)?.into_bytes();
+    }
 
     // Apply snapshot
     apply_snapshot(db, &db_sql, &skills_zip)?;

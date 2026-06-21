@@ -63,6 +63,9 @@ mod proxy;
 #[path = "../remote_capabilities.rs"]
 #[cfg(not(feature = "desktop"))]
 mod remote_capabilities;
+#[path = "../remote_restore_preflight.rs"]
+#[cfg(not(feature = "desktop"))]
+mod remote_restore_preflight;
 #[path = "../services/mod.rs"]
 #[cfg(not(feature = "desktop"))]
 mod services;

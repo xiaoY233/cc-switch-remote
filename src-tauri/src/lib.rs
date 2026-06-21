@@ -32,6 +32,7 @@ mod provider_defaults;
 mod proxy;
 pub mod remote;
 pub mod remote_capabilities;
+pub mod remote_restore_preflight;
 mod services;
 mod session_manager;
 mod settings;
@@ -1401,6 +1402,7 @@ pub fn run() {
             commands::remote_apply_claude_plugin_config,
             commands::remote_set_claude_onboarding_skip,
             commands::remote_export_config_to_file,
+            commands::remote_preflight_config_file,
             commands::remote_import_config_from_file,
             commands::remote_create_db_backup,
             commands::remote_list_db_backups,
@@ -1411,11 +1413,13 @@ pub fn run() {
             commands::remote_webdav_sync_save_settings,
             commands::remote_webdav_sync_upload,
             commands::remote_webdav_sync_download,
+            commands::remote_webdav_sync_download_preflight,
             commands::remote_webdav_sync_fetch_remote_info,
             commands::remote_s3_test_connection,
             commands::remote_s3_sync_save_settings,
             commands::remote_s3_sync_upload,
             commands::remote_s3_sync_download,
+            commands::remote_s3_sync_download_preflight,
             commands::remote_s3_sync_fetch_remote_info,
             commands::remote_get_tool_versions,
             commands::remote_run_tool_lifecycle_action,

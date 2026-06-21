@@ -2,7 +2,11 @@ import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { remoteApi, settingsApi } from "@/lib/api";
-import type { ManagementTarget } from "@/lib/api";
+import type {
+  ManagementTarget,
+  RestoreMode,
+  RestorePreflightReport,
+} from "@/lib/api";
 import { syncCurrentProvidersLiveSafe } from "@/utils/postChangeSync";
 
 export type ImportStatus =
@@ -23,9 +27,13 @@ export interface UseImportExportResult {
   errorMessage: string | null;
   backupId: string | null;
   isImporting: boolean;
+  restorePreflightReport: RestorePreflightReport | null;
+  isRestorePreflightOpen: boolean;
   selectImportFile: () => Promise<void>;
   clearSelection: () => void;
   importConfig: () => Promise<void>;
+  importWithRestoreMode: (mode: RestoreMode) => Promise<void>;
+  cancelRestorePreflight: () => void;
   exportConfig: () => Promise<void>;
   resetStatus: () => void;
 }
@@ -41,12 +49,17 @@ export function useImportExport(
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [backupId, setBackupId] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [restorePreflightReport, setRestorePreflightReport] =
+    useState<RestorePreflightReport | null>(null);
+  const [isRestorePreflightOpen, setIsRestorePreflightOpen] = useState(false);
 
   const clearSelection = useCallback(() => {
     setSelectedFile("");
     setStatus("idle");
     setErrorMessage(null);
     setBackupId(null);
+    setRestorePreflightReport(null);
+    setIsRestorePreflightOpen(false);
   }, []);
 
   const selectImportFile = useCallback(async () => {
@@ -56,6 +69,8 @@ export function useImportExport(
         setSelectedFile(filePath);
         setStatus("idle");
         setErrorMessage(null);
+        setRestorePreflightReport(null);
+        setIsRestorePreflightOpen(false);
       }
     } catch (error) {
       console.error("[useImportExport] Failed to open file dialog", error);
@@ -67,31 +82,13 @@ export function useImportExport(
     }
   }, [t]);
 
-  const importConfig = useCallback(async () => {
-    if (!selectedFile) {
-      toast.error(
-        t("settings.selectFileFailed", {
-          defaultValue: "请选择有效的 SQL 备份文件",
-        }),
-      );
-      return;
-    }
-
-    if (isImporting) return;
-
-    setIsImporting(true);
-    setStatus("importing");
-    setErrorMessage(null);
-
-    try {
-      const result =
-        target.type === "remote"
-          ? await remoteApi.importConfigFromFile(
-              target.profile,
-              selectedFile,
-              target.secret,
-            )
-          : await settingsApi.importConfigFromFile(selectedFile);
+  const handleImportResult = useCallback(
+    async (result: {
+      success: boolean;
+      message: string;
+      backupId?: string;
+      warning?: string;
+    }) => {
       if (!result.success) {
         setStatus("error");
         const message =
@@ -105,9 +102,6 @@ export function useImportExport(
       }
 
       setBackupId(result.backupId ?? null);
-      // 导入成功后立即触发外部刷新（与 live 同步结果解耦）
-      // - 避免 sync 失败时 UI 不刷新
-      // - 避免依赖 setTimeout（组件卸载会取消）
       void onImportSuccess?.();
 
       const syncResult =
@@ -135,6 +129,63 @@ export function useImportExport(
           }),
         );
       }
+    },
+    [onImportSuccess, t, target.type],
+  );
+
+  const executeImport = useCallback(
+    async (restoreMode: RestoreMode) => {
+      const result =
+        target.type === "remote"
+          ? await remoteApi.importConfigFromFile(
+              target.profile,
+              selectedFile,
+              target.secret,
+              { restoreMode },
+            )
+          : await settingsApi.importConfigFromFile(selectedFile);
+      await handleImportResult(result);
+    },
+    [handleImportResult, selectedFile, target],
+  );
+
+  const importConfig = useCallback(async () => {
+    if (!selectedFile) {
+      toast.error(
+        t("settings.selectFileFailed", {
+          defaultValue: "请选择有效的 SQL 备份文件",
+        }),
+      );
+      return;
+    }
+
+    if (isImporting) return;
+
+    setIsImporting(true);
+    setStatus("importing");
+    setErrorMessage(null);
+
+    try {
+      if (target.type === "remote") {
+        const report = await remoteApi.preflightConfigFile(
+          target.profile,
+          selectedFile,
+          target.secret,
+        );
+        setRestorePreflightReport(report);
+        if (report.hasBlockingRisks) {
+          setStatus("idle");
+          setIsRestorePreflightOpen(true);
+          toast.warning(
+            t("settings.remoteRestorePreflight.riskToast", {
+              defaultValue: "检测到跨平台恢复风险，请选择精确恢复或便携恢复。",
+            }),
+          );
+          return;
+        }
+      }
+
+      await executeImport("exact");
     } catch (error) {
       console.error("[useImportExport] Failed to import config", error);
       setStatus("error");
@@ -150,7 +201,42 @@ export function useImportExport(
     } finally {
       setIsImporting(false);
     }
-  }, [isImporting, onImportSuccess, selectedFile, t, target]);
+  }, [executeImport, isImporting, selectedFile, t, target]);
+
+  const importWithRestoreMode = useCallback(
+    async (mode: RestoreMode) => {
+      if (!selectedFile || isImporting) return;
+
+      setIsRestorePreflightOpen(false);
+      setIsImporting(true);
+      setStatus("importing");
+      setErrorMessage(null);
+
+      try {
+        await executeImport(mode);
+      } catch (error) {
+        console.error("[useImportExport] Failed to import config", error);
+        setStatus("error");
+        const message =
+          error instanceof Error ? error.message : String(error ?? "");
+        setErrorMessage(message);
+        toast.error(
+          t("settings.importFailedError", {
+            defaultValue: "导入配置失败: {{message}}",
+            message,
+          }),
+        );
+      } finally {
+        setIsImporting(false);
+      }
+    },
+    [executeImport, isImporting, selectedFile, t],
+  );
+
+  const cancelRestorePreflight = useCallback(() => {
+    setIsRestorePreflightOpen(false);
+    setStatus("idle");
+  }, []);
 
   const exportConfig = useCallback(async () => {
     try {
@@ -205,6 +291,8 @@ export function useImportExport(
     setStatus("idle");
     setErrorMessage(null);
     setBackupId(null);
+    setRestorePreflightReport(null);
+    setIsRestorePreflightOpen(false);
   }, []);
 
   return {
@@ -213,9 +301,13 @@ export function useImportExport(
     errorMessage,
     backupId,
     isImporting,
+    restorePreflightReport,
+    isRestorePreflightOpen,
     selectImportFile,
     clearSelection,
     importConfig,
+    importWithRestoreMode,
+    cancelRestorePreflight,
     exportConfig,
     resetStatus,
   };

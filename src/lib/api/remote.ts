@@ -142,6 +142,39 @@ export interface RemoteToolVersion {
   wsl_distro: string | null;
 }
 
+export type RestoreMode = "exact" | "portable-provider";
+
+export type RestoreRiskKind =
+  | "macos-path"
+  | "windows-path"
+  | "codex-desktop-runtime"
+  | "local-proxy-url"
+  | "desktop-only-config"
+  | "malformed-toml"
+  | "unsupported-sql-shape";
+
+export type RestoreSourceKind =
+  | "sql-file"
+  | "web-dav-pull"
+  | "s3-pull"
+  | "remote-backup";
+
+export interface RestoreRisk {
+  source: RestoreSourceKind;
+  appType: string;
+  providerId: string;
+  tomlPath: string;
+  kind: RestoreRiskKind;
+  valuePreview: string;
+  suggestedAction: string;
+}
+
+export interface RestorePreflightReport {
+  source: RestoreSourceKind;
+  hasBlockingRisks: boolean;
+  risks: RestoreRisk[];
+}
+
 export interface RemoteDeleteSessionOptions {
   providerId: string;
   sessionId: string;
@@ -521,6 +554,7 @@ export const remoteApi = {
     profile: RemoteHostProfile,
     filePath: string,
     secret?: RemoteConnectionSecret,
+    options?: { restoreMode?: RestoreMode },
   ): Promise<{
     success: boolean;
     message: string;
@@ -528,6 +562,19 @@ export const remoteApi = {
     warning?: string;
   }> {
     return invoke("remote_import_config_from_file", {
+      profile,
+      filePath,
+      secret,
+      options,
+    });
+  },
+
+  preflightConfigFile(
+    profile: RemoteHostProfile,
+    filePath: string,
+    secret?: RemoteConnectionSecret,
+  ): Promise<RestorePreflightReport> {
+    return invoke("remote_preflight_config_file", {
       profile,
       filePath,
       secret,
@@ -624,8 +671,20 @@ export const remoteApi = {
   webdavSyncDownload(
     profile: RemoteHostProfile,
     secret?: RemoteConnectionSecret,
+    options?: { restoreMode?: RestoreMode },
   ): Promise<{ status: string }> {
-    return invoke("remote_webdav_sync_download", { profile, secret });
+    return invoke("remote_webdav_sync_download", {
+      profile,
+      secret,
+      options,
+    });
+  },
+
+  webdavSyncDownloadPreflight(
+    profile: RemoteHostProfile,
+    secret?: RemoteConnectionSecret,
+  ): Promise<RestorePreflightReport> {
+    return invoke("remote_webdav_sync_download_preflight", { profile, secret });
   },
 
   webdavSyncFetchRemoteInfo(
@@ -673,8 +732,16 @@ export const remoteApi = {
   s3SyncDownload(
     profile: RemoteHostProfile,
     secret?: RemoteConnectionSecret,
+    options?: { restoreMode?: RestoreMode },
   ): Promise<{ status: string }> {
-    return invoke("remote_s3_sync_download", { profile, secret });
+    return invoke("remote_s3_sync_download", { profile, secret, options });
+  },
+
+  s3SyncDownloadPreflight(
+    profile: RemoteHostProfile,
+    secret?: RemoteConnectionSecret,
+  ): Promise<RestorePreflightReport> {
+    return invoke("remote_s3_sync_download_preflight", { profile, secret });
   },
 
   s3SyncFetchRemoteInfo(

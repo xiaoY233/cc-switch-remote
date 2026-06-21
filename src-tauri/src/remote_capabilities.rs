@@ -11,6 +11,7 @@ pub const REMOTE_HELPER_CAPABILITIES: &[&str] = &[
     "sessions",
     "hermes-memory",
     "import-export",
+    "restore-preflight",
     "cloud-sync",
     "tools",
     "stream-check",

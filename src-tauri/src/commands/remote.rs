@@ -442,12 +442,18 @@ pub async fn remote_export_config_to_file(
     }))
 }
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteImportOptions {
+    pub restore_mode: Option<crate::remote_restore_preflight::RestoreMode>,
+}
+
 #[tauri::command]
-pub async fn remote_import_config_from_file(
+pub async fn remote_preflight_config_file(
     profile: RemoteHostProfile,
     #[allow(non_snake_case)] filePath: String,
     secret: Option<RemoteConnectionSecret>,
-) -> Result<Value, String> {
+) -> Result<crate::remote_restore_preflight::RestorePreflightReport, String> {
     let source_path = PathBuf::from(&filePath);
     let sql = std::fs::read_to_string(&source_path).map_err(|e| e.to_string())?;
     let encoded = {
@@ -459,8 +465,44 @@ pub async fn remote_import_config_from_file(
         profile,
         vec![
             "import-export".to_string(),
-            "import-sql-b64".to_string(),
+            "preflight-sql-b64".to_string(),
             encoded,
+            "sql-file".to_string(),
+        ],
+        secret,
+        "Remote config import preflight",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_import_config_from_file(
+    profile: RemoteHostProfile,
+    #[allow(non_snake_case)] filePath: String,
+    secret: Option<RemoteConnectionSecret>,
+    options: Option<RemoteImportOptions>,
+) -> Result<Value, String> {
+    let source_path = PathBuf::from(&filePath);
+    let sql = std::fs::read_to_string(&source_path).map_err(|e| e.to_string())?;
+    let encoded = {
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
+        STANDARD.encode(sql)
+    };
+    let restore_mode = options
+        .and_then(|options| options.restore_mode)
+        .unwrap_or(crate::remote_restore_preflight::RestoreMode::Exact);
+    let restore_mode_arg = serde_json::to_value(restore_mode)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_string))
+        .unwrap_or_else(|| "exact".to_string());
+
+    run_remote_helper_json(
+        profile,
+        vec![
+            "import-export".to_string(),
+            "import-sql-b64-mode".to_string(),
+            encoded,
+            restore_mode_arg,
         ],
         secret,
         "Remote config import",
@@ -617,12 +659,42 @@ pub async fn remote_webdav_sync_upload(
 pub async fn remote_webdav_sync_download(
     profile: RemoteHostProfile,
     secret: Option<RemoteConnectionSecret>,
+    options: Option<RemoteImportOptions>,
 ) -> Result<Value, String> {
+    let restore_mode = options
+        .and_then(|options| options.restore_mode)
+        .unwrap_or(crate::remote_restore_preflight::RestoreMode::Exact);
+    let restore_mode_arg = serde_json::to_value(restore_mode)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_string))
+        .unwrap_or_else(|| "exact".to_string());
+
     run_remote_helper_json(
         profile,
-        vec!["cloud-sync".to_string(), "webdav-download".to_string()],
+        vec![
+            "cloud-sync".to_string(),
+            "webdav-download-mode".to_string(),
+            restore_mode_arg,
+        ],
         secret,
         "Remote WebDAV download",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_webdav_sync_download_preflight(
+    profile: RemoteHostProfile,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<crate::remote_restore_preflight::RestorePreflightReport, String> {
+    run_remote_helper_json(
+        profile,
+        vec![
+            "cloud-sync".to_string(),
+            "webdav-download-preflight".to_string(),
+        ],
+        secret,
+        "Remote WebDAV download preflight",
     )
     .await
 }
@@ -703,12 +775,42 @@ pub async fn remote_s3_sync_upload(
 pub async fn remote_s3_sync_download(
     profile: RemoteHostProfile,
     secret: Option<RemoteConnectionSecret>,
+    options: Option<RemoteImportOptions>,
 ) -> Result<Value, String> {
+    let restore_mode = options
+        .and_then(|options| options.restore_mode)
+        .unwrap_or(crate::remote_restore_preflight::RestoreMode::Exact);
+    let restore_mode_arg = serde_json::to_value(restore_mode)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_string))
+        .unwrap_or_else(|| "exact".to_string());
+
     run_remote_helper_json(
         profile,
-        vec!["cloud-sync".to_string(), "s3-download".to_string()],
+        vec![
+            "cloud-sync".to_string(),
+            "s3-download-mode".to_string(),
+            restore_mode_arg,
+        ],
         secret,
         "Remote S3 download",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_s3_sync_download_preflight(
+    profile: RemoteHostProfile,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<crate::remote_restore_preflight::RestorePreflightReport, String> {
+    run_remote_helper_json(
+        profile,
+        vec![
+            "cloud-sync".to_string(),
+            "s3-download-preflight".to_string(),
+        ],
+        secret,
+        "Remote S3 download preflight",
     )
     .await
 }

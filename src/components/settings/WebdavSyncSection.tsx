@@ -33,7 +33,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { settingsApi } from "@/lib/api";
-import type { ManagementTarget } from "@/lib/api/remote";
+import type {
+  ManagementTarget,
+  RestoreMode,
+  RestorePreflightReport,
+} from "@/lib/api/remote";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import type {
   RemoteSnapshotInfo,
@@ -230,6 +234,45 @@ function ActionButton({
   );
 }
 
+function RemoteRestoreRiskSummary({
+  report,
+}: {
+  report: RestorePreflightReport | null;
+}) {
+  const { t } = useTranslation();
+
+  if (!report?.hasBlockingRisks) return null;
+
+  return (
+    <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-amber-700 dark:text-amber-300">
+      <p className="font-medium">
+        {t("settings.remoteRestorePreflight.riskToast")}
+      </p>
+      <ul className="mt-2 space-y-1 text-xs">
+        {report.risks.slice(0, 4).map((risk, index) => (
+          <li key={`${risk.providerId}-${risk.tomlPath}-${index}`}>
+            <code className="rounded bg-background/70 px-1 py-0.5">
+              {risk.tomlPath}
+            </code>
+            {risk.valuePreview ? (
+              <span className="ml-1 break-all text-muted-foreground">
+                {risk.valuePreview}
+              </span>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+      {report.risks.length > 4 ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          {t("settings.remoteRestorePreflight.moreRisks", {
+            count: report.risks.length - 4,
+          })}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 // ─── Main component ─────────────────────────────────────────
 
 export function WebdavSyncSection({
@@ -315,16 +358,22 @@ export function WebdavSyncSection({
   // Confirmation dialog state
   const [dialogType, setDialogType] = useState<DialogType>(null);
   const [remoteInfo, setRemoteInfo] = useState<RemoteSnapshotInfo | null>(null);
+  const [restorePreflightReport, setRestorePreflightReport] =
+    useState<RestorePreflightReport | null>(null);
+  const [s3RestorePreflightReport, setS3RestorePreflightReport] =
+    useState<RestorePreflightReport | null>(null);
   const [showAutoSyncConfirm, setShowAutoSyncConfirm] = useState(false);
 
   const closeDialog = useCallback(() => {
     setDialogType(null);
     setRemoteInfo(null);
+    setRestorePreflightReport(null);
   }, []);
 
   const closeS3Dialog = useCallback(() => {
     setS3DialogType(null);
     setS3RemoteInfo(null);
+    setS3RestorePreflightReport(null);
   }, []);
 
   // Cleanup justSaved timer on unmount
@@ -624,6 +673,12 @@ export function WebdavSyncSection({
         return;
       }
       setRemoteInfo(info);
+      if (target?.type === "remote") {
+        const report = await settingsApi.webdavSyncDownloadPreflight(target);
+        setRestorePreflightReport(report);
+      } else {
+        setRestorePreflightReport(null);
+      }
       setDialogType("download");
     } catch (error) {
       toast.error(
@@ -637,27 +692,30 @@ export function WebdavSyncSection({
   }, [dirty, target, t]);
 
   /** Actually perform the download after user confirms. */
-  const handleDownloadConfirm = useCallback(async () => {
-    if (dirty) {
-      toast.error(t("settings.webdavSync.unsavedChanges"));
-      return;
-    }
-    closeDialog();
-    setActionState("downloading");
-    try {
-      await settingsApi.webdavSyncDownload(target);
-      toast.success(t("settings.webdavSync.downloadSuccess"));
-      await queryClient.invalidateQueries();
-    } catch (error) {
-      toast.error(
-        t("settings.webdavSync.downloadFailed", {
-          error: (error as Error)?.message ?? String(error),
-        }),
-      );
-    } finally {
-      setActionState("idle");
-    }
-  }, [closeDialog, dirty, queryClient, target, t]);
+  const handleDownloadConfirm = useCallback(
+    async (restoreMode: RestoreMode = "exact") => {
+      if (dirty) {
+        toast.error(t("settings.webdavSync.unsavedChanges"));
+        return;
+      }
+      closeDialog();
+      setActionState("downloading");
+      try {
+        await settingsApi.webdavSyncDownload(target, { restoreMode });
+        toast.success(t("settings.webdavSync.downloadSuccess"));
+        await queryClient.invalidateQueries();
+      } catch (error) {
+        toast.error(
+          t("settings.webdavSync.downloadFailed", {
+            error: (error as Error)?.message ?? String(error),
+          }),
+        );
+      } finally {
+        setActionState("idle");
+      }
+    },
+    [closeDialog, dirty, queryClient, target, t],
+  );
 
   // ─── S3 helpers ────────────────────────────────────────────
 
@@ -836,6 +894,12 @@ export function WebdavSyncSection({
         return;
       }
       setS3RemoteInfo(info);
+      if (target?.type === "remote") {
+        const report = await settingsApi.s3SyncDownloadPreflight(target);
+        setS3RestorePreflightReport(report);
+      } else {
+        setS3RestorePreflightReport(null);
+      }
       setS3DialogType("download");
     } catch (error) {
       toast.error(
@@ -848,27 +912,30 @@ export function WebdavSyncSection({
     }
   }, [s3Dirty, target, t]);
 
-  const handleS3DownloadConfirm = useCallback(async () => {
-    if (s3Dirty) {
-      toast.error(t("settings.s3Sync.unsavedChanges"));
-      return;
-    }
-    closeS3Dialog();
-    setS3ActionState("downloading");
-    try {
-      await settingsApi.s3SyncDownload(target);
-      toast.success(t("settings.s3Sync.downloadSuccess"));
-      await queryClient.invalidateQueries();
-    } catch (error) {
-      toast.error(
-        t("settings.s3Sync.downloadFailed", {
-          error: (error as Error)?.message ?? String(error),
-        }),
-      );
-    } finally {
-      setS3ActionState("idle");
-    }
-  }, [closeS3Dialog, s3Dirty, queryClient, target, t]);
+  const handleS3DownloadConfirm = useCallback(
+    async (restoreMode: RestoreMode = "exact") => {
+      if (s3Dirty) {
+        toast.error(t("settings.s3Sync.unsavedChanges"));
+        return;
+      }
+      closeS3Dialog();
+      setS3ActionState("downloading");
+      try {
+        await settingsApi.s3SyncDownload(target, { restoreMode });
+        toast.success(t("settings.s3Sync.downloadSuccess"));
+        await queryClient.invalidateQueries();
+      } catch (error) {
+        toast.error(
+          t("settings.s3Sync.downloadFailed", {
+            error: (error as Error)?.message ?? String(error),
+          }),
+        );
+      } finally {
+        setS3ActionState("idle");
+      }
+    },
+    [closeS3Dialog, s3Dirty, queryClient, target, t],
+  );
 
   // ─── Sync type switching with mutual exclusion ─────────────
 
@@ -1693,6 +1760,7 @@ export function WebdavSyncSection({
                     {t("settings.webdavSync.confirmDownload.legacyNotice")}
                   </p>
                 )}
+                <RemoteRestoreRiskSummary report={restorePreflightReport} />
                 <p className="text-destructive font-medium">
                   {t("settings.webdavSync.confirmDownload.warning")}
                 </p>
@@ -1703,7 +1771,18 @@ export function WebdavSyncSection({
             <Button variant="outline" onClick={closeDialog}>
               {t("common.cancel")}
             </Button>
-            <Button variant="destructive" onClick={handleDownloadConfirm}>
+            {restorePreflightReport?.hasBlockingRisks ? (
+              <Button
+                variant="secondary"
+                onClick={() => void handleDownloadConfirm("portable-provider")}
+              >
+                {t("settings.remoteRestorePreflight.portableRestore")}
+              </Button>
+            ) : null}
+            <Button
+              variant="destructive"
+              onClick={() => void handleDownloadConfirm("exact")}
+            >
               {t("settings.webdavSync.confirmDownload.confirm")}
             </Button>
           </DialogFooter>
@@ -1812,6 +1891,7 @@ export function WebdavSyncSection({
                     <dd>{s3RemoteInfo.artifacts.join(", ")}</dd>
                   </dl>
                 )}
+                <RemoteRestoreRiskSummary report={s3RestorePreflightReport} />
                 <p className="text-destructive font-medium">
                   {t("settings.s3Sync.confirmDownload.warning")}
                 </p>
@@ -1822,7 +1902,20 @@ export function WebdavSyncSection({
             <Button variant="outline" onClick={closeS3Dialog}>
               {t("common.cancel")}
             </Button>
-            <Button variant="destructive" onClick={handleS3DownloadConfirm}>
+            {s3RestorePreflightReport?.hasBlockingRisks ? (
+              <Button
+                variant="secondary"
+                onClick={() =>
+                  void handleS3DownloadConfirm("portable-provider")
+                }
+              >
+                {t("settings.remoteRestorePreflight.portableRestore")}
+              </Button>
+            ) : null}
+            <Button
+              variant="destructive"
+              onClick={() => void handleS3DownloadConfirm("exact")}
+            >
               {t("settings.s3Sync.confirmDownload.confirm")}
             </Button>
           </DialogFooter>

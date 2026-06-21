@@ -74,6 +74,51 @@ mod tests {
     }
 
     #[test]
+    fn status_advertises_restore_preflight_capability() {
+        let response = run_command(&["status".to_string()]);
+        let capabilities = response
+            .get("data")
+            .and_then(|data| data.get("capabilities"))
+            .and_then(Value::as_array)
+            .expect("status capabilities");
+
+        assert!(capabilities
+            .iter()
+            .any(|capability| capability == "restore-preflight"));
+    }
+
+    #[test]
+    fn import_export_preflight_sql_b64_returns_report() {
+        let settings = serde_json::json!({
+            "auth": {},
+            "config": "notify = [\"/Users/test/.codex/hook\", \"turn-ended\"]\n"
+        });
+        let escaped = settings.to_string().replace('\'', "''");
+        let sql = format!(
+            "INSERT INTO \"providers\" (\"id\",\"app_type\",\"name\",\"settings_config\",\"meta\",\"is_current\",\"category\") VALUES ('newapi','codex','NewAPI','{escaped}','{{}}',1,'third_party');"
+        );
+        let encoded = {
+            use base64::{engine::general_purpose::STANDARD, Engine as _};
+            STANDARD.encode(sql)
+        };
+
+        let response = run_command(&[
+            "import-export".to_string(),
+            "preflight-sql-b64".to_string(),
+            encoded,
+            "sql-file".to_string(),
+        ]);
+
+        assert_eq!(response.get("ok").and_then(Value::as_bool), Some(true));
+        assert_eq!(
+            response
+                .pointer("/data/hasBlockingRisks")
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+    }
+
+    #[test]
     fn auth_status_returns_remote_managed_auth_state() {
         let dir = tempfile::tempdir().expect("temp test home");
         let previous_home = std::env::var_os("CC_SWITCH_TEST_HOME");
@@ -367,6 +412,41 @@ pub(crate) fn run_command(args: &[String]) -> Value {
                 Err(message) => {
                     serde_json::to_value(types::err::<()>("import_export_import_failed", message))
                         .expect("serialize sql import error")
+                }
+            }
+        }
+        [group, cmd, encoded_sql, source]
+            if group == "import-export" && cmd == "preflight-sql-b64" =>
+        {
+            let source = serde_json::from_str::<crate::remote_restore_preflight::SourceKind>(
+                &format!("\"{source}\""),
+            )
+            .unwrap_or(crate::remote_restore_preflight::SourceKind::SqlFile);
+            match commands::preflight_database_sql_b64(encoded_sql, source) {
+                Ok(value) => {
+                    serde_json::to_value(types::ok(value)).expect("serialize import preflight")
+                }
+                Err(message) => serde_json::to_value(types::err::<()>(
+                    "import_export_preflight_failed",
+                    message,
+                ))
+                .expect("serialize import preflight error"),
+            }
+        }
+        [group, cmd, encoded_sql, mode]
+            if group == "import-export" && cmd == "import-sql-b64-mode" =>
+        {
+            let mode = serde_json::from_str::<crate::remote_restore_preflight::RestoreMode>(
+                &format!("\"{mode}\""),
+            )
+            .unwrap_or(crate::remote_restore_preflight::RestoreMode::Exact);
+            match commands::import_database_sql_b64_with_mode(encoded_sql, mode) {
+                Ok(value) => {
+                    serde_json::to_value(types::ok(value)).expect("serialize import with mode")
+                }
+                Err(message) => {
+                    serde_json::to_value(types::err::<()>("import_export_import_failed", message))
+                        .expect("serialize import with mode error")
                 }
             }
         }
@@ -755,6 +835,32 @@ pub(crate) fn run_command(args: &[String]) -> Value {
                     .expect("serialize webdav download error"),
             }
         }
+        [group, cmd] if group == "cloud-sync" && cmd == "webdav-download-preflight" => {
+            match commands::webdav_download_preflight() {
+                Ok(value) => serde_json::to_value(types::ok(value))
+                    .expect("serialize webdav download preflight"),
+                Err(message) => serde_json::to_value(types::err::<()>(
+                    "webdav_download_preflight_failed",
+                    message,
+                ))
+                .expect("serialize webdav download preflight error"),
+            }
+        }
+        [group, cmd, mode] if group == "cloud-sync" && cmd == "webdav-download-mode" => {
+            let mode = serde_json::from_str::<crate::remote_restore_preflight::RestoreMode>(
+                &format!("\"{mode}\""),
+            )
+            .unwrap_or(crate::remote_restore_preflight::RestoreMode::Exact);
+            match commands::webdav_download_with_mode(mode) {
+                Ok(value) => serde_json::to_value(types::ok(value))
+                    .expect("serialize webdav download with mode"),
+                Err(message) => serde_json::to_value(types::err::<()>(
+                    "webdav_download_failed",
+                    message,
+                ))
+                .expect("serialize webdav download with mode error"),
+            }
+        }
         [group, cmd] if group == "cloud-sync" && cmd == "webdav-remote-info" => {
             match commands::webdav_fetch_remote_info() {
                 Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize webdav remote info"),
@@ -788,6 +894,33 @@ pub(crate) fn run_command(args: &[String]) -> Value {
                 Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize s3 download"),
                 Err(message) => serde_json::to_value(types::err::<()>("s3_download_failed", message))
                     .expect("serialize s3 download error"),
+            }
+        }
+        [group, cmd] if group == "cloud-sync" && cmd == "s3-download-preflight" => {
+            match commands::s3_download_preflight() {
+                Ok(value) => {
+                    serde_json::to_value(types::ok(value)).expect("serialize s3 download preflight")
+                }
+                Err(message) => serde_json::to_value(types::err::<()>(
+                    "s3_download_preflight_failed",
+                    message,
+                ))
+                .expect("serialize s3 download preflight error"),
+            }
+        }
+        [group, cmd, mode] if group == "cloud-sync" && cmd == "s3-download-mode" => {
+            let mode = serde_json::from_str::<crate::remote_restore_preflight::RestoreMode>(
+                &format!("\"{mode}\""),
+            )
+            .unwrap_or(crate::remote_restore_preflight::RestoreMode::Exact);
+            match commands::s3_download_with_mode(mode) {
+                Ok(value) => {
+                    serde_json::to_value(types::ok(value)).expect("serialize s3 download with mode")
+                }
+                Err(message) => {
+                    serde_json::to_value(types::err::<()>("s3_download_failed", message))
+                        .expect("serialize s3 download with mode error")
+                }
             }
         }
         [group, cmd] if group == "cloud-sync" && cmd == "s3-remote-info" => {

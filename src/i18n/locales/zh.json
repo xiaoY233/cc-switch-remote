@@ -448,6 +448,25 @@
     "selectFileFailed": "请选择有效的 SQL 备份文件",
     "configCorrupted": "SQL 文件可能已损坏或格式不正确",
     "backupId": "备份ID",
+    "remoteRestorePreflight": {
+      "title": "远程恢复预检",
+      "description": "导入到远程主机前，检测到备份里包含本机路径、桌面运行时或本机代理地址。这些内容直接恢复到远程 Linux 主机上可能不可用。",
+      "modeHint": "便携恢复会保留供应商、模型、API 地址和安全的 HTTP/SSE MCP 配置，并跳过 Codex 桌面插件、node_repl、本机路径和桌面外观等本机专属字段。精确恢复会原样导入。",
+      "riskToast": "检测到跨平台恢复风险，请选择精确恢复或便携恢复。",
+      "exactRestore": "精确恢复",
+      "portableRestore": "便携恢复",
+      "noRisks": "未发现需要处理的跨平台风险。",
+      "moreRisks": "还有 {{count}} 条风险未显示。",
+      "riskKinds": {
+        "macos-path": "macOS 路径",
+        "windows-path": "Windows 路径",
+        "codex-desktop-runtime": "Codex 桌面运行时",
+        "local-proxy-url": "本机代理地址",
+        "desktop-only-config": "桌面端配置",
+        "malformed-toml": "TOML 格式异常",
+        "unsupported-sql-shape": "SQL 结构不支持"
+      }
+    },
     "backupManager": {
       "title": "数据库备份",
       "description": "自动备份的数据库快照，可用于恢复到之前的状态",

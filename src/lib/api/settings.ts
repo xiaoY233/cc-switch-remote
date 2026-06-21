@@ -6,7 +6,12 @@ import type {
   RemoteSnapshotInfo,
 } from "@/types";
 import type { AppId } from "./types";
-import { remoteApi, type ManagementTarget } from "./remote";
+import {
+  remoteApi,
+  type ManagementTarget,
+  type RestoreMode,
+  type RestorePreflightReport,
+} from "./remote";
 
 export interface ConfigTransferResult {
   success: boolean;
@@ -178,11 +183,29 @@ export const settingsApi = {
 
   async webdavSyncDownload(
     target?: ManagementTarget,
+    options?: { restoreMode?: RestoreMode },
   ): Promise<WebDavSyncResult> {
     if (target?.type === "remote") {
+      if (options) {
+        return await remoteApi.webdavSyncDownload(
+          target.profile,
+          target.secret,
+          options,
+        );
+      }
       return await remoteApi.webdavSyncDownload(target.profile, target.secret);
     }
     return await invoke("webdav_sync_download");
+  },
+
+  async webdavSyncDownloadPreflight(
+    target?: ManagementTarget,
+  ): Promise<RestorePreflightReport | null> {
+    if (target?.type !== "remote") return null;
+    return await remoteApi.webdavSyncDownloadPreflight(
+      target.profile,
+      target.secret,
+    );
   },
 
   async webdavSyncSaveSettings(
@@ -244,11 +267,31 @@ export const settingsApi = {
     return await invoke("s3_sync_upload");
   },
 
-  async s3SyncDownload(target?: ManagementTarget): Promise<WebDavSyncResult> {
+  async s3SyncDownload(
+    target?: ManagementTarget,
+    options?: { restoreMode?: RestoreMode },
+  ): Promise<WebDavSyncResult> {
     if (target?.type === "remote") {
+      if (options) {
+        return await remoteApi.s3SyncDownload(
+          target.profile,
+          target.secret,
+          options,
+        );
+      }
       return await remoteApi.s3SyncDownload(target.profile, target.secret);
     }
     return await invoke("s3_sync_download");
+  },
+
+  async s3SyncDownloadPreflight(
+    target?: ManagementTarget,
+  ): Promise<RestorePreflightReport | null> {
+    if (target?.type !== "remote") return null;
+    return await remoteApi.s3SyncDownloadPreflight(
+      target.profile,
+      target.secret,
+    );
   },
 
   async s3SyncSaveSettings(

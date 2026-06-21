@@ -181,11 +181,7 @@ pub fn auth_poll_for_account(
                         let default_account_id =
                             COPILOT_AUTH_MANAGER.get_status().await.default_account_id;
                         Ok(account.map(|account| {
-                            map_auth_account(
-                                auth_provider,
-                                account,
-                                default_account_id.as_deref(),
-                            )
+                            map_auth_account(auth_provider, account, default_account_id.as_deref())
                         }))
                     }
                     Err(CopilotAuthError::AuthorizationPending) => Ok(None),
@@ -198,11 +194,7 @@ pub fn auth_poll_for_account(
                         let default_account_id =
                             CODEX_OAUTH_MANAGER.get_status().await.default_account_id;
                         Ok(account.map(|account| {
-                            map_auth_account(
-                                auth_provider,
-                                account,
-                                default_account_id.as_deref(),
-                            )
+                            map_auth_account(auth_provider, account, default_account_id.as_deref())
                         }))
                     }
                     Err(CodexOAuthError::AuthorizationPending) => Ok(None),
@@ -261,11 +253,7 @@ pub fn auth_get_status(auth_provider: &str) -> Result<ManagedAuthStatus, String>
                         .accounts
                         .into_iter()
                         .map(|account| {
-                            map_auth_account(
-                                auth_provider,
-                                account,
-                                default_account_id.as_deref(),
-                            )
+                            map_auth_account(auth_provider, account, default_account_id.as_deref())
                         })
                         .collect(),
                 })
@@ -282,11 +270,7 @@ pub fn auth_get_status(auth_provider: &str) -> Result<ManagedAuthStatus, String>
                         .accounts
                         .into_iter()
                         .map(|account| {
-                            map_auth_account(
-                                auth_provider,
-                                account,
-                                default_account_id.as_deref(),
-                            )
+                            map_auth_account(auth_provider, account, default_account_id.as_deref())
                         })
                         .collect(),
                 })
@@ -504,6 +488,35 @@ pub fn webdav_download() -> Result<Value, String> {
     Ok(value)
 }
 
+pub fn webdav_download_preflight(
+) -> Result<crate::remote_restore_preflight::RestorePreflightReport, String> {
+    let settings = require_enabled_webdav_settings()?;
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+    runtime
+        .block_on(crate::services::webdav_sync::run_with_sync_lock(
+            crate::services::webdav_sync::preflight_download(&settings),
+        ))
+        .map_err(|e| e.to_string())
+}
+
+pub fn webdav_download_with_mode(
+    mode: crate::remote_restore_preflight::RestoreMode,
+) -> Result<Value, String> {
+    let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
+    let db_for_sync = Arc::clone(&db);
+    let mut settings = require_enabled_webdav_settings()?;
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+    let mut value = map_webdav_sync_result(
+        runtime.block_on(crate::services::webdav_sync::run_with_sync_lock(
+            crate::services::webdav_sync::download_with_restore_mode(&db, &mut settings, mode),
+        )),
+        &mut settings,
+        "manual",
+    )?;
+    attach_cli_warning(&mut value, run_cli_post_import_sync(db_for_sync).err());
+    Ok(value)
+}
+
 pub fn webdav_fetch_remote_info() -> Result<Value, String> {
     let settings = require_enabled_webdav_settings()?;
     let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
@@ -566,6 +579,35 @@ pub fn s3_download() -> Result<Value, String> {
     let mut value = map_s3_sync_result(
         runtime.block_on(crate::services::s3_sync::run_with_sync_lock(
             crate::services::s3_sync::download(&db, &mut settings),
+        )),
+        &mut settings,
+        "manual",
+    )?;
+    attach_cli_warning(&mut value, run_cli_post_import_sync(db_for_sync).err());
+    Ok(value)
+}
+
+pub fn s3_download_preflight(
+) -> Result<crate::remote_restore_preflight::RestorePreflightReport, String> {
+    let settings = require_enabled_s3_settings()?;
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+    runtime
+        .block_on(crate::services::s3_sync::run_with_sync_lock(
+            crate::services::s3_sync::preflight_download(&settings),
+        ))
+        .map_err(|e| e.to_string())
+}
+
+pub fn s3_download_with_mode(
+    mode: crate::remote_restore_preflight::RestoreMode,
+) -> Result<Value, String> {
+    let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
+    let db_for_sync = Arc::clone(&db);
+    let mut settings = require_enabled_s3_settings()?;
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+    let mut value = map_s3_sync_result(
+        runtime.block_on(crate::services::s3_sync::run_with_sync_lock(
+            crate::services::s3_sync::download_with_restore_mode(&db, &mut settings, mode),
         )),
         &mut settings,
         "manual",
@@ -1675,6 +1717,41 @@ pub fn import_database_sql_b64(encoded_sql: &str) -> Result<Value, String> {
         payload["warning"] = Value::String(warning);
     }
     Ok(payload)
+}
+
+pub fn preflight_database_sql_b64(
+    encoded_sql: &str,
+    source: crate::remote_restore_preflight::SourceKind,
+) -> Result<crate::remote_restore_preflight::RestorePreflightReport, String> {
+    let sql_bytes = {
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
+        STANDARD.decode(encoded_sql).map_err(|e| e.to_string())?
+    };
+    let sql = String::from_utf8(sql_bytes).map_err(|e| e.to_string())?;
+    crate::remote_restore_preflight::preflight_sql(&sql, source).map_err(|e| e.to_string())
+}
+
+pub fn import_database_sql_b64_with_mode(
+    encoded_sql: &str,
+    mode: crate::remote_restore_preflight::RestoreMode,
+) -> Result<Value, String> {
+    let sql_bytes = {
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
+        STANDARD.decode(encoded_sql).map_err(|e| e.to_string())?
+    };
+    let sql = String::from_utf8(sql_bytes).map_err(|e| e.to_string())?;
+    let sql = match mode {
+        crate::remote_restore_preflight::RestoreMode::Exact => sql,
+        crate::remote_restore_preflight::RestoreMode::PortableProvider => {
+            crate::remote_restore_preflight::transform_sql_for_portable_restore(&sql)
+                .map_err(|e| e.to_string())?
+        }
+    };
+    let encoded = {
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
+        STANDARD.encode(sql)
+    };
+    import_database_sql_b64(&encoded)
 }
 
 pub fn create_database_backup() -> Result<String, String> {

@@ -448,6 +448,25 @@
     "selectFileFailed": "Please choose a valid SQL backup file",
     "configCorrupted": "SQL file may be corrupted or invalid",
     "backupId": "Backup ID",
+    "remoteRestorePreflight": {
+      "title": "Remote Restore Preflight",
+      "description": "This backup contains local paths, desktop runtime entries, or local proxy URLs. Restoring them unchanged to a remote Linux host may make that host unusable.",
+      "modeHint": "Portable restore keeps provider, model, API URL, and safe HTTP/SSE MCP settings, while skipping Codex desktop plugin, node_repl, local paths, and desktop appearance fields. Exact restore imports everything unchanged.",
+      "riskToast": "Cross-platform restore risks detected. Choose exact restore or portable restore.",
+      "exactRestore": "Exact Restore",
+      "portableRestore": "Portable Restore",
+      "noRisks": "No cross-platform restore risks found.",
+      "moreRisks": "{{count}} more risks are hidden.",
+      "riskKinds": {
+        "macos-path": "macOS path",
+        "windows-path": "Windows path",
+        "codex-desktop-runtime": "Codex desktop runtime",
+        "local-proxy-url": "Local proxy URL",
+        "desktop-only-config": "Desktop-only config",
+        "malformed-toml": "Invalid TOML",
+        "unsupported-sql-shape": "Unsupported SQL shape"
+      }
+    },
     "backupManager": {
       "title": "Database Backups",
       "description": "Automatic database snapshots for restoring to a previous state",
