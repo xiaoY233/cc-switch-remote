@@ -278,6 +278,17 @@ pub fn codex_auth_has_oauth_login_material(auth: &Value) -> bool {
     })
 }
 
+fn existing_codex_live_auth_has_login_material() -> bool {
+    let auth_path = get_codex_auth_path();
+    let Ok(text) = std::fs::read_to_string(auth_path) else {
+        return false;
+    };
+    let Ok(auth) = serde_json::from_str::<Value>(&text) else {
+        return false;
+    };
+    codex_auth_has_login_material(&auth)
+}
+
 pub fn should_restore_codex_provider_token_for_backfill(
     category: Option<&str>,
     template_settings: &Value,
@@ -1234,9 +1245,11 @@ pub fn write_codex_live_for_provider(
         };
     let config_text = unified_official_config.as_deref().or(config_text);
 
+    let should_preserve_existing_auth = category != Some("official")
+        && crate::settings::preserve_codex_official_auth_on_switch()
+        && existing_codex_live_auth_has_login_material();
     let should_write_auth = (category == Some("official") && codex_auth_has_login_material(auth))
-        || (category != Some("official")
-            && !crate::settings::preserve_codex_official_auth_on_switch());
+        || (category != Some("official") && !should_preserve_existing_auth);
 
     if should_write_auth {
         write_codex_live_atomic(auth, config_text)

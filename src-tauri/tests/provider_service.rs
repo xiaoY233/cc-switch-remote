@@ -246,6 +246,59 @@ command = "say"
 }
 
 #[test]
+fn provider_service_switch_codex_writes_provider_auth_when_no_live_auth_exists() {
+    let _guard = test_mutex().lock().expect("acquire test mutex");
+    reset_test_fs();
+    enable_codex_official_auth_preservation();
+    let _home = ensure_test_home();
+
+    assert!(
+        !cc_switch_lib::get_codex_auth_path().exists(),
+        "fixture should start without Codex auth.json"
+    );
+
+    let mut config = MultiAppConfig::default();
+    {
+        let manager = config
+            .get_manager_mut(&AppType::Codex)
+            .expect("codex manager");
+        manager.providers.insert(
+            "third-party".to_string(),
+            Provider::with_id(
+                "third-party".to_string(),
+                "Third Party".to_string(),
+                json!({
+                    "auth": {"OPENAI_API_KEY": "third-party-key"},
+                    "config": r#"model_provider = "custom"
+model = "gpt-5.5"
+
+[model_providers.custom]
+name = "Third Party"
+base_url = "https://third-party.example/v1"
+wire_api = "responses"
+requires_openai_auth = true
+"#
+                }),
+                None,
+            ),
+        );
+    }
+
+    let state = create_test_state_with_config(&config).expect("create test state");
+
+    ProviderService::switch(&state, AppType::Codex, "third-party")
+        .expect("switch provider should succeed");
+
+    let auth_value: serde_json::Value =
+        read_json_file(&cc_switch_lib::get_codex_auth_path()).expect("read auth.json");
+    assert_eq!(
+        auth_value.get("OPENAI_API_KEY").and_then(|v| v.as_str()),
+        Some("third-party-key"),
+        "fresh Codex installs need provider auth.json so Codex CLI does not prompt for login"
+    );
+}
+
+#[test]
 fn provider_service_switch_codex_preserves_user_model_provider_id_after_migration() {
     let _guard = test_mutex().lock().expect("acquire test mutex");
     reset_test_fs();

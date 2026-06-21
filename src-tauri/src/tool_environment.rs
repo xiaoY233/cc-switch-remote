@@ -189,6 +189,9 @@ fn repair_single_remote_tool_shell_path_after_install(
     }
 
     let mut repaired_files = Vec::new();
+    if let Some(link_path) = ensure_remote_tool_global_path_link("claude", &binary) {
+        repaired_files.push(link_path.display().to_string());
+    }
     for profile in shell_path_repair_profile_candidates(home, shell) {
         if ensure_local_bin_path_block(&profile)? {
             repaired_files.push(profile.display().to_string());
@@ -201,6 +204,36 @@ fn repair_single_remote_tool_shell_path_after_install(
         repaired_files,
         skipped_reason: None,
     })
+}
+
+#[cfg(all(not(test), not(target_os = "windows"), unix))]
+fn ensure_remote_tool_global_path_link(tool: &str, binary: &Path) -> Option<std::path::PathBuf> {
+    ensure_remote_tool_global_path_link_in_dir(tool, binary, Path::new("/usr/local/bin"))
+}
+
+#[cfg(any(test, all(not(target_os = "windows"), not(unix))))]
+fn ensure_remote_tool_global_path_link(_tool: &str, _binary: &Path) -> Option<std::path::PathBuf> {
+    None
+}
+
+#[cfg(all(not(target_os = "windows"), unix))]
+fn ensure_remote_tool_global_path_link_in_dir(
+    tool: &str,
+    binary: &Path,
+    link_dir: &Path,
+) -> Option<std::path::PathBuf> {
+    std::fs::create_dir_all(link_dir).ok()?;
+
+    let link_path = link_dir.join(tool);
+    if link_path.exists() || std::fs::symlink_metadata(&link_path).is_ok() {
+        let link_target = std::fs::canonicalize(&link_path).ok()?;
+        let binary_target = std::fs::canonicalize(binary).ok()?;
+        let _already_points_to_binary = link_target == binary_target;
+        return None;
+    }
+
+    std::os::unix::fs::symlink(binary, &link_path).ok()?;
+    Some(link_path)
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -3925,6 +3958,56 @@ mod tests {
                 .matches("# >>> cc-switch remote tool path >>>")
                 .count(),
             1
+        );
+    }
+
+    #[cfg(all(not(target_os = "windows"), unix))]
+    #[test]
+    fn claude_native_install_repair_can_create_global_path_link() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let local_bin = temp.path().join("home").join(".local").join("bin");
+        let global_bin = temp.path().join("usr").join("local").join("bin");
+        std::fs::create_dir_all(&local_bin).expect("create local bin");
+        std::fs::create_dir_all(&global_bin).expect("create global bin");
+        let binary = local_bin.join("claude");
+        std::fs::write(&binary, "#!/bin/sh\n").expect("write claude");
+
+        let repaired = ensure_remote_tool_global_path_link_in_dir("claude", &binary, &global_bin)
+            .expect("create global link");
+
+        assert_eq!(repaired, global_bin.join("claude"));
+        assert_eq!(
+            std::fs::canonicalize(global_bin.join("claude")).expect("canonicalize link"),
+            std::fs::canonicalize(&binary).expect("canonicalize binary")
+        );
+        assert!(
+            ensure_remote_tool_global_path_link_in_dir("claude", &binary, &global_bin).is_none(),
+            "second repair should be idempotent"
+        );
+    }
+
+    #[cfg(all(not(target_os = "windows"), unix))]
+    #[test]
+    fn claude_native_install_repair_does_not_overwrite_existing_global_command() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let local_bin = temp.path().join("home").join(".local").join("bin");
+        let global_bin = temp.path().join("usr").join("local").join("bin");
+        std::fs::create_dir_all(&local_bin).expect("create local bin");
+        std::fs::create_dir_all(&global_bin).expect("create global bin");
+        let binary = local_bin.join("claude");
+        let existing = global_bin.join("claude");
+        std::fs::write(&binary, "#!/bin/sh\n").expect("write claude");
+        std::fs::write(&existing, "#!/bin/sh\nexit 0\n").expect("write existing claude");
+
+        assert!(
+            ensure_remote_tool_global_path_link_in_dir("claude", &binary, &global_bin).is_none()
+        );
+        assert!(
+            !std::fs::symlink_metadata(&existing)
+                .expect("stat existing")
+                .file_type()
+                .is_symlink(),
+            "existing command should not be replaced"
         );
     }
 

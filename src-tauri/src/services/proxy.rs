@@ -2452,7 +2452,12 @@ impl ProxyService {
         config: &Value,
         provider: Option<&Provider>,
     ) -> Result<(), String> {
-        if crate::settings::preserve_codex_official_auth_on_switch() {
+        let existing_auth_has_login =
+            crate::config::read_json_file::<Value>(&crate::codex_config::get_codex_auth_path())
+                .map(|auth| crate::codex_config::codex_auth_has_login_material(&auth))
+                .unwrap_or(false);
+
+        if crate::settings::preserve_codex_official_auth_on_switch() && existing_auth_has_login {
             if let Some(auth) = config
                 .get("auth")
                 .filter(|auth| Self::codex_auth_has_proxy_placeholder(auth))
@@ -3378,6 +3383,72 @@ wire_api = "responses"
         assert!(
             service.detect_takeover_in_live_config_for_app(&AppType::Codex),
             "Codex takeover detection should recognize config.toml placeholders"
+        );
+
+        crate::settings::update_settings(crate::settings::AppSettings::default())
+            .expect("reset settings");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn codex_takeover_writes_proxy_auth_when_no_live_auth_exists() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+        crate::settings::update_settings(crate::settings::AppSettings {
+            preserve_codex_official_auth_on_switch: true,
+            ..Default::default()
+        })
+        .expect("enable Codex official auth preservation");
+
+        let db = Arc::new(Database::memory().expect("init db"));
+        let service = ProxyService::new(db.clone());
+        let deepseek_live_config = r#"model_provider = "deepseek"
+model = "deepseek-v4-flash"
+
+[model_providers.deepseek]
+name = "DeepSeek"
+base_url = "https://api.deepseek.com/v1"
+wire_api = "responses"
+requires_openai_auth = true
+"#;
+        crate::codex_config::write_codex_live_config_atomic(Some(deepseek_live_config))
+            .expect("seed live config without auth.json");
+        assert!(
+            !crate::codex_config::get_codex_auth_path().exists(),
+            "fixture should start without Codex auth.json"
+        );
+
+        let mut provider = Provider::with_id(
+            "deepseek".to_string(),
+            "DeepSeek".to_string(),
+            json!({
+                "auth": {
+                    "OPENAI_API_KEY": "deepseek-key"
+                },
+                "config": deepseek_live_config
+            }),
+            None,
+        );
+        provider.category = Some("cn_official".to_string());
+        db.save_provider("codex", &provider)
+            .expect("save DeepSeek provider");
+        db.set_current_provider("codex", "deepseek")
+            .expect("set current provider");
+        crate::settings::set_current_provider(&AppType::Codex, Some("deepseek"))
+            .expect("set local current provider");
+
+        service
+            .takeover_live_config_strict(&AppType::Codex)
+            .await
+            .expect("take over Codex live config");
+
+        let live_auth: Value =
+            crate::config::read_json_file(&crate::codex_config::get_codex_auth_path())
+                .expect("read live auth");
+        assert_eq!(
+            live_auth.get("OPENAI_API_KEY").and_then(|v| v.as_str()),
+            Some(PROXY_TOKEN_PLACEHOLDER),
+            "fresh Codex installs need proxy auth.json so Codex CLI does not prompt for login"
         );
 
         crate::settings::update_settings(crate::settings::AppSettings::default())

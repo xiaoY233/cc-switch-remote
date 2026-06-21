@@ -117,6 +117,8 @@ pub fn create_anthropic_sse_stream_from_responses<E: std::error::Error + Send + 
         let mut tool_index_by_item_id: HashMap<String, u32> = HashMap::new();
         let mut tool_name_by_index: HashMap<u32, String> = HashMap::new();
         let mut tool_args_by_index: HashMap<u32, String> = HashMap::new();
+        let mut tool_args_emitted_by_index: HashSet<u32> = HashSet::new();
+        let mut closed_tool_indices: HashSet<u32> = HashSet::new();
         let mut last_tool_index: Option<u32> = None;
 
         tokio::pin!(stream);
@@ -433,7 +435,8 @@ pub fn create_anthropic_sse_stream_from_responses<E: std::error::Error + Send + 
                                             "content_block": {
                                                 "type": "tool_use",
                                                 "id": call_id,
-                                                "name": name
+                                                "name": name,
+                                                "input": {}
                                             }
                                         });
                                         let sse = format!("event: content_block_start\ndata: {}\n\n",
@@ -481,7 +484,8 @@ pub fn create_anthropic_sse_stream_from_responses<E: std::error::Error + Send + 
                                                 "name": data
                                                     .get("name")
                                                     .and_then(|v| v.as_str())
-                                                    .unwrap_or("")
+                                                    .unwrap_or(""),
+                                                "input": {}
                                             }
                                         });
                                         let start_sse = format!("event: content_block_start\ndata: {}\n\n",
@@ -490,11 +494,12 @@ pub fn create_anthropic_sse_stream_from_responses<E: std::error::Error + Send + 
                                         open_indices.insert(index);
                                     }
 
+                                    tool_args_by_index
+                                        .entry(index)
+                                        .or_default()
+                                        .push_str(delta);
+
                                     if tool_name_by_index.get(&index).map(String::as_str) == Some("Read") {
-                                        tool_args_by_index
-                                            .entry(index)
-                                            .or_default()
-                                            .push_str(delta);
                                         continue;
                                     }
 
@@ -509,6 +514,7 @@ pub fn create_anthropic_sse_stream_from_responses<E: std::error::Error + Send + 
                                     let sse = format!("event: content_block_delta\ndata: {}\n\n",
                                         serde_json::to_string(&event).unwrap_or_default());
                                     yield Ok(Bytes::from(sse));
+                                    tool_args_emitted_by_index.insert(index);
                                 }
                             }
 
@@ -555,6 +561,7 @@ pub fn create_anthropic_sse_stream_from_responses<E: std::error::Error + Send + 
                                             let sse = format!("event: content_block_delta\ndata: {}\n\n",
                                                 serde_json::to_string(&event).unwrap_or_default());
                                             yield Ok(Bytes::from(sse));
+                                            tool_args_emitted_by_index.insert(index);
                                         }
                                     }
                                     let event = json!({
@@ -569,6 +576,8 @@ pub fn create_anthropic_sse_stream_from_responses<E: std::error::Error + Send + 
                                     }
                                     tool_name_by_index.remove(&index);
                                     tool_args_by_index.remove(&index);
+                                    tool_args_emitted_by_index.remove(&index);
+                                    closed_tool_indices.insert(index);
                                 }
                             }
 
@@ -764,8 +773,122 @@ pub fn create_anthropic_sse_stream_from_responses<E: std::error::Error + Send + 
                                     }
                                 }
                             }
-                            "response.output_item.done"
-                            | "response.in_progress" => {}
+                            "response.output_item.done" => {
+                                let Some(item) = data.get("item") else {
+                                    continue;
+                                };
+                                let item_type = item.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                                if item_type != "function_call" {
+                                    continue;
+                                }
+
+                                has_tool_use = true;
+                                let key = tool_item_key_from_added(&data, item);
+                                let index = key
+                                    .as_ref()
+                                    .and_then(|k| index_by_key.get(k).copied())
+                                    .or_else(|| {
+                                        item.get("id")
+                                            .and_then(|v| v.as_str())
+                                            .and_then(|id| tool_index_by_item_id.get(id).copied())
+                                    })
+                                    .or_else(|| {
+                                        data.get("item_id")
+                                            .and_then(|v| v.as_str())
+                                            .and_then(|id| tool_index_by_item_id.get(id).copied())
+                                    })
+                                    .or(last_tool_index)
+                                    .unwrap_or_else(|| {
+                                        let assigned = next_content_index;
+                                        next_content_index += 1;
+                                        if let Some(k) = key.clone() {
+                                            index_by_key.insert(k, assigned);
+                                        }
+                                        assigned
+                                    });
+
+                                if closed_tool_indices.contains(&index) {
+                                    continue;
+                                }
+
+                                let call_id = item
+                                    .get("call_id")
+                                    .or_else(|| item.get("id"))
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("");
+                                let name = item.get("name").and_then(|n| n.as_str()).unwrap_or("");
+
+                                if let Some(item_id) = item.get("id").and_then(|v| v.as_str()) {
+                                    tool_index_by_item_id.insert(item_id.to_string(), index);
+                                }
+                                if !name.is_empty() {
+                                    tool_name_by_index.insert(index, name.to_string());
+                                }
+
+                                if !open_indices.contains(&index) {
+                                    let start_event = json!({
+                                        "type": "content_block_start",
+                                        "index": index,
+                                        "content_block": {
+                                            "type": "tool_use",
+                                            "id": call_id,
+                                            "name": name,
+                                            "input": {}
+                                        }
+                                    });
+                                    let start_sse = format!("event: content_block_start\ndata: {}\n\n",
+                                        serde_json::to_string(&start_event).unwrap_or_default());
+                                    yield Ok(Bytes::from(start_sse));
+                                    open_indices.insert(index);
+                                }
+
+                                if !tool_args_emitted_by_index.contains(&index) {
+                                    let raw = item
+                                        .get("arguments")
+                                        .and_then(|v| v.as_str())
+                                        .map(str::to_string)
+                                        .or_else(|| tool_args_by_index.get(&index).cloned())
+                                        .unwrap_or_default();
+                                    let arguments = if tool_name_by_index.get(&index).map(String::as_str) == Some("Read") {
+                                        sanitize_anthropic_tool_use_input_json("Read", &raw)
+                                    } else {
+                                        raw
+                                    };
+                                    if !arguments.is_empty() {
+                                        let event = json!({
+                                            "type": "content_block_delta",
+                                            "index": index,
+                                            "delta": {
+                                                "type": "input_json_delta",
+                                                "partial_json": arguments
+                                            }
+                                        });
+                                        let sse = format!("event: content_block_delta\ndata: {}\n\n",
+                                            serde_json::to_string(&event).unwrap_or_default());
+                                        yield Ok(Bytes::from(sse));
+                                        tool_args_emitted_by_index.insert(index);
+                                    }
+                                }
+
+                                if open_indices.remove(&index) {
+                                    let event = json!({
+                                        "type": "content_block_stop",
+                                        "index": index
+                                    });
+                                    let sse = format!("event: content_block_stop\ndata: {}\n\n",
+                                        serde_json::to_string(&event).unwrap_or_default());
+                                    yield Ok(Bytes::from(sse));
+                                }
+
+                                if let Some(item_id) = item.get("id").and_then(|v| v.as_str()) {
+                                    tool_index_by_item_id.remove(item_id);
+                                }
+                                tool_name_by_index.remove(&index);
+                                tool_args_by_index.remove(&index);
+                                tool_args_emitted_by_index.remove(&index);
+                                closed_tool_indices.insert(index);
+                            }
+                            "response.in_progress" => {}
 
                             // Any other unknown/future events — silently skip.
                             _ => {}
@@ -868,6 +991,38 @@ mod tests {
         assert!(merged.contains("\"input_tokens\":12"));
         assert!(merged.contains("\"output_tokens\":3"));
         assert!(merged.contains("\"type\":\"message_stop\""));
+    }
+
+    #[tokio::test]
+    async fn test_streaming_function_call_done_backfills_arguments() {
+        let input = concat!(
+            "event: response.created\n",
+            "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_shell\",\"model\":\"gpt-5-codex\"}}\n\n",
+            "event: response.output_item.added\n",
+            "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"fc_shell\",\"type\":\"function_call\",\"call_id\":\"call_shell\",\"name\":\"Bash\"}}\n\n",
+            "event: response.output_item.done\n",
+            "data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"id\":\"fc_shell\",\"type\":\"function_call\",\"call_id\":\"call_shell\",\"name\":\"Bash\",\"arguments\":\"{\\\"command\\\":\\\"pwd\\\"}\"}}\n\n",
+            "event: response.completed\n",
+            "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":7,\"output_tokens\":3}}}\n\n"
+        );
+
+        let upstream = stream::iter(vec![Ok::<_, std::io::Error>(Bytes::from(
+            input.as_bytes().to_vec(),
+        ))]);
+        let converted = create_anthropic_sse_stream_from_responses(upstream);
+        let chunks: Vec<_> = converted.collect().await;
+        let merged = chunks
+            .into_iter()
+            .map(|c| String::from_utf8_lossy(c.unwrap().as_ref()).to_string())
+            .collect::<String>();
+
+        assert!(merged.contains("\"type\":\"tool_use\""));
+        assert!(merged.contains("\"id\":\"call_shell\""));
+        assert!(merged.contains("\"name\":\"Bash\""));
+        assert!(merged.contains("\"input\":{}"));
+        assert!(merged.contains("\"type\":\"input_json_delta\""));
+        assert!(merged.contains("\"partial_json\":\"{\\\"command\\\":\\\"pwd\\\"}\""));
+        assert!(merged.contains("\"stop_reason\":\"tool_use\""));
     }
 
     #[tokio::test]

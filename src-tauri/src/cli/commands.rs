@@ -778,6 +778,15 @@ pub fn tool_versions(
     } else {
         Some(serde_json::from_str(tools_json).map_err(|e| e.to_string())?)
     };
+    let should_repair_claude_path = match tools.as_ref() {
+        None => true,
+        Some(requested) => requested.iter().any(|tool| tool == "claude"),
+    };
+    if should_repair_claude_path {
+        let _ = crate::tool_environment::repair_remote_tool_shell_path_after_install(vec![
+            "claude".to_string(),
+        ]);
+    }
     let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
     runtime.block_on(crate::tool_environment::get_tool_versions(tools, None))
 }
