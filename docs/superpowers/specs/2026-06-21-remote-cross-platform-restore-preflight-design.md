@@ -14,16 +14,17 @@ migration layer. Related upstream issues focus on preserving user-owned Codex
 `config.toml` sections during live rewrites, but not on converting macOS live
 config into Linux-compatible remote config.
 
-This project should avoid changing upstream-local backup, provider storage, or
-Codex live write semantics. Those areas are high churn upstream integration
-points. The remote fork should add a remote-only preflight and optional cleanup
-layer instead.
+This project should avoid changing upstream-local backup, WebDAV sync, provider
+storage, or Codex live write semantics. Those areas are high churn upstream
+integration points. The remote fork should add a remote-only preflight and
+optional cleanup layer instead.
 
 ## Goals
 
 - Prevent accidental remote Linux restores that write macOS or Windows local
   paths into remote Codex live config.
 - Keep local SQL backup/restore behavior compatible with upstream.
+- Keep local WebDAV/S3 sync behavior compatible with upstream.
 - Keep provider storage schema unchanged.
 - Make remote restore/sync risks visible before mutation.
 - Allow the user to choose between exact restore and portable provider restore.
@@ -34,6 +35,7 @@ layer instead.
 
 - Do not redesign the SQL backup format.
 - Do not change local import/export semantics.
+- Do not change local WebDAV/S3 sync semantics.
 - Do not change the global Codex provider storage model.
 - Do not implement a full upstream-style TOML merge engine for all local live
   writes.
@@ -42,7 +44,9 @@ layer instead.
 ## Proposed Approach
 
 Add a remote restore preflight layer that inspects SQL/provider payloads before
-remote import and classifies Codex TOML fields.
+remote import and classifies Codex TOML fields. The same preflight must run for
+remote WebDAV/S3 pull flows because those flows also transport provider rows
+through SQL snapshots.
 
 The scanner should identify obvious local-only markers:
 
@@ -58,6 +62,7 @@ The scanner should identify obvious local-only markers:
 The remote UI should present a preview with:
 
 - affected app and provider
+- source: SQL file, WebDAV pull, S3 pull, or remote-to-remote restore
 - TOML path, for example `codex.providers.newapi.config.notify`
 - risk type, for example `macos_path`, `codex_desktop_runtime`, or
   `local_proxy_url`
@@ -107,16 +112,17 @@ Add a small remote adapter module rather than modifying local import/export:
 
 - `remote_restore_preflight`: pure parsing and classification.
 - `remote_restore_plan`: converts scanner findings into user-visible choices.
-- remote command/UI integration: calls preflight before import/restore and
-  sends selected mode to the helper.
+- remote command/UI integration: calls preflight before SQL import, WebDAV pull,
+  S3 pull, or remote restore and sends the selected mode to the helper.
 
 The helper should not advertise a destructive cleanup capability until the
 scanner and transformation behavior have tests.
 
 ## Data Flow
 
-1. User selects remote restore/import.
-2. App loads SQL backup content locally or receives a remote SQL payload.
+1. User selects remote restore/import, WebDAV pull, or S3 pull.
+2. App loads SQL backup content locally or receives a SQL payload from the sync
+   service.
 3. Preflight parses backup SQL enough to inspect provider rows.
 4. Scanner extracts provider `settings_config.config` TOML text for Codex.
 5. UI displays warnings and restore mode choices.
@@ -150,6 +156,8 @@ Focused tests should cover:
 - malformed TOML produces a warning and prevents only portable cleanup for that
   provider.
 - remote adapter tests prove local import/export APIs remain unchanged.
+- remote WebDAV/S3 pull tests prove the same preflight runs before remote-bound
+  sync import, while local WebDAV/S3 sync APIs remain unchanged.
 
 ## Review Notes
 
