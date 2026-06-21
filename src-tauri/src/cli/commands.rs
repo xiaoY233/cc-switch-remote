@@ -31,15 +31,21 @@ static ROUTING_RUNTIME: Lazy<Result<tokio::runtime::Runtime, String>> =
 #[cfg(feature = "proxy-runtime")]
 static ROUTING_STATE: Lazy<Result<AppState, String>> = Lazy::new(|| {
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
-    Ok(AppState::new(db))
+    Ok(AppState::new_with_managed_auth_runtime(
+        db,
+        crate::proxy::managed_auth_runtime::ManagedAuthRuntime {
+            copilot: Some(COPILOT_AUTH_MANAGER.clone()),
+            codex_oauth: Some(CODEX_OAUTH_MANAGER.clone()),
+        },
+    ))
 });
 
 static AUTH_RUNTIME: Lazy<Result<tokio::runtime::Runtime, String>> =
     Lazy::new(|| tokio::runtime::Runtime::new().map_err(|e| e.to_string()));
-static COPILOT_AUTH_MANAGER: Lazy<CopilotAuthManager> =
-    Lazy::new(|| CopilotAuthManager::new(crate::config::get_app_config_dir()));
-static CODEX_OAUTH_MANAGER: Lazy<CodexOAuthManager> =
-    Lazy::new(|| CodexOAuthManager::new(crate::config::get_app_config_dir()));
+static COPILOT_AUTH_MANAGER: Lazy<Arc<CopilotAuthManager>> =
+    Lazy::new(|| Arc::new(CopilotAuthManager::new(crate::config::get_app_config_dir())));
+static CODEX_OAUTH_MANAGER: Lazy<Arc<CodexOAuthManager>> =
+    Lazy::new(|| Arc::new(CodexOAuthManager::new(crate::config::get_app_config_dir())));
 
 const AUTH_PROVIDER_GITHUB_COPILOT: &str = "github_copilot";
 const AUTH_PROVIDER_CODEX_OAUTH: &str = "codex_oauth";
@@ -784,10 +790,16 @@ pub fn run_tool_lifecycle_action(tools_json: &str, action: &str) -> Result<(), S
     };
     let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
     runtime.block_on(crate::tool_environment::run_tool_lifecycle_action(
-        tools,
+        tools.clone(),
         action.to_string(),
         None,
-    ))
+    ))?;
+
+    if action == "install" {
+        crate::tool_environment::repair_remote_tool_shell_path_after_install(tools)?;
+    }
+
+    Ok(())
 }
 
 pub fn probe_tool_installations(

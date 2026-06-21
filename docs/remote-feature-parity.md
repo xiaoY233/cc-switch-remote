@@ -53,7 +53,7 @@ This document tracks how remote management maps to the local CC Switch feature s
 | Sessions | parity | List, view messages, delete, and batch delete are target-aware. Terminal resume remains local-only for now. |
 | Hermes memory | parity | Memory, model config, limits, and enabled state are target-aware. |
 | OpenClaw | parity | Default model, env, tools, and agents defaults are target-aware. |
-| Tool environment lifecycle | parity | Version check, install/update/uninstall, conflict diagnosis, and manual install commands are remote-adapted through shared tool lifecycle logic. |
+| Tool environment lifecycle | parity | Version check, install/update/uninstall, conflict diagnosis, and manual install commands are remote-adapted through shared tool lifecycle logic. Remote helper install also performs a remote-only Claude Code native installer PATH postflight so `~/.local/bin/claude` is available to future SSH shells. |
 
 ## Current Next Items
 

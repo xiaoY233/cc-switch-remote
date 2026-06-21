@@ -375,6 +375,7 @@ export function AddProviderDialog({
           onClose={handleUniversalFormClose}
           onSave={handleUniversalProviderSave}
           initialPreset={selectedUniversalPreset}
+          target={target}
         />
       )}
     </FullScreenPanel>

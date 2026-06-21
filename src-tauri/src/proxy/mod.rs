@@ -31,6 +31,8 @@ pub mod http_client;
 pub mod hyper_client;
 pub(crate) mod json_canonical;
 pub mod log_codes;
+#[cfg(any(feature = "desktop", feature = "proxy-runtime"))]
+pub(crate) mod managed_auth_runtime;
 pub mod media_sanitizer;
 pub mod model_mapper;
 pub mod provider_router;

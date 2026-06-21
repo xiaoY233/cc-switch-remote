@@ -415,7 +415,8 @@ export function useDeleteModelPricing(
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (modelId: string) => usageApi.deleteModelPricing(modelId, target),
+    mutationFn: (modelId: string) =>
+      usageApi.deleteModelPricing(modelId, target),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: usageKeys.all(target) });
     },

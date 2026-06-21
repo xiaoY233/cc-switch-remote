@@ -290,6 +290,7 @@ export function UniversalProviderPanel({
         onSave={handleSave}
         onSaveAndSync={handleSaveAndSync}
         editingProvider={editingProvider}
+        target={target}
       />
 
       {/* 删除确认对话框 */}

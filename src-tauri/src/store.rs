@@ -1,4 +1,5 @@
 use crate::database::Database;
+use crate::proxy::managed_auth_runtime::ManagedAuthRuntime;
 use crate::services::{ProxyService, UsageCache};
 use std::sync::Arc;
 
@@ -12,7 +13,15 @@ pub struct AppState {
 impl AppState {
     /// 创建新的应用状态
     pub fn new(db: Arc<Database>) -> Self {
-        let proxy_service = ProxyService::new(db.clone());
+        Self::new_with_managed_auth_runtime(db, ManagedAuthRuntime::default())
+    }
+
+    pub(crate) fn new_with_managed_auth_runtime(
+        db: Arc<Database>,
+        managed_auth_runtime: ManagedAuthRuntime,
+    ) -> Self {
+        let proxy_service =
+            ProxyService::new_with_managed_auth_runtime(db.clone(), managed_auth_runtime);
 
         Self {
             db,

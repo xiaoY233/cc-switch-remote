@@ -4,17 +4,17 @@
 
 ## Language / 语言 / 言語
 
-| Language | Link |
-|----------|------|
-| [中文](./zh/README.md) | 简体中文用户手册 |
-| [English](./en/README.md) | English User Manual |
-| [日本語](./ja/README.md) | 日本語ユーザーマニュアル |
+| Language                  | Link                     |
+| ------------------------- | ------------------------ |
+| [中文](./zh/README.md)    | 简体中文用户手册         |
+| [English](./en/README.md) | English User Manual      |
+| [日本語](./ja/README.md)  | 日本語ユーザーマニュアル |
 
 ## Version / 版本 / バージョン
 
-- Documentation version: v3.16.8
-- Last updated: 2026-06-19
-- Compatible with CC Switch Remote v3.16.8+
+- Documentation version: v3.16.9
+- Last updated: 2026-06-21
+- Compatible with CC Switch Remote v3.16.9+
 
 ## Links
 

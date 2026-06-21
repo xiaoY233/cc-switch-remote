@@ -326,6 +326,14 @@ mod tests {
         })
     }
 
+    async fn use_ephemeral_proxy_port(db: &Arc<Database>) {
+        let mut proxy_config = db.get_proxy_config().await.expect("get proxy config");
+        proxy_config.listen_port = 0;
+        db.update_proxy_config(proxy_config)
+            .await
+            .expect("set test proxy config to an ephemeral port");
+    }
+
     #[test]
     fn validate_provider_settings_rejects_missing_auth() {
         let provider = Provider::with_id(
@@ -463,6 +471,7 @@ base_url = "http://localhost:8080"
 
         db.update_proxy_config(ProxyConfig {
             live_takeover_active: true,
+            listen_port: 0,
             ..Default::default()
         })
         .await
@@ -496,6 +505,15 @@ base_url = "http://localhost:8080"
             .start()
             .await
             .expect("start proxy service");
+        let proxy_base_url = format!(
+            "http://127.0.0.1:{}",
+            state
+                .proxy_service
+                .get_status()
+                .await
+                .expect("get proxy status")
+                .port
+        );
 
         let updated = Provider::with_id(
             "p1".into(),
@@ -544,7 +562,7 @@ base_url = "http://localhost:8080"
             live.get("env")
                 .and_then(|env| env.get("ANTHROPIC_BASE_URL"))
                 .and_then(|v| v.as_str()),
-            Some("http://127.0.0.1:15721"),
+            Some(proxy_base_url.as_str()),
             "proxy base URL should stay intact"
         );
         assert!(
@@ -601,6 +619,7 @@ base_url = "http://localhost:8080"
         db.save_live_backup("claude-desktop", "{}")
             .await
             .expect("seed live backup");
+        use_ephemeral_proxy_port(&db).await;
         {
             let mut config = db
                 .get_proxy_config_for_app("claude-desktop")
@@ -617,6 +636,15 @@ base_url = "http://localhost:8080"
             .start()
             .await
             .expect("start proxy service");
+        let proxy_base_url = format!(
+            "http://127.0.0.1:{}",
+            state
+                .proxy_service
+                .get_status()
+                .await
+                .expect("get proxy status")
+                .port
+        );
 
         let mut updated = Provider::with_id(
             "p1".into(),
@@ -660,7 +688,7 @@ base_url = "http://localhost:8080"
         let profile: Value = read_json_file(&profile_path).expect("read desktop profile");
         assert_eq!(
             profile["inferenceGatewayBaseUrl"],
-            json!("http://127.0.0.1:15721/claude-desktop"),
+            json!(format!("{proxy_base_url}/claude-desktop")),
             "desktop profile should stay pointed at the local gateway during takeover"
         );
         assert_eq!(profile["inferenceGatewayAuthScheme"], json!("bearer"));

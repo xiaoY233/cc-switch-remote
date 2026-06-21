@@ -6,6 +6,7 @@ use crate::app_config::AppType;
 use crate::config::{get_claude_settings_path, read_json_file, write_json_file};
 use crate::database::Database;
 use crate::provider::Provider;
+use crate::proxy::managed_auth_runtime::ManagedAuthRuntime;
 use crate::proxy::server::ProxyServer;
 use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy::types::*;
@@ -57,6 +58,7 @@ enum ClaudeTakeoverAuthPolicy {
 pub struct ProxyService {
     db: Arc<Database>,
     server: Arc<RwLock<Option<ProxyServer>>>,
+    managed_auth_runtime: ManagedAuthRuntime,
     /// AppHandle，用于传递给 ProxyServer 以支持故障转移时的 UI 更新
     app_handle: Arc<RwLock<Option<ProxyAppHandle>>>,
     switch_locks: SwitchLockManager,
@@ -69,9 +71,17 @@ pub struct HotSwitchOutcome {
 
 impl ProxyService {
     pub fn new(db: Arc<Database>) -> Self {
+        Self::new_with_managed_auth_runtime(db, ManagedAuthRuntime::default())
+    }
+
+    pub(crate) fn new_with_managed_auth_runtime(
+        db: Arc<Database>,
+        managed_auth_runtime: ManagedAuthRuntime,
+    ) -> Self {
         Self {
             db,
             server: Arc::new(RwLock::new(None)),
+            managed_auth_runtime,
             app_handle: Arc::new(RwLock::new(None)),
             switch_locks: SwitchLockManager::new(),
         }
@@ -449,7 +459,12 @@ impl ProxyService {
 
         // 4. 创建并启动服务器
         let app_handle = self.app_handle.read().await.clone();
-        let server = ProxyServer::new(config.clone(), self.db.clone(), app_handle);
+        let server = ProxyServer::new_with_managed_auth_runtime(
+            config.clone(),
+            self.db.clone(),
+            app_handle,
+            self.managed_auth_runtime.clone(),
+        );
         let info = server
             .start()
             .await
@@ -2597,7 +2612,12 @@ impl ProxyService {
             }
 
             let app_handle = self.app_handle.read().await.clone();
-            let new_server = ProxyServer::new(new_config.clone(), self.db.clone(), app_handle);
+            let new_server = ProxyServer::new_with_managed_auth_runtime(
+                new_config.clone(),
+                self.db.clone(),
+                app_handle,
+                self.managed_auth_runtime.clone(),
+            );
             let info = new_server
                 .start()
                 .await

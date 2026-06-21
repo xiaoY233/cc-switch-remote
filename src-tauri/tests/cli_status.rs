@@ -150,7 +150,7 @@ fn settings_app_config_dir_override_round_trips_through_json_cli() {
     assert!(default_response["data"]
         .as_str()
         .expect("default app config dir")
-        .ends_with(".cc-switch"));
+        .ends_with(".cc-switch-remote"));
     assert_eq!(set_response["ok"], true);
     assert_eq!(set_response["data"], true);
     assert!(
@@ -168,7 +168,7 @@ fn settings_app_config_dir_override_round_trips_through_json_cli() {
     assert!(cleared_response["data"]
         .as_str()
         .expect("cleared app config dir")
-        .ends_with(".cc-switch"));
+        .ends_with(".cc-switch-remote"));
 }
 
 #[test]

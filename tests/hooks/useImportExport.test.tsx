@@ -21,6 +21,7 @@ const exportConfigMock = vi.fn();
 const syncCurrentProvidersLiveMock = vi.fn();
 const remoteImportConfigMock = vi.fn();
 const remoteExportConfigMock = vi.fn();
+const remotePreflightConfigFileMock = vi.fn();
 
 vi.mock("@/lib/api", () => ({
   settingsApi: {
@@ -32,6 +33,8 @@ vi.mock("@/lib/api", () => ({
       syncCurrentProvidersLiveMock(...args),
   },
   remoteApi: {
+    preflightConfigFile: (...args: unknown[]) =>
+      remotePreflightConfigFileMock(...args),
     importConfigFromFile: (...args: unknown[]) =>
       remoteImportConfigMock(...args),
     exportConfigToFile: (...args: unknown[]) => remoteExportConfigMock(...args),
@@ -45,6 +48,7 @@ beforeEach(() => {
   exportConfigMock.mockReset();
   remoteImportConfigMock.mockReset();
   remoteExportConfigMock.mockReset();
+  remotePreflightConfigFileMock.mockReset();
   toastSuccessMock.mockReset();
   toastErrorMock.mockReset();
   toastWarningMock.mockReset();
@@ -204,6 +208,10 @@ describe("useImportExport Hook", () => {
       secret: { password: "secret" },
     };
     openFileDialogMock.mockResolvedValue("/config.sql");
+    remotePreflightConfigFileMock.mockResolvedValue({
+      hasBlockingRisks: false,
+      risks: [],
+    });
     remoteImportConfigMock.mockResolvedValue({
       success: true,
       backupId: "remote-backup-1",
@@ -221,10 +229,16 @@ describe("useImportExport Hook", () => {
       await result.current.importConfig();
     });
 
+    expect(remotePreflightConfigFileMock).toHaveBeenCalledWith(
+      remoteTarget.profile,
+      "/config.sql",
+      remoteTarget.secret,
+    );
     expect(remoteImportConfigMock).toHaveBeenCalledWith(
       remoteTarget.profile,
       "/config.sql",
       remoteTarget.secret,
+      { restoreMode: "exact" },
     );
     expect(importConfigMock).not.toHaveBeenCalled();
     expect(syncCurrentProvidersLiveMock).not.toHaveBeenCalled();

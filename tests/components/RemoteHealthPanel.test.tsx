@@ -110,7 +110,7 @@ describe("RemoteHealthPanel", () => {
     expect(
       screen.getByRole("button", { name: "更新 Helper" }),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/abcdef12/)).not.toBeInTheDocument();
+    expect(screen.getByText(/最新构建: abcdef12/)).toBeInTheDocument();
     expect(
       screen.queryByText(/cc-switch-remote-helper-abcdef12-Linux-x86_64/),
     ).not.toBeInTheDocument();

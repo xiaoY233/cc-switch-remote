@@ -12,6 +12,7 @@ use super::{
     failover_switch::FailoverSwitchManager,
     handlers,
     log_codes::srv as log_srv,
+    managed_auth_runtime::ManagedAuthRuntime,
     provider_router::ProviderRouter,
     providers::{codex_chat_history::CodexChatHistoryStore, gemini_shadow::GeminiShadowStore},
     types::*,
@@ -46,6 +47,8 @@ pub struct ProxyState {
     pub codex_chat_history: Arc<CodexChatHistoryStore>,
     /// AppHandle，用于发射事件和更新托盘菜单
     pub app_handle: Option<ProxyAppHandle>,
+    /// Managed account auth managers for non-Tauri runtimes such as the remote helper.
+    pub managed_auth_runtime: ManagedAuthRuntime,
     /// 故障转移切换管理器
     pub failover_manager: Arc<FailoverSwitchManager>,
 }
@@ -60,7 +63,12 @@ pub struct ProxyServer {
 }
 
 impl ProxyServer {
-    pub fn new(config: ProxyConfig, db: Arc<Database>, app_handle: Option<ProxyAppHandle>) -> Self {
+    pub fn new_with_managed_auth_runtime(
+        config: ProxyConfig,
+        db: Arc<Database>,
+        app_handle: Option<ProxyAppHandle>,
+        managed_auth_runtime: ManagedAuthRuntime,
+    ) -> Self {
         // 创建共享的 ProviderRouter（熔断器状态将跨所有请求保持）
         let provider_router = Arc::new(ProviderRouter::new(db.clone()));
         // 创建故障转移切换管理器
@@ -76,6 +84,7 @@ impl ProxyServer {
             gemini_shadow: Arc::new(GeminiShadowStore::default()),
             codex_chat_history: Arc::new(CodexChatHistoryStore::default()),
             app_handle,
+            managed_auth_runtime,
             failover_manager,
         };
 

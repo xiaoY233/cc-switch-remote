@@ -104,11 +104,45 @@ describe("remote usage API", () => {
     remoteGetRequestDetailMock.mockResolvedValue(null);
     remoteGetDataSourceBreakdownMock.mockResolvedValue([]);
 
-    await usageApi.getUsageSummary(10, 20, "codex", "NewAPI", "gpt-5", remoteTarget);
-    await usageApi.getUsageSummaryByApp(10, 20, "NewAPI", "gpt-5", remoteTarget);
-    await usageApi.getUsageTrends(10, 20, "codex", "NewAPI", "gpt-5", remoteTarget);
-    await usageApi.getProviderStats(10, 20, "codex", "NewAPI", "gpt-5", remoteTarget);
-    await usageApi.getModelStats(10, 20, "codex", "NewAPI", "gpt-5", remoteTarget);
+    await usageApi.getUsageSummary(
+      10,
+      20,
+      "codex",
+      "NewAPI",
+      "gpt-5",
+      remoteTarget,
+    );
+    await usageApi.getUsageSummaryByApp(
+      10,
+      20,
+      "NewAPI",
+      "gpt-5",
+      remoteTarget,
+    );
+    await usageApi.getUsageTrends(
+      10,
+      20,
+      "codex",
+      "NewAPI",
+      "gpt-5",
+      remoteTarget,
+    );
+    await usageApi.getProviderStats(
+      10,
+      20,
+      "codex",
+      "NewAPI",
+      "gpt-5",
+      remoteTarget,
+    );
+    await usageApi.getModelStats(
+      10,
+      20,
+      "codex",
+      "NewAPI",
+      "gpt-5",
+      remoteTarget,
+    );
     await usageApi.getRequestLogs(filters, 0, 20, remoteTarget);
     await usageApi.getRequestDetail("req-1", remoteTarget);
     await usageApi.getDataSourceBreakdown(remoteTarget);

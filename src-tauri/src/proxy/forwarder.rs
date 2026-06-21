@@ -9,6 +9,7 @@ use super::{
     failover_switch::FailoverSwitchManager,
     json_canonical::{canonicalize_value, short_value_hash},
     log_codes::fwd as log_fwd,
+    managed_auth_runtime::ManagedAuthRuntime,
     provider_router::ProviderRouter,
     providers::{
         codex_chat_history::CodexChatHistoryStore, gemini_shadow::GeminiShadowStore, get_adapter,
@@ -106,6 +107,8 @@ pub struct RequestForwarder {
     failover_manager: Arc<FailoverSwitchManager>,
     /// AppHandle，用于发射事件和更新托盘
     app_handle: Option<ProxyAppHandle>,
+    /// Managed auth managers injected by non-Tauri runtimes such as the remote helper.
+    managed_auth_runtime: ManagedAuthRuntime,
     /// 请求开始时的"当前供应商 ID"（用于判断是否需要同步 UI/托盘）
     current_provider_id_at_start: String,
     /// 代理会话 ID（用于 Gemini Native shadow replay）
@@ -176,6 +179,194 @@ impl RequestForwarder {
             && super::media_sanitizer::is_unsupported_image_error(error)
     }
 
+    async fn resolve_copilot_auth(
+        &self,
+        provider: &Provider,
+        _auth: AuthInfo,
+    ) -> Result<AuthInfo, ProxyError> {
+        let account_id = provider
+            .meta
+            .as_ref()
+            .and_then(|m| m.managed_account_id_for("github_copilot"));
+
+        if let Some(copilot_auth) = self.managed_auth_runtime.copilot.as_ref() {
+            let token_result = match &account_id {
+                Some(id) => {
+                    log::debug!("[Copilot] 使用远程运行时指定账号 {id} 获取 token");
+                    copilot_auth.get_valid_token_for_account(id).await
+                }
+                None => {
+                    log::debug!("[Copilot] 使用远程运行时默认账号获取 token");
+                    copilot_auth.get_valid_token().await
+                }
+            };
+
+            return token_result
+                .map(|token| {
+                    log::debug!(
+                        "[Copilot] 远程运行时成功获取 Copilot token (account={})",
+                        account_id.as_deref().unwrap_or("default")
+                    );
+                    AuthInfo::new(token, AuthStrategy::GitHubCopilot)
+                })
+                .map_err(|e| {
+                    log::error!(
+                        "[Copilot] 远程运行时获取 Copilot token 失败 (account={}): {e}",
+                        account_id.as_deref().unwrap_or("default")
+                    );
+                    ProxyError::AuthError(format!("GitHub Copilot 认证失败: {e}"))
+                });
+        }
+
+        #[cfg(feature = "desktop")]
+        if let Some(app_handle) = &self.app_handle {
+            let copilot_state = app_handle.state::<CopilotAuthState>();
+            let copilot_auth: tokio::sync::RwLockReadGuard<'_, CopilotAuthManager> =
+                copilot_state.0.read().await;
+
+            let token_result = match &account_id {
+                Some(id) => {
+                    log::debug!("[Copilot] 使用指定账号 {id} 获取 token");
+                    copilot_auth.get_valid_token_for_account(id).await
+                }
+                None => {
+                    log::debug!("[Copilot] 使用默认账号获取 token");
+                    copilot_auth.get_valid_token().await
+                }
+            };
+
+            return token_result
+                .map(|token| {
+                    log::debug!(
+                        "[Copilot] 成功获取 Copilot token (account={})",
+                        account_id.as_deref().unwrap_or("default")
+                    );
+                    AuthInfo::new(token, AuthStrategy::GitHubCopilot)
+                })
+                .map_err(|e| {
+                    log::error!(
+                        "[Copilot] 获取 Copilot token 失败 (account={}): {e}",
+                        account_id.as_deref().unwrap_or("default")
+                    );
+                    ProxyError::AuthError(format!("GitHub Copilot 认证失败: {e}"))
+                });
+        }
+
+        #[cfg(feature = "desktop")]
+        {
+            log::error!("[Copilot] AppHandle 不可用");
+            Err(ProxyError::AuthError(
+                "GitHub Copilot 认证不可用（无 AppHandle）".to_string(),
+            ))
+        }
+
+        #[cfg(not(feature = "desktop"))]
+        {
+            Err(ProxyError::AuthError(
+                "远程代理未注入 GitHub Copilot 认证运行时".to_string(),
+            ))
+        }
+    }
+
+    async fn resolve_codex_oauth_auth(
+        &self,
+        provider: &Provider,
+        _auth: AuthInfo,
+    ) -> Result<(AuthInfo, Option<String>), ProxyError> {
+        let account_id = provider
+            .meta
+            .as_ref()
+            .and_then(|m| m.managed_account_id_for("codex_oauth"));
+
+        if let Some(codex_auth) = self.managed_auth_runtime.codex_oauth.as_ref() {
+            let token_result = match &account_id {
+                Some(id) => {
+                    log::debug!("[CodexOAuth] 使用远程运行时指定账号 {id} 获取 token");
+                    codex_auth.get_valid_token_for_account(id).await
+                }
+                None => {
+                    log::debug!("[CodexOAuth] 使用远程运行时默认账号获取 token");
+                    codex_auth.get_valid_token().await
+                }
+            };
+
+            return match token_result {
+                Ok(token) => {
+                    let resolved_account_id = match account_id {
+                        Some(id) => Some(id),
+                        None => codex_auth.default_account_id().await,
+                    };
+                    log::debug!(
+                        "[CodexOAuth] 远程运行时成功获取 access_token (account={})",
+                        resolved_account_id.as_deref().unwrap_or("default")
+                    );
+                    Ok((
+                        AuthInfo::new(token, AuthStrategy::CodexOAuth),
+                        resolved_account_id,
+                    ))
+                }
+                Err(e) => {
+                    log::error!("[CodexOAuth] 远程运行时获取 access_token 失败: {e}");
+                    Err(ProxyError::AuthError(format!("Codex OAuth 认证失败: {e}")))
+                }
+            };
+        }
+
+        #[cfg(feature = "desktop")]
+        if let Some(app_handle) = &self.app_handle {
+            let codex_state = app_handle.state::<CodexOAuthState>();
+            let codex_auth: tokio::sync::RwLockReadGuard<'_, CodexOAuthManager> =
+                codex_state.0.read().await;
+
+            let token_result = match &account_id {
+                Some(id) => {
+                    log::debug!("[CodexOAuth] 使用指定账号 {id} 获取 token");
+                    codex_auth.get_valid_token_for_account(id).await
+                }
+                None => {
+                    log::debug!("[CodexOAuth] 使用默认账号获取 token");
+                    codex_auth.get_valid_token().await
+                }
+            };
+
+            return match token_result {
+                Ok(token) => {
+                    let resolved_account_id = match account_id {
+                        Some(id) => Some(id),
+                        None => codex_auth.default_account_id().await,
+                    };
+                    log::debug!(
+                        "[CodexOAuth] 成功获取 access_token (account={})",
+                        resolved_account_id.as_deref().unwrap_or("default")
+                    );
+                    Ok((
+                        AuthInfo::new(token, AuthStrategy::CodexOAuth),
+                        resolved_account_id,
+                    ))
+                }
+                Err(e) => {
+                    log::error!("[CodexOAuth] 获取 access_token 失败: {e}");
+                    Err(ProxyError::AuthError(format!("Codex OAuth 认证失败: {e}")))
+                }
+            };
+        }
+
+        #[cfg(feature = "desktop")]
+        {
+            log::error!("[CodexOAuth] AppHandle 不可用");
+            Err(ProxyError::AuthError(
+                "Codex OAuth 认证不可用（无 AppHandle）".to_string(),
+            ))
+        }
+
+        #[cfg(not(feature = "desktop"))]
+        {
+            Err(ProxyError::AuthError(
+                "远程代理未注入 Codex OAuth 认证运行时".to_string(),
+            ))
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         router: Arc<ProviderRouter>,
@@ -186,6 +377,7 @@ impl RequestForwarder {
         codex_chat_history: Arc<CodexChatHistoryStore>,
         failover_manager: Arc<FailoverSwitchManager>,
         app_handle: Option<ProxyAppHandle>,
+        managed_auth_runtime: ManagedAuthRuntime,
         current_provider_id_at_start: String,
         session_id: String,
         session_client_provided: bool,
@@ -207,6 +399,7 @@ impl RequestForwarder {
             codex_chat_history,
             failover_manager,
             app_handle,
+            managed_auth_runtime,
             current_provider_id_at_start,
             session_id,
             session_client_provided,
@@ -1421,120 +1614,16 @@ impl RequestForwarder {
         let mut auth_headers = if let Some(mut auth) = adapter.extract_auth(provider) {
             // GitHub Copilot 特殊处理：从 CopilotAuthManager 获取真实 token
             if auth.strategy == AuthStrategy::GitHubCopilot {
-                #[cfg(feature = "desktop")]
-                if let Some(app_handle) = &self.app_handle {
-                    let copilot_state = app_handle.state::<CopilotAuthState>();
-                    let copilot_auth: tokio::sync::RwLockReadGuard<'_, CopilotAuthManager> =
-                        copilot_state.0.read().await;
-
-                    // 从 provider.meta 获取关联的 GitHub 账号 ID（多账号支持）
-                    let account_id = provider
-                        .meta
-                        .as_ref()
-                        .and_then(|m| m.managed_account_id_for("github_copilot"));
-
-                    // 根据账号 ID 获取对应 token（向后兼容：无账号 ID 时使用第一个账号）
-                    let token_result = match &account_id {
-                        Some(id) => {
-                            log::debug!("[Copilot] 使用指定账号 {id} 获取 token");
-                            copilot_auth.get_valid_token_for_account(id).await
-                        }
-                        None => {
-                            log::debug!("[Copilot] 使用默认账号获取 token");
-                            copilot_auth.get_valid_token().await
-                        }
-                    };
-
-                    match token_result {
-                        Ok(token) => {
-                            auth = AuthInfo::new(token, AuthStrategy::GitHubCopilot);
-                            log::debug!(
-                                "[Copilot] 成功获取 Copilot token (account={})",
-                                account_id.as_deref().unwrap_or("default")
-                            );
-                        }
-                        Err(e) => {
-                            log::error!(
-                                "[Copilot] 获取 Copilot token 失败 (account={}): {e}",
-                                account_id.as_deref().unwrap_or("default")
-                            );
-                            return Err(ProxyError::AuthError(format!(
-                                "GitHub Copilot 认证失败: {e}"
-                            )));
-                        }
-                    }
-                } else {
-                    log::error!("[Copilot] AppHandle 不可用");
-                    return Err(ProxyError::AuthError(
-                        "GitHub Copilot 认证不可用（无 AppHandle）".to_string(),
-                    ));
-                }
-                #[cfg(not(feature = "desktop"))]
-                {
-                    return Err(ProxyError::AuthError(
-                        "远程代理暂不支持 GitHub Copilot 桌面账号认证".to_string(),
-                    ));
-                }
+                auth = self.resolve_copilot_auth(provider, auth).await?;
             }
 
             // Codex OAuth 特殊处理：从 CodexOAuthManager 获取真实 access_token
             if auth.strategy == AuthStrategy::CodexOAuth {
-                #[cfg(feature = "desktop")]
-                if let Some(app_handle) = &self.app_handle {
-                    let codex_state = app_handle.state::<CodexOAuthState>();
-                    let codex_auth: tokio::sync::RwLockReadGuard<'_, CodexOAuthManager> =
-                        codex_state.0.read().await;
-
-                    // 从 provider.meta 获取关联的 ChatGPT 账号 ID
-                    let account_id = provider
-                        .meta
-                        .as_ref()
-                        .and_then(|m| m.managed_account_id_for("codex_oauth"));
-
-                    let token_result = match &account_id {
-                        Some(id) => {
-                            log::debug!("[CodexOAuth] 使用指定账号 {id} 获取 token");
-                            codex_auth.get_valid_token_for_account(id).await
-                        }
-                        None => {
-                            log::debug!("[CodexOAuth] 使用默认账号获取 token");
-                            codex_auth.get_valid_token().await
-                        }
-                    };
-
-                    match token_result {
-                        Ok(token) => {
-                            auth = AuthInfo::new(token, AuthStrategy::CodexOAuth);
-                            should_send_codex_oauth_session_headers = true;
-                            // 解析使用的 account_id（用于注入 ChatGPT-Account-Id header）
-                            codex_oauth_account_id = match account_id {
-                                Some(id) => Some(id),
-                                None => codex_auth.default_account_id().await,
-                            };
-                            log::debug!(
-                                "[CodexOAuth] 成功获取 access_token (account={})",
-                                codex_oauth_account_id.as_deref().unwrap_or("default")
-                            );
-                        }
-                        Err(e) => {
-                            log::error!("[CodexOAuth] 获取 access_token 失败: {e}");
-                            return Err(ProxyError::AuthError(format!(
-                                "Codex OAuth 认证失败: {e}"
-                            )));
-                        }
-                    }
-                } else {
-                    log::error!("[CodexOAuth] AppHandle 不可用");
-                    return Err(ProxyError::AuthError(
-                        "Codex OAuth 认证不可用（无 AppHandle）".to_string(),
-                    ));
-                }
-                #[cfg(not(feature = "desktop"))]
-                {
-                    return Err(ProxyError::AuthError(
-                        "远程代理暂不支持 Codex OAuth 桌面账号认证".to_string(),
-                    ));
-                }
+                let (resolved_auth, resolved_account_id) =
+                    self.resolve_codex_oauth_auth(provider, auth).await?;
+                auth = resolved_auth;
+                should_send_codex_oauth_session_headers = true;
+                codex_oauth_account_id = resolved_account_id;
             }
 
             adapter.get_auth_headers(&auth)?
@@ -2686,6 +2775,7 @@ mod tests {
             codex_chat_history: Arc::new(CodexChatHistoryStore::default()),
             failover_manager: Arc::new(FailoverSwitchManager::new(db)),
             app_handle: None,
+            managed_auth_runtime: ManagedAuthRuntime::default(),
             current_provider_id_at_start: String::new(),
             session_id: String::new(),
             session_client_provided: false,
@@ -2696,6 +2786,37 @@ mod tests {
             streaming_first_byte_timeout,
             max_attempts: 1,
         }
+    }
+
+    #[tokio::test]
+    async fn codex_oauth_without_app_handle_uses_injected_remote_runtime() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let codex_oauth = Arc::new(CodexOAuthManager::new(temp.path().to_path_buf()));
+        let forwarder = RequestForwarder {
+            managed_auth_runtime: crate::proxy::managed_auth_runtime::ManagedAuthRuntime {
+                codex_oauth: Some(codex_oauth),
+                ..Default::default()
+            },
+            ..test_forwarder(Duration::from_secs(0), Duration::from_secs(0))
+        };
+        let provider = test_provider_with_type(Some("codex_oauth"));
+
+        let error = forwarder
+            .resolve_codex_oauth_auth(
+                &provider,
+                AuthInfo::new("PROXY_MANAGED".to_string(), AuthStrategy::CodexOAuth),
+            )
+            .await
+            .expect_err("empty injected runtime should report missing account");
+
+        assert!(
+            error.to_string().contains("Codex OAuth 认证失败"),
+            "unexpected error: {error}"
+        );
+        assert!(
+            !error.to_string().contains("AppHandle"),
+            "remote runtime must not depend on Tauri AppHandle: {error}"
+        );
     }
 
     #[test]

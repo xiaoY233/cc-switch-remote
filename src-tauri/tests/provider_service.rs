@@ -596,6 +596,15 @@ wire_api = "responses"
     }
 
     let state = create_test_state_with_config(&initial_config).expect("create test state");
+    {
+        let mut proxy_config = state.db.get_proxy_config().await.expect("get proxy config");
+        proxy_config.listen_port = 0;
+        state
+            .db
+            .update_proxy_config(proxy_config)
+            .await
+            .expect("set test proxy config to an ephemeral port");
+    }
 
     ProviderService::switch(&state, AppType::Codex, "deepseek-provider")
         .expect("switch from official subscription to DeepSeek");
@@ -623,6 +632,15 @@ wire_api = "responses"
         .set_takeover_for_app("codex", true)
         .await
         .expect("enable Codex takeover");
+    let proxy_base_url = format!(
+        "http://127.0.0.1:{}/v1",
+        state
+            .proxy_service
+            .get_status()
+            .await
+            .expect("get proxy status")
+            .port
+    );
 
     let auth_after_takeover: serde_json::Value =
         read_json_file(&cc_switch_lib::get_codex_auth_path()).expect("read auth after takeover");
@@ -634,7 +652,7 @@ wire_api = "responses"
     let config_after_takeover =
         std::fs::read_to_string(cc_switch_lib::get_codex_config_path()).expect("read config");
     assert!(
-        config_after_takeover.contains("http://127.0.0.1:15721/v1"),
+        config_after_takeover.contains(&proxy_base_url),
         "enabling takeover should point Codex config.toml at the local proxy"
     );
     assert!(

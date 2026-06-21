@@ -10,6 +10,8 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ProviderIcon } from "@/components/ProviderIcon";
 import JsonEditor from "@/components/JsonEditor";
 import type { UniversalProvider, UniversalProviderModels } from "@/types";
+import type { ManagementTarget } from "@/lib/api";
+import { LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
 import {
   universalProviderPresets,
   createUniversalProviderFromPreset,
@@ -24,6 +26,7 @@ interface UniversalProviderFormModalProps {
   onSaveAndSync?: (provider: UniversalProvider) => void;
   editingProvider?: UniversalProvider | null;
   initialPreset?: UniversalProviderPreset | null;
+  target?: ManagementTarget;
 }
 
 export function UniversalProviderFormModal({
@@ -33,9 +36,11 @@ export function UniversalProviderFormModal({
   onSaveAndSync,
   editingProvider,
   initialPreset,
+  target = LOCAL_MANAGEMENT_TARGET,
 }: UniversalProviderFormModalProps) {
   const { t } = useTranslation();
   const isEditMode = !!editingProvider;
+  const isRemoteEditMode = isEditMode && target.type === "remote";
 
   // 表单状态
   const [selectedPreset, setSelectedPreset] =
@@ -185,7 +190,9 @@ requires_openai_auth = true`;
 
   // 提交表单
   const handleSubmit = useCallback(() => {
-    if (!name.trim() || !baseUrl.trim() || !apiKey.trim()) {
+    const resolvedApiKey =
+      apiKey.trim() || (isRemoteEditMode ? editingProvider?.apiKey : "");
+    if (!name.trim() || !baseUrl.trim() || !resolvedApiKey) {
       return;
     }
 
@@ -194,7 +201,7 @@ requires_openai_auth = true`;
           ...editingProvider,
           name: name.trim(),
           baseUrl: baseUrl.trim(),
-          apiKey: apiKey.trim(),
+          apiKey: resolvedApiKey,
           websiteUrl: websiteUrl.trim() || undefined,
           notes: notes.trim() || undefined,
           apps: {
@@ -208,7 +215,7 @@ requires_openai_auth = true`;
           selectedPreset || universalProviderPresets[0],
           crypto.randomUUID(),
           baseUrl.trim(),
-          apiKey.trim(),
+          resolvedApiKey,
           name.trim(),
         );
 
@@ -228,6 +235,7 @@ requires_openai_auth = true`;
     onClose();
   }, [
     editingProvider,
+    isRemoteEditMode,
     name,
     baseUrl,
     apiKey,
@@ -244,7 +252,9 @@ requires_openai_auth = true`;
 
   // 构建 provider 对象的辅助函数
   const buildProvider = useCallback((): UniversalProvider | null => {
-    if (!name.trim() || !baseUrl.trim() || !apiKey.trim()) {
+    const resolvedApiKey =
+      apiKey.trim() || (isRemoteEditMode ? editingProvider?.apiKey : "");
+    if (!name.trim() || !baseUrl.trim() || !resolvedApiKey) {
       return null;
     }
 
@@ -253,7 +263,7 @@ requires_openai_auth = true`;
           ...editingProvider,
           name: name.trim(),
           baseUrl: baseUrl.trim(),
-          apiKey: apiKey.trim(),
+          apiKey: resolvedApiKey,
           websiteUrl: websiteUrl.trim() || undefined,
           notes: notes.trim() || undefined,
           apps: {
@@ -267,7 +277,7 @@ requires_openai_auth = true`;
           selectedPreset || universalProviderPresets[0],
           crypto.randomUUID(),
           baseUrl.trim(),
-          apiKey.trim(),
+          resolvedApiKey,
           name.trim(),
         );
 
@@ -286,6 +296,7 @@ requires_openai_auth = true`;
     return provider;
   }, [
     editingProvider,
+    isRemoteEditMode,
     name,
     baseUrl,
     apiKey,
@@ -297,6 +308,11 @@ requires_openai_auth = true`;
     models,
     selectedPreset,
   ]);
+  const canSave = Boolean(
+    name.trim() &&
+      baseUrl.trim() &&
+      (apiKey.trim() || (isRemoteEditMode && editingProvider?.apiKey)),
+  );
 
   // 打开保存并同步确认弹窗
   const handleSaveAndSyncClick = useCallback(() => {
@@ -323,18 +339,12 @@ requires_openai_auth = true`;
         {t("common.cancel", { defaultValue: "取消" })}
       </Button>
       {isEditMode && onSaveAndSync ? (
-        <Button
-          onClick={handleSaveAndSyncClick}
-          disabled={!name.trim() || !baseUrl.trim() || !apiKey.trim()}
-        >
+        <Button onClick={handleSaveAndSyncClick} disabled={!canSave}>
           <RefreshCw className="mr-1.5 h-4 w-4" />
           {t("universalProvider.saveAndSync", { defaultValue: "保存并同步" })}
         </Button>
       ) : (
-        <Button
-          onClick={handleSubmit}
-          disabled={!name.trim() || !baseUrl.trim() || !apiKey.trim()}
-        >
+        <Button onClick={handleSubmit} disabled={!canSave}>
           {t("common.add", { defaultValue: "添加" })}
         </Button>
       )}
@@ -428,7 +438,14 @@ requires_openai_auth = true`;
                 type={showApiKey ? "text" : "password"}
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                placeholder="sk-..."
+                placeholder={
+                  isRemoteEditMode
+                    ? t("apiKeyInput.keepCurrentPlaceholder", {
+                        defaultValue:
+                          "Leave blank to keep the current API key.",
+                      })
+                    : "sk-..."
+                }
                 className="pr-10"
               />
               <Button

@@ -521,7 +521,7 @@ fn switch_provider_updates_claude_live_and_state() {
     // 验证数据已持久化到数据库
     let home_dir = std::env::var("HOME").expect("HOME should be set by ensure_test_home");
     let db_path = std::path::Path::new(&home_dir)
-        .join(".cc-switch")
+        .join(".cc-switch-remote")
         .join("cc-switch.db");
     assert!(
         db_path.exists(),

@@ -2,7 +2,10 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { authApi, settingsApi } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
-import { getManagementTargetKey, LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
+import {
+  getManagementTargetKey,
+  LOCAL_MANAGEMENT_TARGET,
+} from "@/lib/managementTarget";
 import type {
   ManagementTarget,
   ManagedAuthProvider,
@@ -62,7 +65,8 @@ export function useManagedAuth(
   }, [stopPolling]);
 
   const startLoginMutation = useMutation({
-    mutationFn: () => authApi.authStartLogin(authProvider, githubDomain, target),
+    mutationFn: () =>
+      authApi.authStartLogin(authProvider, githubDomain, target),
     onSuccess: async (response) => {
       setDeviceCode(response);
       setPollingState("polling");

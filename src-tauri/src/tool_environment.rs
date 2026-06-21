@@ -119,6 +119,165 @@ pub async fn run_tool_lifecycle_action(
     .map_err(|e| format!("tool lifecycle task join error: {e}"))?
 }
 
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub struct ToolShellPathRepairReport {
+    pub tool: String,
+    pub changed: bool,
+    pub repaired_files: Vec<String>,
+    pub skipped_reason: Option<String>,
+}
+
+pub fn repair_remote_tool_shell_path_after_install(
+    tools: Vec<String>,
+) -> Result<Vec<ToolShellPathRepairReport>, String> {
+    #[cfg(target_os = "windows")]
+    {
+        Ok(tools
+            .into_iter()
+            .map(|tool| ToolShellPathRepairReport {
+                tool,
+                changed: false,
+                repaired_files: Vec::new(),
+                skipped_reason: Some("unsupported_platform".to_string()),
+            })
+            .collect())
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let home = dirs::home_dir().ok_or_else(|| "Cannot determine home directory".to_string())?;
+        let shell = std::env::var("SHELL").ok();
+        repair_remote_tool_shell_path_after_install_in_home(&tools, &home, shell.as_deref())
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn repair_remote_tool_shell_path_after_install_in_home(
+    tools: &[String],
+    home: &Path,
+    shell: Option<&str>,
+) -> Result<Vec<ToolShellPathRepairReport>, String> {
+    tools
+        .iter()
+        .map(|tool| repair_single_remote_tool_shell_path_after_install(tool, home, shell))
+        .collect()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn repair_single_remote_tool_shell_path_after_install(
+    tool: &str,
+    home: &Path,
+    shell: Option<&str>,
+) -> Result<ToolShellPathRepairReport, String> {
+    if tool != "claude" {
+        return Ok(ToolShellPathRepairReport {
+            tool: tool.to_string(),
+            changed: false,
+            repaired_files: Vec::new(),
+            skipped_reason: Some("unsupported_tool".to_string()),
+        });
+    }
+
+    let binary = home.join(".local").join("bin").join("claude");
+    if !binary.exists() {
+        return Ok(ToolShellPathRepairReport {
+            tool: tool.to_string(),
+            changed: false,
+            repaired_files: Vec::new(),
+            skipped_reason: Some("native_binary_missing".to_string()),
+        });
+    }
+
+    let mut repaired_files = Vec::new();
+    for profile in shell_path_repair_profile_candidates(home, shell) {
+        if ensure_local_bin_path_block(&profile)? {
+            repaired_files.push(profile.display().to_string());
+        }
+    }
+
+    Ok(ToolShellPathRepairReport {
+        tool: tool.to_string(),
+        changed: !repaired_files.is_empty(),
+        repaired_files,
+        skipped_reason: None,
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+fn shell_path_repair_profile_candidates(
+    home: &Path,
+    shell: Option<&str>,
+) -> Vec<std::path::PathBuf> {
+    let shell_name = shell
+        .and_then(|value| Path::new(value).file_name())
+        .and_then(|value| value.to_str())
+        .unwrap_or("sh");
+
+    let mut profiles = Vec::new();
+    match shell_name {
+        "bash" => {
+            let bash_profile = home.join(".bash_profile");
+            if bash_profile.exists() {
+                profiles.push(bash_profile);
+            } else {
+                profiles.push(home.join(".profile"));
+            }
+            profiles.push(home.join(".bashrc"));
+        }
+        "zsh" => {
+            profiles.push(home.join(".zprofile"));
+            profiles.push(home.join(".zshrc"));
+        }
+        "sh" | "dash" => {
+            profiles.push(home.join(".profile"));
+        }
+        _ => {
+            profiles.push(home.join(".profile"));
+        }
+    }
+    profiles
+}
+
+#[cfg(not(target_os = "windows"))]
+fn ensure_local_bin_path_block(path: &Path) -> Result<bool, String> {
+    const START: &str = "# >>> cc-switch remote tool path >>>";
+    const END: &str = "# <<< cc-switch remote tool path <<<";
+    const BLOCK: &str = r#"# >>> cc-switch remote tool path >>>
+case ":$PATH:" in
+  *":$HOME/.local/bin:"*) ;;
+  *) export PATH="$HOME/.local/bin:$PATH" ;;
+esac
+# <<< cc-switch remote tool path <<<
+"#;
+
+    let existing = match std::fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(err) => return Err(format!("Failed to read {}: {err}", path.display())),
+    };
+
+    if existing.contains(START) && existing.contains(END) {
+        return Ok(false);
+    }
+
+    let mut updated = existing;
+    if !updated.is_empty() && !updated.ends_with('\n') {
+        updated.push('\n');
+    }
+    if !updated.is_empty() {
+        updated.push('\n');
+    }
+    updated.push_str(BLOCK);
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|err| format!("Failed to create {}: {err}", parent.display()))?;
+    }
+    std::fs::write(path, updated)
+        .map_err(|err| format!("Failed to write {}: {err}", path.display()))?;
+    Ok(true)
+}
+
 /// 静默执行工具安装/更新脚本：直接捕获子进程输出并阻塞到命令真正结束，
 /// 不再弹出可见终端窗口（与 `launch_terminal_running` 的"开窗即返回"形成对比，
 /// 后者仍保留给 provider 切换等需要交互式终端的场景）。
@@ -3706,6 +3865,89 @@ mod tests {
         let candidates = tool_executable_candidates("opencode", &dir);
 
         assert_eq!(candidates, vec![PathBuf::from("/usr/local/bin/opencode")]);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn claude_native_install_repair_adds_local_bin_to_profile_and_bashrc() {
+        let home = tempfile::tempdir().expect("temp home");
+        let local_bin = home.path().join(".local").join("bin");
+        std::fs::create_dir_all(&local_bin).expect("create local bin");
+        std::fs::write(local_bin.join("claude"), "#!/bin/sh\n").expect("write claude");
+
+        let reports = repair_remote_tool_shell_path_after_install_in_home(
+            &["claude".to_string()],
+            home.path(),
+            Some("/bin/bash"),
+        )
+        .expect("repair shell path");
+
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].tool, "claude");
+        assert!(reports[0].changed);
+        assert_eq!(reports[0].repaired_files.len(), 2);
+
+        let profile =
+            std::fs::read_to_string(home.path().join(".profile")).expect("profile created");
+        let bashrc = std::fs::read_to_string(home.path().join(".bashrc")).expect("bashrc created");
+        for content in [profile, bashrc] {
+            assert!(content.contains("# >>> cc-switch remote tool path >>>"));
+            assert!(content.contains("export PATH=\"$HOME/.local/bin:$PATH\""));
+            assert!(content.contains("# <<< cc-switch remote tool path <<<"));
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn claude_native_install_repair_is_idempotent() {
+        let home = tempfile::tempdir().expect("temp home");
+        let local_bin = home.path().join(".local").join("bin");
+        std::fs::create_dir_all(&local_bin).expect("create local bin");
+        std::fs::write(local_bin.join("claude"), "#!/bin/sh\n").expect("write claude");
+
+        repair_remote_tool_shell_path_after_install_in_home(
+            &["claude".to_string()],
+            home.path(),
+            Some("/bin/bash"),
+        )
+        .expect("first repair");
+        let second = repair_remote_tool_shell_path_after_install_in_home(
+            &["claude".to_string()],
+            home.path(),
+            Some("/bin/bash"),
+        )
+        .expect("second repair");
+
+        assert!(!second[0].changed);
+        let profile = std::fs::read_to_string(home.path().join(".profile")).unwrap();
+        assert_eq!(
+            profile
+                .matches("# >>> cc-switch remote tool path >>>")
+                .count(),
+            1
+        );
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn shell_path_repair_skips_non_claude_tools() {
+        let home = tempfile::tempdir().expect("temp home");
+
+        let reports = repair_remote_tool_shell_path_after_install_in_home(
+            &["codex".to_string()],
+            home.path(),
+            Some("/bin/bash"),
+        )
+        .expect("repair shell path");
+
+        assert_eq!(reports[0].tool, "codex");
+        assert!(!reports[0].changed);
+        assert_eq!(
+            reports[0].skipped_reason.as_deref(),
+            Some("unsupported_tool")
+        );
+        assert!(!home.path().join(".profile").exists());
+        assert!(!home.path().join(".bashrc").exists());
     }
 
     #[cfg(target_os = "windows")]

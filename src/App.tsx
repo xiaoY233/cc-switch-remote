@@ -1562,11 +1562,11 @@ function App() {
                   <Button
                     variant="ghost"
                     size="icon"
-                  onClick={() => {
-                    setForceLocalSettings(false);
-                    setSettingsDefaultTab("usage");
-                    setCurrentView("settings");
-                  }}
+                    onClick={() => {
+                      setForceLocalSettings(false);
+                      setSettingsDefaultTab("usage");
+                      setCurrentView("settings");
+                    }}
                     title={t("usage.title", {
                       defaultValue: "使用统计",
                     })}
