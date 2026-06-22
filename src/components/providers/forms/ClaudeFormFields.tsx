@@ -360,7 +360,7 @@ export function ClaudeFormFields({
     const requestId = codexOauthModelsRequestRef.current + 1;
     codexOauthModelsRequestRef.current = requestId;
     setCodexOauthModelsLoading(true);
-    fetchCodexOauthModels(selectedCodexAccountId)
+    fetchCodexOauthModels(selectedCodexAccountId, modelFetchTarget)
       .then((models) => {
         if (codexOauthModelsRequestRef.current !== requestId) return;
         setCodexOauthModels(models);
@@ -378,6 +378,7 @@ export function ClaudeFormFields({
       });
   }, [
     isCodexOauthAuthenticated,
+    modelFetchTarget,
     selectedCodexAccountId,
     showModelFetchResult,
     t,
@@ -612,6 +613,7 @@ export function ClaudeFormFields({
       {/* Codex OAuth 认证 (ChatGPT Plus/Pro) */}
       {isCodexOauthPreset && (
         <CodexOAuthSection
+          target={modelFetchTarget}
           selectedAccountId={selectedCodexAccountId}
           onAccountSelect={onCodexAccountSelect}
           fastModeEnabled={codexFastMode}

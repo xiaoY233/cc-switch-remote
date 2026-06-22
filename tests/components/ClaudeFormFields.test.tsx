@@ -18,6 +18,8 @@ const modelFetchApiMock = vi.hoisted(() => ({
   showFetchModelsError: vi.fn(),
 }));
 
+const codexOAuthSectionMock = vi.hoisted(() => vi.fn());
+
 vi.mock("@/lib/api/copilot", () => ({
   copilotGetModels: copilotApiMock.copilotGetModels,
   copilotGetModelsForAccount: copilotApiMock.copilotGetModelsForAccount,
@@ -37,7 +39,10 @@ vi.mock("@/components/providers/forms/CopilotAuthSection", () => ({
 }));
 
 vi.mock("@/components/providers/forms/CodexOAuthSection", () => ({
-  CodexOAuthSection: () => <div data-testid="codex-oauth-section" />,
+  CodexOAuthSection: (props: unknown) => {
+    codexOAuthSectionMock(props);
+    return <div data-testid="codex-oauth-section" />;
+  },
 }));
 
 type ClaudeFormFieldsProps = ComponentProps<typeof ClaudeFormFields>;
@@ -123,6 +128,7 @@ const renderCodexOauthForm = (overrides: Partial<ClaudeFormFieldsProps> = {}) =>
 
 describe("ClaudeFormFields", () => {
   beforeEach(() => {
+    codexOAuthSectionMock.mockReset();
     copilotApiMock.copilotGetModels.mockResolvedValue([]);
     copilotApiMock.copilotGetModelsForAccount.mockResolvedValue([]);
     modelFetchApiMock.fetchCodexOauthModels.mockResolvedValue([]);
@@ -176,6 +182,43 @@ describe("ClaudeFormFields", () => {
     await waitFor(() => {
       expect(modelFetchApiMock.fetchCodexOauthModels).toHaveBeenCalledWith(
         "chatgpt-1",
+        undefined,
+      );
+    });
+  });
+
+  it("远程 Codex OAuth 表单使用远端账号并从远端获取模型列表", async () => {
+    const remoteTarget: ClaudeFormFieldsProps["modelFetchTarget"] = {
+      type: "remote",
+      profile: {
+        id: "pve-matx",
+        name: "PVE-Matx",
+        host: "192.0.2.10",
+        port: 22,
+        username: "root",
+        authMethod: { type: "sshAgent" },
+        helperPath: "/root/.local/bin/cc-switch-remote-helper",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    };
+
+    renderCodexOauthForm({ modelFetchTarget: remoteTarget });
+
+    expect(codexOAuthSectionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ target: remoteTarget }),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "providerForm.fetchModels",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(modelFetchApiMock.fetchCodexOauthModels).toHaveBeenCalledWith(
+        "chatgpt-1",
+        remoteTarget,
       );
     });
   });

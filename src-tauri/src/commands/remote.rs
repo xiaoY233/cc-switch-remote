@@ -1875,6 +1875,26 @@ pub async fn remote_fetch_models_for_provider(
     .await
 }
 
+#[tauri::command(rename_all = "camelCase")]
+pub async fn remote_fetch_codex_oauth_models(
+    profile: RemoteHostProfile,
+    account_id: Option<String>,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Vec<crate::services::model_fetch::FetchedModel>, String> {
+    run_remote_helper_json(
+        profile,
+        vec![
+            "auth".to_string(),
+            "models".to_string(),
+            "codex_oauth".to_string(),
+            account_id.unwrap_or_else(|| "-".to_string()),
+        ],
+        secret,
+        "Remote Codex OAuth fetch models",
+    )
+    .await
+}
+
 #[tauri::command]
 pub async fn remote_get_stream_check_config(
     profile: RemoteHostProfile,

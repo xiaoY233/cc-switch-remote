@@ -90,7 +90,16 @@ export async function fetchModelsForProviderConfig({
  */
 export async function fetchCodexOauthModels(
   accountId?: string | null,
+  target: ManagementTarget = { type: "local" },
 ): Promise<FetchedModel[]> {
+  if (target.type === "remote") {
+    return remoteApi.fetchCodexOauthModels(
+      target.profile,
+      accountId || null,
+      target.secret,
+    );
+  }
+
   return invoke("get_codex_oauth_models", {
     accountId: accountId || null,
   });

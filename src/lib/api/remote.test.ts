@@ -94,6 +94,25 @@ describe("remote preview profile store", () => {
 });
 
 describe("remote API invoke mappings", () => {
+  it("fetches Codex OAuth models through the remote helper command", async () => {
+    const remoteProfile = profile();
+    const secret: RemoteConnectionSecret = { password: "secret" };
+    invokeMock.mockResolvedValueOnce([{ id: "gpt-5", ownedBy: null }]);
+
+    const result = await remoteApi.fetchCodexOauthModels(
+      remoteProfile,
+      "chatgpt-1",
+      secret,
+    );
+
+    expect(result).toEqual([{ id: "gpt-5", ownedBy: null }]);
+    expect(invokeMock).toHaveBeenCalledWith("remote_fetch_codex_oauth_models", {
+      profile: remoteProfile,
+      accountId: "chatgpt-1",
+      secret,
+    });
+  });
+
   it("scans OpenClaw health through the remote helper command", async () => {
     const remoteProfile = profile();
     const secret: RemoteConnectionSecret = { password: "secret" };

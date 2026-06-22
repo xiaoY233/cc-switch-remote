@@ -139,6 +139,34 @@ mod tests {
     }
 
     #[test]
+    fn codex_oauth_models_command_is_registered() {
+        let dir = tempfile::tempdir().expect("temp test home");
+        let previous_home = std::env::var_os("CC_SWITCH_TEST_HOME");
+        std::env::set_var("CC_SWITCH_TEST_HOME", dir.path());
+
+        let response = run_command(&[
+            "auth".to_string(),
+            "models".to_string(),
+            "codex_oauth".to_string(),
+            "-".to_string(),
+        ]);
+
+        match previous_home {
+            Some(value) => std::env::set_var("CC_SWITCH_TEST_HOME", value),
+            None => std::env::remove_var("CC_SWITCH_TEST_HOME"),
+        }
+
+        assert_eq!(response.get("ok").and_then(Value::as_bool), Some(false));
+        assert_eq!(
+            response
+                .get("error")
+                .and_then(|error| error.get("code"))
+                .and_then(Value::as_str),
+            Some("codex_oauth_models_failed")
+        );
+    }
+
+    #[test]
     fn import_export_preflight_sql_b64_returns_report() {
         let settings = serde_json::json!({
             "auth": {},
@@ -844,6 +872,23 @@ pub(crate) fn run_command(args: &[String]) -> Value {
                     serde_json::to_value(types::err::<()>("auth_status_failed", message))
                         .expect("serialize auth status error")
                 }
+            }
+        }
+        [group, cmd, auth_provider, account_id] if group == "auth" && cmd == "models" => {
+            let account_id = if account_id == "-" {
+                None
+            } else {
+                Some(account_id.as_str())
+            };
+            match commands::fetch_codex_oauth_models(auth_provider, account_id) {
+                Ok(value) => {
+                    serde_json::to_value(types::ok(value)).expect("serialize auth models")
+                }
+                Err(message) => serde_json::to_value(types::err::<()>(
+                    "codex_oauth_models_failed",
+                    message,
+                ))
+                .expect("serialize auth models error"),
             }
         }
         [group, cmd, auth_provider, account_id] if group == "auth" && cmd == "remove" => {

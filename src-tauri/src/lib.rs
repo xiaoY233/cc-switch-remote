@@ -1435,6 +1435,7 @@ pub fn run() {
             commands::remote_get_live_provider_ids,
             commands::remote_stream_check_provider,
             commands::remote_fetch_models_for_provider,
+            commands::remote_fetch_codex_oauth_models,
             commands::remote_get_stream_check_config,
             commands::remote_save_stream_check_config,
             commands::remote_get_usage_summary,

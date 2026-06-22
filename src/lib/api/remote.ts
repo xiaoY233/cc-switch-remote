@@ -951,6 +951,18 @@ export const remoteApi = {
     });
   },
 
+  fetchCodexOauthModels(
+    profile: RemoteHostProfile,
+    accountId?: string | null,
+    secret?: RemoteConnectionSecret,
+  ): Promise<FetchedModel[]> {
+    return invoke<FetchedModel[]>("remote_fetch_codex_oauth_models", {
+      profile,
+      accountId: accountId || null,
+      secret,
+    });
+  },
+
   getStreamCheckConfig(
     profile: RemoteHostProfile,
     secret?: RemoteConnectionSecret,

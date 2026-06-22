@@ -150,6 +150,37 @@ pub fn fetch_models_for_provider(
     ))
 }
 
+pub fn fetch_codex_oauth_models(
+    auth_provider: &str,
+    account_id: Option<&str>,
+) -> Result<Vec<crate::services::model_fetch::FetchedModel>, String> {
+    if ensure_auth_provider(auth_provider)? != AUTH_PROVIDER_CODEX_OAUTH {
+        return Err(format!(
+            "Model list is only supported for {AUTH_PROVIDER_CODEX_OAUTH}"
+        ));
+    }
+
+    auth_runtime()?.block_on(async {
+        let resolved = match account_id
+            .map(str::trim)
+            .filter(|id| !id.is_empty() && *id != "-")
+        {
+            Some(id) => Some(id.to_string()),
+            None => CODEX_OAUTH_MANAGER.default_account_id().await,
+        };
+        let Some(id) = resolved else {
+            return Err("No ChatGPT account available".to_string());
+        };
+
+        let token = CODEX_OAUTH_MANAGER
+            .get_valid_token_for_account(&id)
+            .await
+            .map_err(|e| format!("Codex OAuth token unavailable: {e}"))?;
+
+        crate::services::codex_oauth_models::fetch_models_with_token(&token, &id).await
+    })
+}
+
 fn ensure_auth_provider(auth_provider: &str) -> Result<&'static str, String> {
     match auth_provider {
         AUTH_PROVIDER_GITHUB_COPILOT => Ok(AUTH_PROVIDER_GITHUB_COPILOT),
