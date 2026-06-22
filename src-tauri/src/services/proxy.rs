@@ -754,7 +754,13 @@ impl ProxyService {
             return Ok(());
         }
 
-        // 关闭接管：检查 enabled 状态
+        self.disable_takeover_for_app_inner(&app).await?;
+
+        Ok(())
+    }
+
+    pub(crate) async fn disable_takeover_for_app_inner(&self, app: &AppType) -> Result<(), String> {
+        let app_type_str = app.as_str();
         let current_config = self
             .db
             .get_proxy_config_for_app(app_type_str)
@@ -768,7 +774,7 @@ impl ProxyService {
                 .await
                 .map_err(|e| format!("检查 {app_type_str} Live 备份失败: {e}"))?
                 .is_some();
-            let live_taken_over = self.detect_takeover_in_live_config_for_app(&app);
+            let live_taken_over = self.detect_takeover_in_live_config_for_app(app);
 
             if !has_residual_backup && !live_taken_over {
                 return Ok(()); // 未接管，幂等返回
@@ -784,7 +790,7 @@ impl ProxyService {
         // 必须走 with_fallback 版本：备份 → SSOT → 清理占位符 的三层兜底。
         // 简版 restore_live_config_for_app 在备份缺失时会静默 Ok(())，
         // 留下接管时写入的占位符（代理地址/PROXY_MANAGED token），客户端无法工作。
-        self.restore_live_config_for_app_with_fallback_inner(&app)
+        self.restore_live_config_for_app_with_fallback_inner(app)
             .await?;
 
         // 2) 删除该 app 的备份（避免长期存储敏感 Token）

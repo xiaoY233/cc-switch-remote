@@ -573,6 +573,99 @@ base_url = "http://localhost:8080"
         );
     }
 
+    #[test]
+    #[serial]
+    fn switch_to_official_cleans_disabled_takeover_residue_before_blocking() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+
+        let db = Arc::new(Database::memory().expect("init db"));
+        let state = AppState::new(db.clone());
+
+        let third_party = Provider::with_id(
+            "third-party".into(),
+            "Third Party".into(),
+            json!({
+                "env": {
+                    "ANTHROPIC_AUTH_TOKEN": "third-party-token",
+                    "ANTHROPIC_BASE_URL": "https://third.example"
+                }
+            }),
+            Some("custom".into()),
+        );
+        let mut official = Provider::with_id(
+            "openai-official".into(),
+            "OpenAI Official".into(),
+            json!({
+                "env": {
+                    "ANTHROPIC_AUTH_TOKEN": "official-token",
+                    "ANTHROPIC_BASE_URL": "https://api.anthropic.com"
+                }
+            }),
+            Some("official".into()),
+        );
+        official.category = Some("official".to_string());
+
+        db.save_provider("claude", &third_party)
+            .expect("save third-party provider");
+        db.save_provider("claude", &official)
+            .expect("save official provider");
+        db.set_current_provider("claude", "third-party")
+            .expect("set db current provider");
+        crate::settings::set_current_provider(&AppType::Claude, Some("third-party"))
+            .expect("set effective current provider");
+
+        let original_live = json!({
+            "env": {
+                "ANTHROPIC_AUTH_TOKEN": "real-token",
+                "ANTHROPIC_BASE_URL": "https://third.example"
+            }
+        });
+        futures::executor::block_on(db.save_live_backup(
+            "claude",
+            &serde_json::to_string(&original_live).expect("serialize original live"),
+        ))
+        .expect("seed stale live backup");
+
+        let mut app_config = futures::executor::block_on(db.get_proxy_config_for_app("claude"))
+            .expect("get claude app config");
+        app_config.enabled = false;
+        futures::executor::block_on(db.update_proxy_config_for_app(app_config))
+            .expect("mark routing disabled");
+
+        write_json_file(
+            &get_claude_settings_path(),
+            &json!({
+                "env": {
+                    "ANTHROPIC_AUTH_TOKEN": "PROXY_MANAGED",
+                    "ANTHROPIC_BASE_URL": "http://127.0.0.1:15721"
+                }
+            }),
+        )
+        .expect("seed stale taken-over live");
+
+        ProviderService::switch(&state, AppType::Claude, "openai-official")
+            .expect("switch should self-heal disabled takeover residue before official block");
+
+        assert!(
+            futures::executor::block_on(db.get_live_backup("claude"))
+                .expect("get live backup")
+                .is_none(),
+            "switch should delete stale live backup"
+        );
+        assert!(
+            !state
+                .proxy_service
+                .detect_takeover_in_live_config_for_app(&AppType::Claude),
+            "switch should remove live takeover placeholders"
+        );
+        assert_eq!(
+            crate::settings::get_effective_current_provider(&db, &AppType::Claude)
+                .expect("get current provider"),
+            Some("openai-official".to_string())
+        );
+    }
+
     #[cfg(any(target_os = "macos", windows))]
     #[tokio::test]
     #[serial]
@@ -1730,16 +1823,48 @@ impl ProviderService {
         // Backup or live placeholders mean the live file is owned by proxy
         // takeover, even if the proxy server is temporarily stopped or is in the
         // activation window before enabled=true is committed.
-        let is_app_taken_over =
+        let mut is_app_taken_over =
             futures::executor::block_on(state.db.get_live_backup(app_type.as_str()))
                 .ok()
                 .flatten()
                 .is_some();
-        let live_taken_over = state
+        let mut live_taken_over = state
             .proxy_service
             .detect_takeover_in_live_config_for_app(&app_type);
 
-        let should_hot_switch = is_app_taken_over || live_taken_over;
+        let mut should_hot_switch = is_app_taken_over || live_taken_over;
+
+        if should_hot_switch {
+            let routing_enabled =
+                futures::executor::block_on(state.db.get_proxy_config_for_app(app_type.as_str()))
+                    .map(|config| config.enabled)
+                    .unwrap_or(true);
+
+            if !routing_enabled {
+                log::warn!(
+                    "{} 路由配置已关闭但仍检测到接管残留 backup={} live_taken_over={}，切换前先清理残留",
+                    app_type.as_str(),
+                    is_app_taken_over,
+                    live_taken_over
+                );
+                futures::executor::block_on(
+                    state
+                        .proxy_service
+                        .disable_takeover_for_app_inner(&app_type),
+                )
+                .map_err(|e| AppError::Message(format!("清理接管残留失败: {e}")))?;
+
+                is_app_taken_over =
+                    futures::executor::block_on(state.db.get_live_backup(app_type.as_str()))
+                        .ok()
+                        .flatten()
+                        .is_some();
+                live_taken_over = state
+                    .proxy_service
+                    .detect_takeover_in_live_config_for_app(&app_type);
+                should_hot_switch = is_app_taken_over || live_taken_over;
+            }
+        }
 
         // Block switching to official providers when proxy takeover is active.
         // Using a proxy with official APIs (Anthropic/OpenAI/Google) may cause account bans.
