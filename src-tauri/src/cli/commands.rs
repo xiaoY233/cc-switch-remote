@@ -1576,6 +1576,22 @@ pub fn update_routing_app_config(config_json: &str) -> Result<(), String> {
             let desired_enabled = config.enabled;
             let enabled_changed = previous.enabled != config.enabled;
 
+            if !desired_enabled {
+                if let Err(error) = state
+                    .proxy_service
+                    .set_takeover_for_app(&app_type, false)
+                    .await
+                {
+                    let _ = db.update_proxy_config_for_app(previous).await;
+                    return Err(error);
+                }
+
+                db.update_proxy_config_for_app(config)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                return Ok(());
+            }
+
             db.update_proxy_config_for_app(config.clone())
                 .await
                 .map_err(|e| e.to_string())?;

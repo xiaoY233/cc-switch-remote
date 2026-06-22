@@ -762,7 +762,21 @@ impl ProxyService {
             .map_err(|e| format!("获取 {app_type_str} 配置失败: {e}"))?;
 
         if !current_config.enabled {
-            return Ok(()); // 未接管，幂等返回
+            let has_residual_backup = self
+                .db
+                .get_live_backup(app_type_str)
+                .await
+                .map_err(|e| format!("检查 {app_type_str} Live 备份失败: {e}"))?
+                .is_some();
+            let live_taken_over = self.detect_takeover_in_live_config_for_app(&app);
+
+            if !has_residual_backup && !live_taken_over {
+                return Ok(()); // 未接管，幂等返回
+            }
+
+            log::warn!(
+                "{app_type_str} 接管配置已关闭，但仍检测到残留 backup={has_residual_backup} live_taken_over={live_taken_over}，继续执行恢复清理"
+            );
         }
 
         // 1) 恢复 Live 配置
@@ -4956,6 +4970,69 @@ model = "gpt-5.1-codex"
         assert_eq!(
             service.read_claude_live().expect("read live"),
             provider_b.settings_config
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn disable_takeover_cleans_residual_state_when_config_already_disabled() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+
+        let db = Arc::new(Database::memory().expect("init db"));
+        let service = ProxyService::new(db.clone());
+
+        let original_live = json!({
+            "env": {
+                "ANTHROPIC_AUTH_TOKEN": "real-token",
+                "ANTHROPIC_BASE_URL": "https://api.anthropic.com"
+            }
+        });
+        db.save_live_backup(
+            "claude",
+            &serde_json::to_string(&original_live).expect("serialize original live"),
+        )
+        .await
+        .expect("seed stale live backup");
+
+        let mut app_config = db
+            .get_proxy_config_for_app("claude")
+            .await
+            .expect("get claude app config");
+        app_config.enabled = false;
+        db.update_proxy_config_for_app(app_config)
+            .await
+            .expect("mark routing disabled");
+
+        service
+            .write_claude_live(&json!({
+                "env": {
+                    "ANTHROPIC_AUTH_TOKEN": PROXY_TOKEN_PLACEHOLDER,
+                    "ANTHROPIC_BASE_URL": "http://127.0.0.1:15721"
+                }
+            }))
+            .expect("seed stale taken-over live");
+
+        service
+            .set_takeover_for_app("claude", false)
+            .await
+            .expect("disable should clean residual takeover state");
+
+        assert!(
+            db.get_live_backup("claude")
+                .await
+                .expect("get live backup")
+                .is_none(),
+            "disable should delete stale live backup"
+        );
+        assert!(
+            !service.detect_takeover_in_live_config_for_app(&AppType::Claude),
+            "disable should remove live takeover placeholders"
+        );
+        assert_eq!(
+            service.read_claude_live().expect("read restored live"),
+            original_live,
+            "disable should restore original live config even when enabled was already false"
         );
     }
 
