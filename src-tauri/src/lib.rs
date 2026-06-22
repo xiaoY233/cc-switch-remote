@@ -1503,6 +1503,7 @@ pub fn run() {
             commands::remote_set_openclaw_tools,
             commands::remote_get_openclaw_agents_defaults,
             commands::remote_set_openclaw_agents_defaults,
+            commands::remote_scan_openclaw_health,
             commands::remote_get_mcp_servers,
             commands::remote_upsert_mcp_server,
             commands::remote_delete_mcp_server,

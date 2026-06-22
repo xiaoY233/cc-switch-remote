@@ -1963,6 +1963,11 @@ pub fn set_openclaw_agents_defaults(
     crate::openclaw_config::set_agents_defaults(&defaults).map_err(|e| e.to_string())
 }
 
+pub fn scan_openclaw_health() -> Result<Vec<crate::openclaw_config::OpenClawHealthWarning>, String>
+{
+    crate::openclaw_config::scan_openclaw_config_health().map_err(|e| e.to_string())
+}
+
 pub fn list_mcp_servers() -> Result<IndexMap<String, McpServer>, String> {
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
     let state = AppState::new(db);

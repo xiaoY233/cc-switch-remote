@@ -116,7 +116,9 @@ export function useOpenClawHealth(
   return useQuery({
     queryKey: [...openclawKeys.health, getOpenClawTargetKey(target)],
     queryFn: () =>
-      target.type === "remote" ? Promise.resolve([]) : openclawApi.scanHealth(),
+      target.type === "remote"
+        ? remoteApi.scanOpenClawHealth(target.profile, target.secret)
+        : openclawApi.scanHealth(),
     staleTime: 30_000,
     enabled,
   });

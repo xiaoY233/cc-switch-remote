@@ -471,6 +471,41 @@ describe("useProviderActions", () => {
     expect(settingsApiApplyMock).not.toHaveBeenCalled();
   });
 
+  it("uses remote routing wording when a remote active route blocks official providers", async () => {
+    const remoteTarget: ManagementTarget = {
+      type: "remote",
+      profile: {
+        id: "remote-1",
+        name: "Remote 1",
+        host: "192.168.1.20",
+        port: 22,
+        username: "root",
+        authMethod: { type: "password" },
+        helperPath: "~/.local/bin/cc-switch-remote-helper",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      secret: { password: "secret" },
+    };
+    const { wrapper } = createWrapper();
+    const provider = createProvider({ category: "official" });
+
+    const { result } = renderHook(
+      () => useProviderActions("codex", true, true, remoteTarget),
+      { wrapper },
+    );
+
+    await act(async () => {
+      await result.current.switchProvider(provider);
+    });
+
+    expect(switchProviderMutateAsync).not.toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "远程应用路由启用时不能切换到官方供应商，使用远程路由访问官方 API 可能导致账号被封禁",
+      { duration: 6000 },
+    );
+  });
+
   it("should call delete mutation when calling deleteProvider", async () => {
     deleteProviderMutateAsync.mockResolvedValueOnce(undefined);
     const { wrapper } = createWrapper();

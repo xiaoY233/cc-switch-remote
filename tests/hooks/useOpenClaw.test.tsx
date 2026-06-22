@@ -6,6 +6,7 @@ import {
   useOpenClawAgentsDefaults,
   useOpenClawDefaultModel,
   useOpenClawEnv,
+  useOpenClawHealth,
   useOpenClawTools,
   useSaveOpenClawAgentsDefaults,
   useSaveOpenClawEnv,
@@ -20,6 +21,7 @@ const openclawApiGetToolsMock = vi.fn();
 const openclawApiSetToolsMock = vi.fn();
 const openclawApiGetAgentsDefaultsMock = vi.fn();
 const openclawApiSetAgentsDefaultsMock = vi.fn();
+const openclawApiScanHealthMock = vi.fn();
 const remoteApiGetOpenClawDefaultModelMock = vi.fn();
 const remoteApiGetOpenClawEnvMock = vi.fn();
 const remoteApiSetOpenClawEnvMock = vi.fn();
@@ -27,6 +29,7 @@ const remoteApiGetOpenClawToolsMock = vi.fn();
 const remoteApiSetOpenClawToolsMock = vi.fn();
 const remoteApiGetOpenClawAgentsDefaultsMock = vi.fn();
 const remoteApiSetOpenClawAgentsDefaultsMock = vi.fn();
+const remoteApiScanOpenClawHealthMock = vi.fn();
 
 vi.mock("@/lib/api/openclaw", () => ({
   openclawApi: {
@@ -40,6 +43,7 @@ vi.mock("@/lib/api/openclaw", () => ({
       openclawApiGetAgentsDefaultsMock(...args),
     setAgentsDefaults: (...args: unknown[]) =>
       openclawApiSetAgentsDefaultsMock(...args),
+    scanHealth: (...args: unknown[]) => openclawApiScanHealthMock(...args),
   },
 }));
 
@@ -59,6 +63,8 @@ vi.mock("@/lib/api/remote", () => ({
       remoteApiGetOpenClawAgentsDefaultsMock(...args),
     setOpenClawAgentsDefaults: (...args: unknown[]) =>
       remoteApiSetOpenClawAgentsDefaultsMock(...args),
+    scanOpenClawHealth: (...args: unknown[]) =>
+      remoteApiScanOpenClawHealthMock(...args),
   },
 }));
 
@@ -101,6 +107,7 @@ describe("useOpenClawDefaultModel", () => {
     openclawApiSetToolsMock.mockReset();
     openclawApiGetAgentsDefaultsMock.mockReset();
     openclawApiSetAgentsDefaultsMock.mockReset();
+    openclawApiScanHealthMock.mockReset();
     remoteApiGetOpenClawDefaultModelMock.mockReset();
     remoteApiGetOpenClawEnvMock.mockReset();
     remoteApiSetOpenClawEnvMock.mockReset();
@@ -108,6 +115,7 @@ describe("useOpenClawDefaultModel", () => {
     remoteApiSetOpenClawToolsMock.mockReset();
     remoteApiGetOpenClawAgentsDefaultsMock.mockReset();
     remoteApiSetOpenClawAgentsDefaultsMock.mockReset();
+    remoteApiScanOpenClawHealthMock.mockReset();
   });
 
   it("queries the remote helper for remote targets", async () => {
@@ -220,5 +228,29 @@ describe("useOpenClawDefaultModel", () => {
     expect(openclawApiSetEnvMock).not.toHaveBeenCalled();
     expect(openclawApiSetToolsMock).not.toHaveBeenCalled();
     expect(openclawApiSetAgentsDefaultsMock).not.toHaveBeenCalled();
+  });
+
+  it("scans OpenClaw config health through the remote helper for remote targets", async () => {
+    remoteApiScanOpenClawHealthMock.mockResolvedValueOnce([
+      {
+        code: "openclaw.config.missing",
+        message: "Remote config missing",
+      },
+    ]);
+    const { wrapper } = createWrapper();
+
+    const { result } = renderHook(() => useOpenClawHealth(true, remoteTarget), {
+      wrapper,
+    });
+
+    await waitFor(() => {
+      expect(result.current.data?.[0]?.message).toBe("Remote config missing");
+    });
+
+    expect(remoteApiScanOpenClawHealthMock).toHaveBeenCalledWith(
+      remoteTarget.profile,
+      remoteTarget.secret,
+    );
+    expect(openclawApiScanHealthMock).not.toHaveBeenCalled();
   });
 });

@@ -266,6 +266,7 @@
     "backfillWarning": "切換成功，但舊供應商設定回填失敗，您手動修改的設定可能未儲存",
     "windowControlFailed": "視窗控制失敗：{{error}}",
     "officialBlockedByProxy": "本地路由模式下不能切換至官方供應商，使用路由存取官方 API 可能導致帳號被封鎖",
+    "officialBlockedByRemoteRouting": "遠端應用路由啟用時不能切換至官方供應商，使用遠端路由存取官方 API 可能導致帳號被封鎖",
     "proxyOfficialWarning": "目前供應商 {{name}} 是官方供應商，建議切換至第三方供應商後再使用本地路由"
   },
   "confirm": {
@@ -2940,6 +2941,7 @@
           "title": "遠端暫未接入",
           "generic": "目前目標暫不支援此進階設定。",
           "directory": "遠端設定目錄覆寫需要遠端路徑編輯器與 Helper 端路徑驗證，接入前不會開放儲存。",
+          "importExport": "目前遠端 Helper 不支援匯入匯出。請更新到包含 import-export capability 的新版 Helper。",
           "backup": "遠端備份還原暫未接入。需要 Helper 支援遠端資料庫快照的列表、建立、還原、重新命名與刪除。",
           "cloudSync": "目前遠端 Helper 不支援雲端同步。請更新到包含 cloud-sync capability 的新版 Helper。",
           "test": "遠端模型測試設定暫未接入。需要 target-aware 的連線檢查設定讀寫命令。",

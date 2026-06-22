@@ -8,6 +8,7 @@ import type {
   OpenClawAgentsDefaults,
   OpenClawDefaultModel,
   OpenClawEnvConfig,
+  OpenClawHealthWarning,
   OpenClawToolsConfig,
   OpenClawWriteOutcome,
   Provider,
@@ -1811,6 +1812,16 @@ export const remoteApi = {
     return invoke<OpenClawWriteOutcome>("remote_set_openclaw_agents_defaults", {
       profile,
       defaults,
+      secret,
+    });
+  },
+
+  scanOpenClawHealth(
+    profile: RemoteHostProfile,
+    secret?: RemoteConnectionSecret,
+  ): Promise<OpenClawHealthWarning[]> {
+    return invoke<OpenClawHealthWarning[]>("remote_scan_openclaw_health", {
+      profile,
       secret,
     });
   },

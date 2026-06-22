@@ -1,11 +1,19 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   deletePreviewRemoteProfile,
   loadPreviewRemoteProfiles,
+  remoteApi,
   savePreviewRemoteProfile,
   validateRemoteProfile,
+  type RemoteConnectionSecret,
   type RemoteHostProfile,
 } from "./remote";
+
+const invokeMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: (...args: unknown[]) => invokeMock(...args),
+}));
 
 function profile(
   overrides: Partial<RemoteHostProfile> = {},
@@ -41,6 +49,10 @@ class MemoryStorage
     this.values.delete(key);
   }
 }
+
+beforeEach(() => {
+  invokeMock.mockReset();
+});
 
 describe("remote preview profile store", () => {
   it("saves updates and deletes remote profiles without requiring Tauri invoke", () => {
@@ -78,5 +90,31 @@ describe("remote preview profile store", () => {
         profile({ authMethod: { type: "keyFile", path: "" } }),
       ),
     ).toThrow("Remote SSH key path is required");
+  });
+});
+
+describe("remote API invoke mappings", () => {
+  it("scans OpenClaw health through the remote helper command", async () => {
+    const remoteProfile = profile();
+    const secret: RemoteConnectionSecret = { password: "secret" };
+    invokeMock.mockResolvedValueOnce([
+      {
+        code: "openclaw.config.missing",
+        message: "Remote config missing",
+      },
+    ]);
+
+    const result = await remoteApi.scanOpenClawHealth(remoteProfile, secret);
+
+    expect(result).toEqual([
+      {
+        code: "openclaw.config.missing",
+        message: "Remote config missing",
+      },
+    ]);
+    expect(invokeMock).toHaveBeenCalledWith("remote_scan_openclaw_health", {
+      profile: remoteProfile,
+      secret,
+    });
   });
 });

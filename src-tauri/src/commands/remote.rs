@@ -2813,6 +2813,20 @@ pub async fn remote_set_openclaw_agents_defaults(
 }
 
 #[tauri::command]
+pub async fn remote_scan_openclaw_health(
+    profile: RemoteHostProfile,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Vec<crate::openclaw_config::OpenClawHealthWarning>, String> {
+    run_remote_helper_json(
+        profile,
+        vec!["openclaw".to_string(), "scan-health".to_string()],
+        secret,
+        "Remote OpenClaw health scan",
+    )
+    .await
+}
+
+#[tauri::command]
 pub async fn remote_get_mcp_servers(
     profile: RemoteHostProfile,
     secret: Option<RemoteConnectionSecret>,

@@ -266,6 +266,7 @@
     "backfillWarning": "Switched successfully, but failed to save changes back to the previous provider",
     "windowControlFailed": "Window control failed: {{error}}",
     "officialBlockedByProxy": "Cannot switch to official provider while local routing is active. Using routing with official APIs may cause account bans.",
+    "officialBlockedByRemoteRouting": "Cannot switch to an official provider while remote app routing is active. Using remote routing with official APIs may cause account bans.",
     "proxyOfficialWarning": "Current provider {{name}} is official. Consider switching to a third-party provider before using local routing."
   },
   "confirm": {
@@ -2968,6 +2969,7 @@
           "title": "Not connected for remote yet",
           "generic": "This advanced setting is not available for the current target yet.",
           "directory": "Remote configuration directory overrides need a remote path editor and helper-side path validation before saving can be enabled.",
+          "importExport": "The current remote helper does not support import/export. Update to a helper with the import-export capability.",
           "backup": "Remote backup management is not connected yet. It needs helper commands for listing, creating, restoring, renaming, and deleting remote database snapshots.",
           "cloudSync": "The current remote helper does not support cloud sync. Update to a helper build with the cloud-sync capability.",
           "test": "Remote model test settings are not connected yet. They need target-aware stream check config commands.",

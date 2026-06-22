@@ -329,6 +329,36 @@ describe("RemoteSettingsPage", () => {
     });
   });
 
+  it("gates remote import/export when the helper lacks the capability", async () => {
+    checkHealthMock.mockResolvedValueOnce({
+      reachable: true,
+      helperInstalled: true,
+      helperVersion: "3.16.2",
+      platform: "linux",
+      capabilities: ["settings", "plugin", "skills", "tools"],
+    });
+
+    render(
+      <RemoteSettingsPage
+        open
+        onOpenChange={vi.fn()}
+        defaultTab="advanced"
+        target={{ type: "remote", profile, secret: { password: "secret" } }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getSettingsMock).toHaveBeenCalled();
+    });
+
+    expect(
+      screen.getByText(
+        "当前远程 Helper 不支持导入导出。请更新到包含 import-export capability 的新版 Helper。",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("settings.importExport")).not.toBeInTheDocument();
+  });
+
   it("keeps the selected remote settings tab after async health refresh", async () => {
     const user = userEvent.setup();
     const health =

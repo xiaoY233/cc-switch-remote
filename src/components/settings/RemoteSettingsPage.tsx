@@ -697,31 +697,47 @@ export function RemoteSettingsPage({
                         onSave={saveRemoteSettings}
                       />
                     ),
-                  data: (
-                    <ImportExportSection
-                      status={importExport.status}
-                      selectedFile={importExport.selectedFile}
-                      errorMessage={importExport.errorMessage}
-                      backupId={importExport.backupId}
-                      isImporting={importExport.isImporting}
-                      restorePreflightReport={
-                        importExport.restorePreflightReport
-                      }
-                      isRestorePreflightOpen={
-                        importExport.isRestorePreflightOpen
-                      }
-                      onSelectFile={importExport.selectImportFile}
-                      onImport={importExport.importConfig}
-                      onImportWithRestoreMode={
-                        importExport.importWithRestoreMode
-                      }
-                      onCancelRestorePreflight={
-                        importExport.cancelRestorePreflight
-                      }
-                      onExport={importExport.exportConfig}
-                      onClear={importExport.clearSelection}
-                    />
-                  ),
+                  data:
+                    !helperReady || !importExportCapability ? (
+                      <div className="rounded-xl border border-border bg-card/50 px-4 py-3 text-sm text-muted-foreground">
+                        {!helperReady
+                          ? t("remote.settings.environment.helperRequired", {
+                              defaultValue:
+                                "请先完成健康检查并安装可用的远程 Helper。",
+                            })
+                          : t(
+                              "remote.settings.advanced.unsupported.importExport",
+                              {
+                                defaultValue:
+                                  "当前远程 Helper 不支持导入导出。请更新到包含 import-export capability 的新版 Helper。",
+                              },
+                            )}
+                      </div>
+                    ) : (
+                      <ImportExportSection
+                        status={importExport.status}
+                        selectedFile={importExport.selectedFile}
+                        errorMessage={importExport.errorMessage}
+                        backupId={importExport.backupId}
+                        isImporting={importExport.isImporting}
+                        restorePreflightReport={
+                          importExport.restorePreflightReport
+                        }
+                        isRestorePreflightOpen={
+                          importExport.isRestorePreflightOpen
+                        }
+                        onSelectFile={importExport.selectImportFile}
+                        onImport={importExport.importConfig}
+                        onImportWithRestoreMode={
+                          importExport.importWithRestoreMode
+                        }
+                        onCancelRestorePreflight={
+                          importExport.cancelRestorePreflight
+                        }
+                        onExport={importExport.exportConfig}
+                        onClear={importExport.clearSelection}
+                      />
+                    ),
                   backup:
                     !helperReady ||
                     !importExportCapability ||

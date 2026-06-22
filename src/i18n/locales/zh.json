@@ -266,6 +266,7 @@
     "backfillWarning": "切换成功，但旧供应商配置回填失败，您手动修改的配置可能未保存",
     "windowControlFailed": "窗口控制失败：{{error}}",
     "officialBlockedByProxy": "本地路由模式下不能切换到官方供应商，使用路由访问官方 API 可能导致账号被封禁",
+    "officialBlockedByRemoteRouting": "远程应用路由启用时不能切换到官方供应商，使用远程路由访问官方 API 可能导致账号被封禁",
     "proxyOfficialWarning": "当前供应商 {{name}} 是官方供应商，建议切换到第三方供应商后再使用本地路由"
   },
   "confirm": {
@@ -2968,6 +2969,7 @@
           "title": "远程暂未接入",
           "generic": "当前目标暂不支持此高级设置。",
           "directory": "远程配置目录覆盖需要远程路径编辑器和 Helper 侧路径校验，接入前不会开放保存。",
+          "importExport": "当前远程 Helper 不支持导入导出。请更新到包含 import-export capability 的新版 Helper。",
           "backup": "远程备份恢复暂未接入。需要 Helper 支持远程数据库快照的列表、创建、恢复、重命名和删除。",
           "cloudSync": "当前远程 Helper 不支持云同步。请更新到包含 cloud-sync capability 的新版 Helper。",
           "test": "远程模型测试设置暂未接入。需要 target-aware 的连通检测配置读写命令。",

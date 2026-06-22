@@ -122,6 +122,23 @@ mod tests {
     }
 
     #[test]
+    fn openclaw_scan_health_command_is_registered() {
+        let dir = tempfile::tempdir().expect("temp test home");
+        let previous_home = std::env::var_os("CC_SWITCH_TEST_HOME");
+        std::env::set_var("CC_SWITCH_TEST_HOME", dir.path());
+
+        let response = run_command(&["openclaw".to_string(), "scan-health".to_string()]);
+
+        match previous_home {
+            Some(value) => std::env::set_var("CC_SWITCH_TEST_HOME", value),
+            None => std::env::remove_var("CC_SWITCH_TEST_HOME"),
+        }
+
+        assert_eq!(response.get("ok").and_then(Value::as_bool), Some(true));
+        assert!(response.get("data").and_then(Value::as_array).is_some());
+    }
+
+    #[test]
     fn import_export_preflight_sql_b64_returns_report() {
         let settings = serde_json::json!({
             "auth": {},
@@ -1631,6 +1648,17 @@ pub(crate) fn run_command(args: &[String]) -> Value {
                     message,
                 ))
                 .expect("serialize openclaw agents defaults error"),
+            }
+        }
+        [group, cmd] if group == "openclaw" && cmd == "scan-health" => {
+            match commands::scan_openclaw_health() {
+                Ok(value) => {
+                    serde_json::to_value(types::ok(value)).expect("serialize openclaw health")
+                }
+                Err(message) => {
+                    serde_json::to_value(types::err::<()>("openclaw_scan_health_failed", message))
+                        .expect("serialize openclaw health error")
+                }
             }
         }
         [group, cmd] if group == "mcp" && cmd == "list" => match commands::list_mcp_servers() {

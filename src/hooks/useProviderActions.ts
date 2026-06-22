@@ -282,10 +282,15 @@ export function useProviderActions(
       // Block official providers when proxy takeover is active
       if (isProxyTakeover && provider.category === "official") {
         toast.error(
-          t("notifications.officialBlockedByProxy", {
-            defaultValue:
-              "代理接管模式下不能切换到官方供应商，使用代理访问官方 API 可能导致账号被封禁",
-          }),
+          target.type === "remote"
+            ? t("notifications.officialBlockedByRemoteRouting", {
+                defaultValue:
+                  "远程应用路由启用时不能切换到官方供应商，使用远程路由访问官方 API 可能导致账号被封禁",
+              })
+            : t("notifications.officialBlockedByProxy", {
+                defaultValue:
+                  "代理接管模式下不能切换到官方供应商，使用代理访问官方 API 可能导致账号被封禁",
+              }),
           { duration: 6000 },
         );
         return;
