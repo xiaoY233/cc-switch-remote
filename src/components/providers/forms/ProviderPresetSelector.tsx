@@ -4,7 +4,15 @@ import { FormLabel } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ClaudeIcon, CodexIcon, GeminiIcon } from "@/components/BrandIcons";
-import { ArrowUpAZ, Search, Zap, Star, Layers, Settings2 } from "lucide-react";
+import {
+  ArrowUpAZ,
+  Search,
+  Zap,
+  Star,
+  Heart,
+  Layers,
+  Settings2,
+} from "lucide-react";
 import type { ProviderPreset } from "@/config/claudeProviderPresets";
 import type { CodexProviderPreset } from "@/config/codexProviderPresets";
 import type { GeminiProviderPreset } from "@/config/geminiProviderPresets";
@@ -80,7 +88,18 @@ export function sortPresetEntries(
   t: PresetTranslator,
 ): PresetEntry[] {
   if (sortMode === PresetSortMode.Original) {
-    return [...entries];
+    const official = entries.filter(
+      (entry) => entry.preset.category === "official",
+    );
+    const prime = entries.filter(
+      (entry) =>
+        entry.preset.category !== "official" && entry.preset.primePartner,
+    );
+    const rest = entries.filter(
+      (entry) =>
+        entry.preset.category !== "official" && !entry.preset.primePartner,
+    );
+    return [...official, ...prime, ...rest];
   }
 
   return [...entries].sort((a, b) =>
@@ -123,7 +142,7 @@ export function ProviderPresetSelector({
   onUniversalPresetSelect,
   onManageUniversalProviders,
   category,
-}: ProviderPresetSelectorProps) {
+}: Readonly<ProviderPresetSelectorProps>) {
   const { t } = useTranslation();
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -131,6 +150,7 @@ export function ProviderPresetSelector({
     PresetSortMode.Original,
   );
   const searchContainerRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // 点击搜索区域外时收起并清空,对齐旧 Popover 的「点击外部关闭」行为
   useEffect(() => {
@@ -149,6 +169,20 @@ export function ProviderPresetSelector({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [searchOpen]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        event.stopPropagation();
+        setSearchOpen(true);
+        requestAnimationFrame(() => searchInputRef.current?.focus());
+      }
+    };
+
+    globalThis.addEventListener("keydown", handleKeyDown, true);
+    return () => globalThis.removeEventListener("keydown", handleKeyDown, true);
+  }, []);
 
   const visiblePresetEntries = useMemo(
     () =>
@@ -258,12 +292,13 @@ export function ProviderPresetSelector({
   };
 
   return (
-    <div className="space-y-3">
+    <div ref={searchContainerRef} className="space-y-3">
       <div className="flex items-center justify-between gap-2">
         <FormLabel>{t("providerPreset.label")}</FormLabel>
-        <div ref={searchContainerRef} className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
           {searchOpen && (
             <Input
+              ref={searchInputRef}
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               onKeyDown={(event) => {
@@ -278,7 +313,7 @@ export function ProviderPresetSelector({
               aria-label={t("providerPreset.searchAriaLabel", {
                 defaultValue: "Search provider presets",
               })}
-              className="w-48 h-8"
+              className="w-60 h-8"
               autoFocus
             />
           )}
@@ -359,6 +394,7 @@ export function ProviderPresetSelector({
         {visiblePresetEntries.map((entry) => {
           const isSelected = selectedPresetId === entry.id;
           const isPartner = entry.preset.isPartner;
+          const isPrimePartner = entry.preset.primePartner;
           const presetCategory = entry.preset.category ?? "others";
           return (
             <button
@@ -376,10 +412,18 @@ export function ProviderPresetSelector({
               <span className="truncate">
                 {getPresetDisplayName(entry.preset, t)}
               </span>
-              {isPartner && (
-                <span className="absolute -top-1 -right-1 flex items-center gap-0.5 rounded-full bg-gradient-to-r from-amber-500 to-yellow-500 px-1.5 py-0.5 text-[10px] font-bold text-white shadow-md">
-                  <Star className="h-2.5 w-2.5 fill-current" />
-                </span>
+              {isPrimePartner ? (
+                <Heart
+                  className="absolute -top-1 -right-1 h-5 w-5 fill-amber-500 text-amber-500 drop-shadow-sm"
+                  strokeWidth={0}
+                  aria-hidden
+                />
+              ) : (
+                isPartner && (
+                  <span className="absolute -top-1 -right-1 flex items-center gap-0.5 rounded-full bg-gradient-to-r from-amber-500 to-yellow-500 px-1.5 py-0.5 text-[10px] font-bold text-white shadow-md">
+                    <Star className="h-2.5 w-2.5 fill-current" />
+                  </span>
+                )
               )}
             </button>
           );
@@ -387,50 +431,47 @@ export function ProviderPresetSelector({
       </div>
 
       {onUniversalPresetSelect && universalProviderPresets.length > 0 && (
-        <>
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2">
-            {universalProviderPresets.map((preset) => (
-              <button
-                key={`universal-${preset.providerType}`}
-                type="button"
-                onClick={() => onUniversalPresetSelect(preset)}
-                className="inline-flex items-center justify-start gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors bg-accent text-muted-foreground hover:bg-accent/80 relative w-full"
-                title={t("universalProvider.hint", {
-                  defaultValue:
-                    "跨应用统一配置，自动同步到 Claude/Codex/Gemini",
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2">
+          {universalProviderPresets.map((preset) => (
+            <button
+              key={`universal-${preset.providerType}`}
+              type="button"
+              onClick={() => onUniversalPresetSelect(preset)}
+              className="inline-flex items-center justify-start gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors bg-accent text-muted-foreground hover:bg-accent/80 relative w-full"
+              title={t("universalProvider.hint", {
+                defaultValue: "跨应用统一配置，自动同步到 Claude/Codex/Gemini",
+              })}
+            >
+              <ProviderIcon
+                icon={preset.icon}
+                name={preset.name}
+                size={14}
+                className="flex-shrink-0"
+              />
+              <span className="truncate">{preset.name}</span>
+              <span className="absolute -top-1 -right-1 flex items-center gap-0.5 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 px-1.5 py-0.5 text-[10px] font-bold text-white shadow-md">
+                <Layers className="h-2.5 w-2.5" />
+              </span>
+            </button>
+          ))}
+          {onManageUniversalProviders && (
+            <button
+              type="button"
+              onClick={onManageUniversalProviders}
+              className="inline-flex items-center justify-start gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors bg-accent text-muted-foreground hover:bg-accent/80 w-full"
+              title={t("universalProvider.manage", {
+                defaultValue: "管理统一供应商",
+              })}
+            >
+              <Settings2 className="h-4 w-4 flex-shrink-0" />
+              <span className="truncate">
+                {t("universalProvider.manage", {
+                  defaultValue: "管理",
                 })}
-              >
-                <ProviderIcon
-                  icon={preset.icon}
-                  name={preset.name}
-                  size={14}
-                  className="flex-shrink-0"
-                />
-                <span className="truncate">{preset.name}</span>
-                <span className="absolute -top-1 -right-1 flex items-center gap-0.5 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 px-1.5 py-0.5 text-[10px] font-bold text-white shadow-md">
-                  <Layers className="h-2.5 w-2.5" />
-                </span>
-              </button>
-            ))}
-            {onManageUniversalProviders && (
-              <button
-                type="button"
-                onClick={onManageUniversalProviders}
-                className="inline-flex items-center justify-start gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors bg-accent text-muted-foreground hover:bg-accent/80 w-full"
-                title={t("universalProvider.manage", {
-                  defaultValue: "管理统一供应商",
-                })}
-              >
-                <Settings2 className="h-4 w-4 flex-shrink-0" />
-                <span className="truncate">
-                  {t("universalProvider.manage", {
-                    defaultValue: "管理",
-                  })}
-                </span>
-              </button>
-            )}
-          </div>
-        </>
+              </span>
+            </button>
+          )}
+        </div>
       )}
 
       <p className="text-xs text-muted-foreground">{getCategoryHint()}</p>

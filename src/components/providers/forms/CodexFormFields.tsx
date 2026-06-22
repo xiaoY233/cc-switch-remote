@@ -21,10 +21,12 @@ import {
 import EndpointSpeedTest from "./EndpointSpeedTest";
 import { ApiKeySection, EndpointField, ModelDropdown } from "./shared";
 import {
-  fetchModelsForConfig,
+  canUseStoredRemoteProviderApiKey,
+  fetchModelsForProviderConfig,
   showFetchModelsError,
   type FetchedModel,
 } from "@/lib/api/model-fetch";
+import type { ManagementTarget } from "@/lib/api/remote";
 import { CustomUserAgentField } from "./CustomUserAgentField";
 import { cn } from "@/lib/utils";
 import type {
@@ -40,6 +42,7 @@ interface EndpointCandidate {
 
 interface CodexFormFieldsProps {
   providerId?: string;
+  modelFetchTarget?: ManagementTarget;
   // API Key
   codexApiKey: string;
   onApiKeyChange: (key: string) => void;
@@ -111,6 +114,7 @@ function catalogRowsMatchModels(
 
 export function CodexFormFields({
   providerId,
+  modelFetchTarget,
   codexApiKey,
   onApiKeyChange,
   apiKeyPlaceholder,
@@ -228,21 +232,26 @@ export function CodexFormFields({
   );
 
   const handleFetchModels = useCallback(() => {
-    if (!codexBaseUrl || !codexApiKey) {
+    const hasApiKeyForFetch =
+      !!codexApiKey ||
+      canUseStoredRemoteProviderApiKey(modelFetchTarget, providerId);
+    if (!codexBaseUrl || !hasApiKeyForFetch) {
       showFetchModelsError(null, t, {
-        hasApiKey: !!codexApiKey,
+        hasApiKey: hasApiKeyForFetch,
         hasBaseUrl: !!codexBaseUrl,
       });
       return;
     }
     setIsFetchingModels(true);
-    fetchModelsForConfig(
-      codexBaseUrl,
-      codexApiKey,
+    fetchModelsForProviderConfig({
+      app: "codex",
+      providerId,
+      target: modelFetchTarget,
+      baseUrl: codexBaseUrl,
+      apiKey: codexApiKey,
       isFullUrl,
-      undefined,
       customUserAgent,
-    )
+    })
       .then((models) => {
         setFetchedModels(models);
         if (models.length === 0) {
@@ -258,7 +267,15 @@ export function CodexFormFields({
         showFetchModelsError(err, t);
       })
       .finally(() => setIsFetchingModels(false));
-  }, [codexBaseUrl, codexApiKey, isFullUrl, customUserAgent, t]);
+  }, [
+    codexBaseUrl,
+    codexApiKey,
+    isFullUrl,
+    customUserAgent,
+    modelFetchTarget,
+    providerId,
+    t,
+  ]);
 
   const handleAddCatalogRow = useCallback(() => {
     if (!onCatalogModelsChange) return;

@@ -73,6 +73,7 @@ import type {
   ManagedAuthProvider,
   ManagedAuthStatus,
 } from "./auth";
+import type { FetchedModel } from "./model-fetch";
 
 export type RemoteAuthMethod =
   | { type: "sshAgent" }
@@ -130,6 +131,13 @@ export interface RemoteSessionStatus {
 export interface RemoteProviderState {
   providers: Record<string, Provider>;
   currentProviderId: string;
+}
+
+export interface RemoteFetchModelsOptions {
+  baseUrl?: string;
+  isFullUrl?: boolean;
+  modelsUrl?: string;
+  customUserAgent?: string;
 }
 
 export interface RemoteToolVersion {
@@ -922,6 +930,22 @@ export const remoteApi = {
       profile,
       app,
       providerId,
+      secret,
+    });
+  },
+
+  fetchModelsForProvider(
+    profile: RemoteHostProfile,
+    app: AppId,
+    providerId: string,
+    options: RemoteFetchModelsOptions,
+    secret?: RemoteConnectionSecret,
+  ): Promise<FetchedModel[]> {
+    return invoke<FetchedModel[]>("remote_fetch_models_for_provider", {
+      profile,
+      app,
+      providerId,
+      options,
       secret,
     });
   },

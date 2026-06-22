@@ -7,10 +7,12 @@ import { toast } from "sonner";
 import EndpointSpeedTest from "./EndpointSpeedTest";
 import { ApiKeySection, EndpointField, ModelInputWithFetch } from "./shared";
 import {
-  fetchModelsForConfig,
+  canUseStoredRemoteProviderApiKey,
+  fetchModelsForProviderConfig,
   showFetchModelsError,
   type FetchedModel,
 } from "@/lib/api/model-fetch";
+import type { ManagementTarget } from "@/lib/api/remote";
 import type { ProviderCategory } from "@/types";
 
 interface EndpointCandidate {
@@ -19,6 +21,7 @@ interface EndpointCandidate {
 
 interface GeminiFormFieldsProps {
   providerId?: string;
+  modelFetchTarget?: ManagementTarget;
   // API Key
   shouldShowApiKey: boolean;
   apiKey: string;
@@ -51,6 +54,7 @@ interface GeminiFormFieldsProps {
 
 export function GeminiFormFields({
   providerId,
+  modelFetchTarget,
   shouldShowApiKey,
   apiKey,
   onApiKeyChange,
@@ -79,15 +83,24 @@ export function GeminiFormFields({
   const [isFetchingModels, setIsFetchingModels] = useState(false);
 
   const handleFetchModels = useCallback(() => {
-    if (!baseUrl || !apiKey) {
+    const hasApiKeyForFetch =
+      !!apiKey ||
+      canUseStoredRemoteProviderApiKey(modelFetchTarget, providerId);
+    if (!baseUrl || !hasApiKeyForFetch) {
       showFetchModelsError(null, t, {
-        hasApiKey: !!apiKey,
+        hasApiKey: hasApiKeyForFetch,
         hasBaseUrl: !!baseUrl,
       });
       return;
     }
     setIsFetchingModels(true);
-    fetchModelsForConfig(baseUrl, apiKey)
+    fetchModelsForProviderConfig({
+      app: "gemini",
+      providerId,
+      target: modelFetchTarget,
+      baseUrl,
+      apiKey,
+    })
       .then((models) => {
         setFetchedModels(models);
         if (models.length === 0) {
@@ -103,7 +116,7 @@ export function GeminiFormFields({
         showFetchModelsError(err, t);
       })
       .finally(() => setIsFetchingModels(false));
-  }, [baseUrl, apiKey, t]);
+  }, [baseUrl, apiKey, modelFetchTarget, providerId, t]);
 
   // 检测是否为 Google 官方（使用 OAuth）
   const isGoogleOfficial =

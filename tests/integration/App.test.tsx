@@ -681,6 +681,68 @@ describe("App integration with MSW", () => {
     updateTrayMenuSpy.mockRestore();
   });
 
+  it("refreshes remote providers after remote universal provider sync without touching the local tray", async () => {
+    const updateTrayMenuSpy = vi
+      .spyOn(providersApi, "updateTrayMenu")
+      .mockResolvedValue(true);
+    setRemoteProfiles([
+      {
+        id: "remote-1",
+        name: "Remote 1",
+        host: "192.168.1.20",
+        port: 22,
+        username: "root",
+        authMethod: { type: "sshAgent" },
+        helperPath: "~/.local/bin/cc-switch-remote-helper",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]);
+
+    const { default: App } = await import("@/App");
+    renderApp(App);
+
+    fireEvent.click(await screen.findByText("Remote 1"));
+    await waitFor(() =>
+      expect(screen.getByTestId("provider-target")).toHaveTextContent("remote"),
+    );
+    expect(screen.getByTestId("provider-list").textContent).not.toContain(
+      "Remote Synced",
+    );
+
+    setProviders("claude", {
+      "claude-1": {
+        id: "claude-1",
+        name: "Claude Default",
+        settingsConfig: {},
+        category: "official",
+        sortIndex: 0,
+        createdAt: 1,
+      },
+      "remote-synced": {
+        id: "remote-synced",
+        name: "Remote Synced",
+        settingsConfig: {},
+        category: "custom",
+        sortIndex: 1,
+        createdAt: 2,
+      },
+    });
+
+    emitTauriEvent("remote-universal-provider-synced", {
+      action: "sync",
+      id: "universal-1",
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("provider-list").textContent).toContain(
+        "Remote Synced",
+      ),
+    );
+    expect(updateTrayMenuSpy).not.toHaveBeenCalled();
+    updateTrayMenuSpy.mockRestore();
+  });
+
   it("opens the local About settings from the update badge while managing a remote target", async () => {
     localStorage.setItem("cc-switch-last-view", "providers");
     setRemoteProfiles([

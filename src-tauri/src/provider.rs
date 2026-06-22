@@ -251,6 +251,14 @@ pub struct UsageScript {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "codingPlanProvider")]
     pub coding_plan_provider: Option<String>,
+    /// 火山方舟控制面 OpenAPI 的 AccessKey ID（用量查询签名用，与推理 Key 是两套凭据）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "accessKeyId")]
+    pub access_key_id: Option<String>,
+    /// 火山方舟控制面 OpenAPI 的 SecretAccessKey（同上）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "secretAccessKey")]
+    pub secret_access_key: Option<String>,
 }
 
 /// 用量数据
@@ -707,14 +715,6 @@ impl UniversalProvider {
             }
         });
 
-        let mut meta = self.meta.clone();
-        if self.provider_type.eq_ignore_ascii_case("newapi") {
-            let provider_meta = meta.get_or_insert_with(ProviderMeta::default);
-            if provider_meta.api_format.is_none() && is_codex_family_model_name(&model) {
-                provider_meta.api_format = Some("openai_responses".to_string());
-            }
-        }
-
         Some(Provider {
             id: format!("universal-claude-{}", self.id),
             name: self.name.clone(),
@@ -724,7 +724,7 @@ impl UniversalProvider {
             created_at: self.created_at,
             sort_index: self.sort_index,
             notes: self.notes.clone(),
-            meta,
+            meta: self.meta.clone(),
             icon: self.icon.clone(),
             icon_color: self.icon_color.clone(),
             in_failover_queue: false,
@@ -782,7 +782,7 @@ requires_openai_auth = true"#
         let mut meta = self.meta.clone();
         if self.provider_type.eq_ignore_ascii_case("newapi") {
             let provider_meta = meta.get_or_insert_with(ProviderMeta::default);
-            if provider_meta.api_format.is_none() && !is_codex_family_model_name(&model) {
+            if provider_meta.api_format.is_none() {
                 provider_meta.api_format = Some("openai_chat".to_string());
             }
         }
@@ -837,14 +837,6 @@ requires_openai_auth = true"#
             in_failover_queue: false,
         })
     }
-}
-
-fn is_codex_family_model_name(model: &str) -> bool {
-    model
-        .trim()
-        .to_ascii_lowercase()
-        .split(|c: char| c == '-' || c == '_' || c == '.' || c.is_whitespace())
-        .any(|part| part == "codex")
 }
 
 // ============================================================================
@@ -1119,66 +1111,6 @@ mod tests {
     }
 
     #[test]
-    fn universal_provider_to_claude_provider_uses_responses_for_codex_model() {
-        let mut universal = UniversalProvider::new(
-            "u1".to_string(),
-            "Universal".to_string(),
-            "newapi".to_string(),
-            "https://api.example.com/v1".to_string(),
-            "api-key".to_string(),
-        );
-        universal.apps.claude = true;
-        universal.models.claude = Some(ClaudeModelConfig {
-            model: Some("gpt-5.3-codex-spark".to_string()),
-            haiku_model: None,
-            sonnet_model: None,
-            opus_model: None,
-        });
-
-        let provider = universal.to_claude_provider().expect("claude provider");
-
-        assert_eq!(
-            provider
-                .meta
-                .as_ref()
-                .and_then(|meta| meta.api_format.as_deref()),
-            Some("openai_responses")
-        );
-    }
-
-    #[test]
-    fn universal_provider_to_claude_provider_preserves_explicit_api_format() {
-        let mut universal = UniversalProvider::new(
-            "u1".to_string(),
-            "Universal".to_string(),
-            "newapi".to_string(),
-            "https://api.example.com/v1".to_string(),
-            "api-key".to_string(),
-        );
-        universal.apps.claude = true;
-        universal.models.claude = Some(ClaudeModelConfig {
-            model: Some("gpt-5.3-codex-spark".to_string()),
-            haiku_model: None,
-            sonnet_model: None,
-            opus_model: None,
-        });
-        universal.meta = Some(ProviderMeta {
-            api_format: Some("anthropic".to_string()),
-            ..Default::default()
-        });
-
-        let provider = universal.to_claude_provider().expect("claude provider");
-
-        assert_eq!(
-            provider
-                .meta
-                .as_ref()
-                .and_then(|meta| meta.api_format.as_deref()),
-            Some("anthropic")
-        );
-    }
-
-    #[test]
     fn universal_provider_to_claude_provider_disabled_returns_none() {
         let universal = UniversalProvider::new(
             "u1".to_string(),
@@ -1253,32 +1185,6 @@ mod tests {
                 .as_ref()
                 .and_then(|meta| meta.api_format.as_deref()),
             Some("openai_responses")
-        );
-    }
-
-    #[test]
-    fn universal_provider_to_codex_provider_does_not_force_chat_for_codex_models() {
-        let mut universal = UniversalProvider::new(
-            "u1".to_string(),
-            "Universal".to_string(),
-            "newapi".to_string(),
-            "https://api.example.com".to_string(),
-            "api-key".to_string(),
-        );
-        universal.apps.codex = true;
-        universal.models.codex = Some(CodexModelConfig {
-            model: Some("gpt-5.3-codex-spark".to_string()),
-            reasoning_effort: Some("high".to_string()),
-        });
-
-        let provider = universal.to_codex_provider().expect("codex provider");
-
-        assert_eq!(
-            provider
-                .meta
-                .as_ref()
-                .and_then(|meta| meta.api_format.as_deref()),
-            None
         );
     }
 

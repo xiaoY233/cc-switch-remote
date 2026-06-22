@@ -244,6 +244,115 @@ fn resolve_launch_cwd(cwd: Option<String>) -> Result<Option<PathBuf>, String> {
     Ok(Some(resolved))
 }
 
+fn is_valid_shell(shell: &str) -> bool {
+    matches!(
+        shell.rsplit('/').next().unwrap_or(shell),
+        "sh" | "bash" | "zsh" | "fish" | "dash"
+    )
+}
+
+fn fallback_user_shell() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "/bin/zsh"
+    } else {
+        "/bin/bash"
+    }
+}
+
+fn valid_user_shell_path(shell: &str) -> bool {
+    if shell.is_empty()
+        || !shell.starts_with('/')
+        || !is_valid_shell(shell)
+        || shell.chars().any(char::is_control)
+    {
+        return false;
+    }
+
+    let path = std::path::Path::new(shell);
+    path.is_file() && is_executable_file(path)
+}
+
+#[cfg(unix)]
+fn is_executable_file(path: &std::path::Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+
+    path.metadata()
+        .map(|metadata| metadata.permissions().mode() & 0o111 != 0)
+        .unwrap_or(false)
+}
+
+#[cfg(not(unix))]
+fn is_executable_file(path: &std::path::Path) -> bool {
+    path.is_file()
+}
+
+fn get_user_shell() -> String {
+    std::env::var("SHELL")
+        .ok()
+        .filter(|shell| valid_user_shell_path(shell))
+        .unwrap_or_else(|| fallback_user_shell().to_string())
+}
+
+fn build_exec_line(shell: &str, cwd: Option<&Path>) -> String {
+    let quoted_shell = shell_single_quote(shell);
+
+    match shell.rsplit('/').next().unwrap_or(shell) {
+        "zsh" => cwd
+            .map(|dir| {
+                let command = format!(
+                    "cd {} || exit 1; exec {} -i",
+                    shell_single_quote(&dir.to_string_lossy()),
+                    quoted_shell
+                );
+                format!("exec {} -lc {}", quoted_shell, shell_single_quote(&command))
+            })
+            .unwrap_or_else(|| format!("exec {quoted_shell} -l")),
+        _ => format!("exec {quoted_shell}"),
+    }
+}
+
+fn build_provider_command_line(shell: &str, config_path: &str, cwd: Option<&Path>) -> String {
+    let claude_command = format!("claude --settings {}", shell_single_quote(config_path));
+    let command = cwd
+        .map(|dir| {
+            format!(
+                "cd {} && {}",
+                shell_single_quote(&dir.to_string_lossy()),
+                claude_command
+            )
+        })
+        .unwrap_or(claude_command);
+
+    format!(
+        "{} {} {}",
+        shell_single_quote(shell),
+        provider_command_flag_for_shell(shell),
+        shell_single_quote(&command)
+    )
+}
+
+fn provider_command_flag_for_shell(shell: &str) -> &'static str {
+    match shell.rsplit('/').next().unwrap_or(shell) {
+        "dash" | "sh" => "-c",
+        "zsh" => "-lic",
+        _ => "-ic",
+    }
+}
+
+fn build_final_shell_cd_command(shell: &str, cwd: Option<&Path>) -> String {
+    if matches!(shell.rsplit('/').next().unwrap_or(shell), "zsh") {
+        return String::new();
+    }
+
+    cwd.map(|dir| {
+        format!(
+            "cd {} || exit 1\n",
+            shell_single_quote(&dir.to_string_lossy())
+        )
+    })
+    .unwrap_or_default()
+}
+
 /// 创建临时配置文件并启动 claude 终端
 /// 使用 --settings 参数传入提供商特定的 API 配置
 fn launch_terminal_with_env(
@@ -311,24 +420,30 @@ fn launch_macos_terminal(config_file: &std::path::Path, cwd: Option<&Path>) -> R
     let preferred = crate::settings::get_preferred_terminal();
     let terminal = preferred.as_deref().unwrap_or("terminal");
 
+    let shell = get_user_shell();
+    let exec_line = build_exec_line(&shell, cwd);
+    let final_cd_command = build_final_shell_cd_command(&shell, cwd);
+
     let temp_dir = std::env::temp_dir();
     let script_file = temp_dir.join(format!("cc_switch_launcher_{}.sh", std::process::id()));
     let config_path = config_file.to_string_lossy();
-    let cd_command = build_shell_cd_command(cwd);
+    let provider_command = build_provider_command_line(&shell, &config_path, cwd);
 
     // Write the shell script to a temp file
     let script_content = format!(
-        r#"#!/bin/bash
+        r#"#!/usr/bin/env sh
 trap 'rm -f "{config_path}" "{script_file}"' EXIT
-{cd_command}
 echo "Using provider-specific claude config:"
 echo "{config_path}"
-claude --settings "{config_path}"
-exec bash --norc --noprofile
+{provider_command}
+{final_cd_command}
+{exec_line}
 "#,
         config_path = config_path,
         script_file = script_file.display(),
-        cd_command = cd_command,
+        provider_command = provider_command,
+        final_cd_command = final_cd_command,
+        exec_line = exec_line,
     );
 
     std::fs::write(&script_file, &script_content).map_err(|e| format!("写入启动脚本失败: {e}"))?;
@@ -347,7 +462,7 @@ exec bash --norc --noprofile
         "ghostty" => launch_macos_ghostty(&script_file),
         "wezterm" => launch_macos_open_app("WezTerm", &script_file, true),
         "kaku" => launch_macos_open_app("Kaku", &script_file, true),
-        _ => launch_macos_terminal_app(&script_file), // "terminal" or default
+        _ => launch_macos_terminal_app(&script_file),
     };
 
     // If preferred terminal fails and it's not the default, try Terminal.app as fallback
@@ -363,29 +478,67 @@ exec bash --norc --noprofile
     result
 }
 
-/// macOS: Terminal.app
+/// Escape a value as an AppleScript string literal.
 #[cfg(target_os = "macos")]
-fn launch_macos_terminal_app(script_file: &std::path::Path) -> Result<(), String> {
-    use std::process::Command;
+fn applescript_string_literal(value: &str) -> String {
+    format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+}
 
-    let applescript = format!(
-        r#"tell application "Terminal"
-    activate
-    do script "bash '{}'"
+/// Build the launcher command literal used by AppleScript.
+#[cfg(target_os = "macos")]
+fn applescript_launcher_command(script_file: &std::path::Path) -> String {
+    applescript_string_literal(&format!(
+        "sh {}",
+        shell_single_quote(&script_file.to_string_lossy())
+    ))
+}
+
+/// Build a launcher command that replaces the terminal-created shell session.
+#[cfg(target_os = "macos")]
+fn applescript_exec_launcher_command(script_file: &std::path::Path) -> String {
+    applescript_string_literal(&format!(
+        "exec sh {}",
+        shell_single_quote(&script_file.to_string_lossy())
+    ))
+}
+
+/// macOS: Terminal.app AppleScript.
+/// A cold `activate` creates a default empty window before `do script` opens the command session.
+/// Use `launch` for cold starts so `do script` can create the only new session without reusing restored windows.
+#[cfg(target_os = "macos")]
+fn build_macos_terminal_applescript(script_file: &std::path::Path) -> String {
+    format!(
+        r#"set launcher_script to {launcher}
+set was_running to application "Terminal" is running
+tell application "Terminal"
+    if was_running then
+        activate
+        do script launcher_script
+    else
+        launch
+        do script launcher_script
+        activate
+    end if
 end tell"#,
-        script_file.display()
-    );
+        launcher = applescript_exec_launcher_command(script_file)
+    )
+}
+
+/// Run AppleScript through `osascript -e` with shared error handling.
+#[cfg(target_os = "macos")]
+fn run_terminal_osascript(applescript: &str, terminal_label: &str) -> Result<(), String> {
+    use std::process::Command;
 
     let output = Command::new("osascript")
         .arg("-e")
-        .arg(&applescript)
+        .arg(applescript)
         .output()
         .map_err(|e| format!("执行 osascript 失败: {e}"))?;
 
     if !output.status.success() {
         let stderr = decode_command_output(&output.stderr);
         return Err(format!(
-            "Terminal.app 执行失败 (exit code: {:?}): {}",
+            "{terminal_label} 执行失败 (exit code: {:?}): {}",
             output.status.code(),
             stderr
         ));
@@ -394,11 +547,20 @@ end tell"#,
     Ok(())
 }
 
+/// macOS: Terminal.app
+#[cfg(target_os = "macos")]
+fn launch_macos_terminal_app(script_file: &std::path::Path) -> Result<(), String> {
+    run_terminal_osascript(
+        &build_macos_terminal_applescript(script_file),
+        "Terminal.app",
+    )
+}
+
 /// macOS: iTerm2
 #[cfg(target_os = "macos")]
 fn build_macos_iterm2_applescript(script_file: &std::path::Path) -> String {
     format!(
-        r#"set launcher_script to "bash '{}'"
+        r#"set launcher_script to {launcher}
 set was_running to application "iTerm" is running
 tell application "iTerm"
     if was_running then
@@ -426,63 +588,59 @@ tell application "iTerm"
         write text launcher_script
     end tell
 end tell"#,
-        script_file.display()
+        launcher = applescript_exec_launcher_command(script_file)
     )
 }
 
 /// macOS: iTerm2
 #[cfg(target_os = "macos")]
 fn launch_macos_iterm2(script_file: &std::path::Path) -> Result<(), String> {
-    use std::process::Command;
-
-    let applescript = build_macos_iterm2_applescript(script_file);
-
-    let output = Command::new("osascript")
-        .arg("-e")
-        .arg(&applescript)
-        .output()
-        .map_err(|e| format!("执行 osascript 失败: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = decode_command_output(&output.stderr);
-        return Err(format!(
-            "iTerm2 执行失败 (exit code: {:?}): {}",
-            output.status.code(),
-            stderr
-        ));
-    }
-
-    Ok(())
+    run_terminal_osascript(&build_macos_iterm2_applescript(script_file), "iTerm2")
 }
 
-/// macOS: Ghostty — use --quit-after-last-window-closed to avoid cloning existing tabs
+/// Keep the launcher path inside a `sh -c` string.
+/// A bare `.sh` passed through `open --args` may also be opened as a document.
+#[cfg(target_os = "macos")]
+fn build_macos_dash_c_command(script_file: &std::path::Path) -> String {
+    format!(
+        "exec sh {}",
+        shell_single_quote(&script_file.to_string_lossy())
+    )
+}
+
+/// macOS: Ghostty.
+/// Warm starts use AppleScript to create one command window.
+/// Cold starts use `initial-command` so the first default surface runs the launcher.
+/// Do not use `initial-window=false` plus `new window`: cold launch can still create the default window first.
+#[cfg(target_os = "macos")]
+fn build_macos_ghostty_applescript(script_file: &std::path::Path) -> String {
+    format!(
+        r#"set launcher_command to {launcher}
+set was_running to application "Ghostty" is running
+if was_running then
+    tell application "Ghostty"
+        new window with configuration {{command:launcher_command}}
+    end tell
+else
+    do shell script "open -na Ghostty --args --quit-after-last-window-closed=true " & quoted form of ("--initial-command=" & launcher_command)
+end if
+"#,
+        launcher = applescript_launcher_command(script_file)
+    )
+}
+
+/// macOS: Ghostty
 #[cfg(target_os = "macos")]
 fn launch_macos_ghostty(script_file: &std::path::Path) -> Result<(), String> {
-    use std::process::Command;
-
-    let output = Command::new("open")
-        .args([
-            "-na",
-            "Ghostty",
-            "--args",
-            "--quit-after-last-window-closed=true",
-            "-e",
-            "bash",
-        ])
-        .arg(script_file)
-        .output()
-        .map_err(|e| format!("启动 Ghostty 失败: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = decode_command_output(&output.stderr);
-        return Err(format!(
-            "Ghostty 启动失败 (exit code: {:?}): {}",
-            output.status.code(),
-            stderr
-        ));
+    match run_terminal_osascript(&build_macos_ghostty_applescript(script_file), "Ghostty") {
+        Ok(()) => Ok(()),
+        Err(applescript_error) => {
+            log::warn!(
+                "Ghostty AppleScript launch failed, falling back to open -na: {applescript_error}"
+            );
+            launch_macos_open_app("Ghostty", script_file, true)
+        }
     }
-
-    Ok(())
 }
 
 /// macOS: 使用 open -na 启动支持 --args 参数的终端（Alacritty/Kitty/WezTerm/Kaku）
@@ -500,7 +658,10 @@ fn launch_macos_open_app(
     if use_e_flag {
         cmd.arg("-e");
     }
-    cmd.arg("bash").arg(script_file);
+    // Keep the script path inside `sh -c`; a trailing bare `.sh` can be opened as a document.
+    cmd.arg("sh")
+        .arg("-c")
+        .arg(build_macos_dash_c_command(script_file));
 
     let output = cmd
         .output()
@@ -544,9 +705,9 @@ fn launch_macos_warp(script_file: &std::path::Path) -> Result<(), String> {
 
         rm -- "$0"
 
-        exec bash {}
+        exec sh {quoted_script}
         "#,
-        script_file.display(),
+        quoted_script = shell_single_quote(&script_file.to_string_lossy()),
     )
     .map_err(|e| format!("Failed to write to temporary script file for Warp: {e}"))?;
 
@@ -578,6 +739,10 @@ fn launch_linux_terminal(config_file: &std::path::Path, cwd: Option<&Path>) -> R
 
     let preferred = crate::settings::get_preferred_terminal();
 
+    let shell = get_user_shell();
+    let exec_line = build_exec_line(&shell, cwd);
+    let final_cd_command = build_final_shell_cd_command(&shell, cwd);
+
     // Default terminal list with their arguments
     let default_terminals = [
         ("gnome-terminal", vec!["--"]),
@@ -594,20 +759,22 @@ fn launch_linux_terminal(config_file: &std::path::Path, cwd: Option<&Path>) -> R
     let temp_dir = std::env::temp_dir();
     let script_file = temp_dir.join(format!("cc_switch_launcher_{}.sh", std::process::id()));
     let config_path = config_file.to_string_lossy();
-    let cd_command = build_shell_cd_command(cwd);
+    let provider_command = build_provider_command_line(&shell, &config_path, cwd);
 
     let script_content = format!(
-        r#"#!/bin/bash
+        r#"#!/usr/bin/env sh
 trap 'rm -f "{config_path}" "{script_file}"' EXIT
-{cd_command}
 echo "Using provider-specific claude config:"
 echo "{config_path}"
-claude --settings "{config_path}"
-exec bash --norc --noprofile
+{provider_command}
+{final_cd_command}
+{exec_line}
 "#,
         config_path = config_path,
         script_file = script_file.display(),
-        cd_command = cd_command,
+        provider_command = provider_command,
+        final_cd_command = final_cd_command,
+        exec_line = exec_line,
     );
 
     std::fs::write(&script_file, &script_content).map_err(|e| format!("写入启动脚本失败: {e}"))?;
@@ -651,7 +818,7 @@ exec bash --norc --noprofile
         if terminal_exists {
             let result = Command::new(terminal)
                 .args(&args)
-                .arg("bash")
+                .arg("sh")
                 .arg(script_file.to_string_lossy().as_ref())
                 .spawn();
 
@@ -738,16 +905,6 @@ del \"%~f0\" >nul 2>&1
     result
 }
 
-fn build_shell_cd_command(cwd: Option<&Path>) -> String {
-    cwd.map(|dir| {
-        format!(
-            "cd {} || exit 1\n",
-            shell_single_quote(&dir.to_string_lossy())
-        )
-    })
-    .unwrap_or_default()
-}
-
 fn shell_single_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
@@ -814,7 +971,7 @@ fn run_windows_start_command(args: &[&str], terminal_name: &str) -> Result<(), S
     Ok(())
 }
 
-/// 打开用户首选终端并在其中执行一段可信命令脚本。脚本尾部 `read -n 1` / `pause`
+/// 打开用户首选终端并在其中执行一段可信命令脚本。脚本尾部 `read -r` / `pause`
 /// 是刻意设计的——让命令退出后窗口不要瞬间关闭，用户才看得到 `command
 /// not found` / `ModuleNotFoundError` 这类诊断信息。
 ///
@@ -828,14 +985,14 @@ pub(crate) fn launch_terminal_running(command_line: &str, label: &str) -> Result
     let (script_file, script_content) = {
         let file = temp_dir.join(format!("cc_switch_{}_{}.sh", label, pid));
         let content = format!(
-            r#"#!/bin/bash
+            r#"#!/usr/bin/env sh
 trap 'rm -f "{script_path}"' EXIT
 echo "[cc-switch] Starting: {label}"
 echo ""
 {cmd}
 echo ""
-echo "[cc-switch] Command exited. Press any key to close."
-read -n 1 -s
+echo "[cc-switch] Command exited. Press Enter to close."
+read -r _
 "#,
             script_path = file.display(),
             label = label,
@@ -931,7 +1088,7 @@ read -n 1 -s
             if terminal_exists {
                 let spawn_result = Command::new(terminal)
                     .args(&args)
-                    .arg("bash")
+                    .arg("sh")
                     .arg(script_file.to_string_lossy().as_ref())
                     .spawn();
                 match spawn_result {
@@ -1019,6 +1176,113 @@ mod tests {
     use super::*;
     use std::path::Path;
 
+    #[cfg(unix)]
+    fn set_test_executable(path: &Path, executable: bool) {
+        use std::os::unix::fs::PermissionsExt;
+
+        let mode = if executable { 0o755 } else { 0o644 };
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
+            .expect("fixture permissions should be set");
+    }
+
+    #[test]
+    fn build_exec_line_uses_user_shell() {
+        assert_eq!(build_exec_line("/bin/zsh", None), "exec '/bin/zsh' -l");
+        assert_eq!(build_exec_line("/bin/bash", None), "exec '/bin/bash'");
+        assert_eq!(
+            build_exec_line("/opt/homebrew dir/bin/fish", None),
+            "exec '/opt/homebrew dir/bin/fish'"
+        );
+        assert_eq!(build_exec_line("/bin/sh", None), "exec '/bin/sh'");
+        assert_eq!(
+            build_exec_line("/tmp/shell'quote/zsh", None),
+            "exec '/tmp/shell'\"'\"'quote/zsh' -l"
+        );
+        assert_eq!(
+            build_exec_line("/bin/zsh", Some(Path::new("/tmp/project"))),
+            r#"exec '/bin/zsh' -lc 'cd '"'"'/tmp/project'"'"' || exit 1; exec '"'"'/bin/zsh'"'"' -i'"#
+        );
+    }
+
+    #[test]
+    fn build_provider_command_line_uses_user_shell_environment() {
+        assert_eq!(
+            build_provider_command_line("/bin/zsh", "/tmp/claude config.json", None),
+            "'/bin/zsh' -lic 'claude --settings '\"'\"'/tmp/claude config.json'\"'\"''"
+        );
+        assert_eq!(
+            build_provider_command_line(
+                "/bin/bash",
+                "/tmp/claude config.json",
+                Some(Path::new("/tmp/project"))
+            ),
+            r#"'/bin/bash' -ic 'cd '"'"'/tmp/project'"'"' && claude --settings '"'"'/tmp/claude config.json'"'"''"#
+        );
+        assert_eq!(
+            build_provider_command_line(
+                "/bin/sh",
+                "/tmp/claude config.json",
+                Some(Path::new("/tmp/project O'Brien"))
+            ),
+            r#"'/bin/sh' -c 'cd '"'"'/tmp/project O'"'"'"'"'"'"'"'"'Brien'"'"' && claude --settings '"'"'/tmp/claude config.json'"'"''"#
+        );
+    }
+
+    #[test]
+    fn build_final_shell_cd_command_preserves_non_zsh_cwd() {
+        assert_eq!(build_final_shell_cd_command("/bin/zsh", None), "");
+        assert_eq!(
+            build_final_shell_cd_command("/bin/zsh", Some(Path::new("/tmp/project"))),
+            ""
+        );
+        assert_eq!(
+            build_final_shell_cd_command("/bin/bash", Some(Path::new("/tmp/project O'Brien"))),
+            "cd '/tmp/project O'\"'\"'Brien' || exit 1\n"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn valid_user_shell_path_requires_allowed_executable_absolute_path() {
+        let temp = tempfile::tempdir().expect("temp dir should be created");
+        let executable_zsh = temp.path().join("zsh");
+        std::fs::write(&executable_zsh, "#!/usr/bin/env sh\n")
+            .expect("shell fixture should be written");
+        set_test_executable(&executable_zsh, true);
+
+        let executable_fish_dir = temp.path().join("homebrew dir/bin");
+        std::fs::create_dir_all(&executable_fish_dir)
+            .expect("shell fixture directory should be created");
+        let executable_fish = executable_fish_dir.join("fish");
+        std::fs::write(&executable_fish, "#!/usr/bin/env sh\n")
+            .expect("shell fixture should be written");
+        set_test_executable(&executable_fish, true);
+
+        let non_executable_bash = temp.path().join("bash");
+        std::fs::write(&non_executable_bash, "#!/usr/bin/env sh\n")
+            .expect("shell fixture should be written");
+        set_test_executable(&non_executable_bash, false);
+
+        assert!(valid_user_shell_path(&executable_zsh.to_string_lossy()));
+        assert!(valid_user_shell_path(&executable_fish.to_string_lossy()));
+        assert!(!valid_user_shell_path(""));
+        assert!(!valid_user_shell_path("zsh"));
+        assert!(!valid_user_shell_path(
+            &temp.path().join("missing/zsh").to_string_lossy()
+        ));
+        assert!(!valid_user_shell_path(
+            &non_executable_bash.to_string_lossy()
+        ));
+        assert!(!valid_user_shell_path(
+            &temp.path().join("zsh; rm -rf /").to_string_lossy()
+        ));
+        assert!(!valid_user_shell_path(&format!(
+            "{}\n/bin/bash",
+            executable_zsh.to_string_lossy()
+        )));
+        assert!(!valid_user_shell_path("/usr/bin/powershell"));
+    }
+
     #[test]
     fn resolve_launch_cwd_accepts_existing_directory() {
         let resolved =
@@ -1041,13 +1305,6 @@ mod tests {
             .expect_err("missing directory should fail");
 
         assert!(error.contains("目录不存在"));
-    }
-
-    #[test]
-    fn build_shell_cd_command_quotes_spaces_and_single_quotes() {
-        let command = build_shell_cd_command(Some(Path::new("/tmp/project O'Brien")));
-
-        assert_eq!(command, "cd '/tmp/project O'\"'\"'Brien' || exit 1\n");
     }
 
     #[cfg(target_os = "macos")]
@@ -1085,6 +1342,127 @@ mod tests {
         assert!(running_branch.contains("if (count of windows) = 0 then"));
         assert!(running_branch.contains("create window with default profile"));
         assert!(running_branch.contains("create tab with default profile"));
+    }
+
+    /// Terminal `activate` creates a default empty window on cold start; `launch` does not.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn terminal_applescript_cold_start_uses_launch_before_do_script() {
+        let script = build_macos_terminal_applescript(Path::new("/tmp/cc_switch_launcher.sh"));
+
+        assert!(
+            script.contains(r#"set was_running to application "Terminal" is running"#),
+            "missing was_running detection:\n{script}"
+        );
+        assert!(
+            script.contains(
+                "else\n        launch\n        do script launcher_script\n        activate"
+            ),
+            "cold start should launch before activating:\n{script}"
+        );
+        assert!(
+            script.contains(
+                "if was_running then\n        activate\n        do script launcher_script\n"
+            ),
+            "already-running branch should use bare do script:\n{script}"
+        );
+        assert!(
+            script.contains(r#"set launcher_script to "exec sh '/tmp/cc_switch_launcher.sh'""#),
+            "Terminal should replace the auto-created shell:\n{script}"
+        );
+    }
+
+    /// Restored windows should not receive the launcher command.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn terminal_applescript_does_not_hijack_restored_windows() {
+        let script = build_macos_terminal_applescript(Path::new("/tmp/cc_switch_launcher.sh"));
+        assert!(
+            !script.contains(" in window 1"),
+            "should not inject into an existing/restored Terminal window:\n{script}"
+        );
+        assert!(
+            !script.contains("count of windows"),
+            "should not infer restored-window safety from window count:\n{script}"
+        );
+    }
+
+    /// Ghostty cold starts use `initial-command`; warm starts use the scripting dictionary.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn ghostty_applescript_cold_start_uses_initial_command() {
+        let script = build_macos_ghostty_applescript(Path::new("/tmp/cc_switch_launcher.sh"));
+
+        assert!(
+            script.contains(r#"set launcher_command to "sh '/tmp/cc_switch_launcher.sh'""#),
+            "missing launcher_command:\n{script}"
+        );
+        assert!(script.contains("if was_running then"));
+        assert!(script.contains("new window with configuration {command:launcher_command}"));
+        assert!(
+            !script.contains(" --args -e"),
+            "should not execute through open -na -e:\n{script}"
+        );
+        assert!(script.contains(r#"set was_running to application "Ghostty" is running"#));
+        assert!(
+            script.contains(
+                r#"do shell script "open -na Ghostty --args --quit-after-last-window-closed=true " & quoted form of ("--initial-command=" & launcher_command)"#
+            ),
+            "cold start should use initial-command:\n{script}"
+        );
+        assert!(
+            !script.contains("--initial-window=false"),
+            "should not rely on initial-window=false:\n{script}"
+        );
+        assert!(
+            !script.contains("delay 0.5"),
+            "should not rely on a fixed delay:\n{script}"
+        );
+        assert!(
+            !script.contains("old_ids"),
+            "should not track default windows for closing:\n{script}"
+        );
+        assert!(
+            !script.contains("close window"),
+            "should not close a default window:\n{script}"
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn dash_c_command_wraps_script_path_inside_quoted_arg() {
+        let s = build_macos_dash_c_command(Path::new("/tmp/cc_switch_launcher_1.sh"));
+        assert_eq!(s, "exec sh '/tmp/cc_switch_launcher_1.sh'");
+
+        let s2 = build_macos_dash_c_command(Path::new("/Users/me/it's dir/x.sh"));
+        assert_eq!(s2, r#"exec sh '/Users/me/it'"'"'s dir/x.sh'"#);
+    }
+
+    /// AppleScript launchers need both shell-path quoting and AppleScript string quoting.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn applescript_builders_safely_quote_special_paths() {
+        let expected = r#""sh '/Users/me/it'\"'\"'s dir/x.sh'""#;
+        let p = Path::new("/Users/me/it's dir/x.sh");
+        assert_eq!(applescript_launcher_command(p), expected);
+        assert_eq!(
+            applescript_exec_launcher_command(p),
+            r#""exec sh '/Users/me/it'\"'\"'s dir/x.sh'""#
+        );
+        assert!(
+            build_macos_terminal_applescript(p)
+                .contains(r#""exec sh '/Users/me/it'\"'\"'s dir/x.sh'""#),
+            "Terminal did not quote safely"
+        );
+        assert!(
+            build_macos_iterm2_applescript(p)
+                .contains(r#""exec sh '/Users/me/it'\"'\"'s dir/x.sh'""#),
+            "iTerm2 did not quote safely"
+        );
+        assert!(
+            build_macos_ghostty_applescript(p).contains(expected),
+            "Ghostty did not keep the non-exec launcher"
+        );
     }
 
     #[test]

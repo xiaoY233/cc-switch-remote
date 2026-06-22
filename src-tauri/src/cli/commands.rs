@@ -2,7 +2,8 @@ use crate::app_config::{InstalledSkill, UnmanagedSkill};
 use crate::prompt::Prompt;
 use crate::provider::UniversalProvider;
 use crate::services::provider_secrets::{
-    redact_provider_map_secret_values, restore_redacted_secret_values,
+    redact_provider_map_secret_values, redact_secret_values, restore_redacted_secret_values,
+    restore_redacted_secret_values_for,
 };
 use crate::services::skill::{
     DiscoverableSkill, ImportSkillSelection, SkillBackupEntry, SkillRepo, SkillService,
@@ -102,8 +103,51 @@ pub fn status_payload() -> StatusPayload {
     }
 }
 
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteFetchModelsOptions {
+    pub base_url: Option<String>,
+    pub is_full_url: Option<bool>,
+    pub models_url: Option<String>,
+    pub custom_user_agent: Option<String>,
+}
+
 fn auth_runtime() -> Result<&'static tokio::runtime::Runtime, String> {
     AUTH_RUNTIME.as_ref().map_err(Clone::clone)
+}
+
+pub fn fetch_models_for_provider(
+    app_type: AppType,
+    provider_id: &str,
+    options_json: &str,
+) -> Result<Vec<crate::services::model_fetch::FetchedModel>, String> {
+    let options: RemoteFetchModelsOptions = serde_json::from_str(options_json)
+        .map_err(|e| format!("Invalid model fetch options: {e}"))?;
+    let db = Database::init().map_err(|e| e.to_string())?;
+    let providers = db
+        .get_all_providers(app_type.as_str())
+        .map_err(|e| e.to_string())?;
+    let provider = providers
+        .get(provider_id)
+        .ok_or_else(|| format!("Provider not found: {provider_id}"))?;
+    let (stored_base_url, api_key) = provider.resolve_usage_credentials(&app_type);
+    let base_url = options
+        .base_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(stored_base_url.as_str());
+    let user_agent = crate::provider::parse_custom_user_agent(options.custom_user_agent.as_deref())
+        .ok()
+        .flatten();
+
+    auth_runtime()?.block_on(crate::services::model_fetch::fetch_models(
+        base_url,
+        &api_key,
+        options.is_full_url.unwrap_or(false),
+        options.models_url.as_deref(),
+        user_agent,
+    ))
 }
 
 fn ensure_auth_provider(auth_provider: &str) -> Result<&'static str, String> {
@@ -1254,20 +1298,38 @@ pub fn list_universal_providers() -> Result<IndexMap<String, UniversalProvider>,
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
     let state = AppState::new(db);
     let providers = ProviderService::list_universal(&state).map_err(|e| e.to_string())?;
+    let mut value = serde_json::to_value(providers).map_err(|e| e.to_string())?;
+    redact_provider_map_secret_values(&mut value);
+    let providers: std::collections::HashMap<String, UniversalProvider> =
+        serde_json::from_value(value).map_err(|e| e.to_string())?;
     Ok(providers.into_iter().collect())
 }
 
 pub fn get_universal_provider(id: &str) -> Result<Option<UniversalProvider>, String> {
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
     let state = AppState::new(db);
-    ProviderService::get_universal(&state, id).map_err(|e| e.to_string())
+    let provider = ProviderService::get_universal(&state, id).map_err(|e| e.to_string())?;
+    let Some(provider) = provider else {
+        return Ok(None);
+    };
+    let mut value = serde_json::to_value(provider).map_err(|e| e.to_string())?;
+    redact_secret_values(&mut value);
+    serde_json::from_value(value)
+        .map(Some)
+        .map_err(|e| e.to_string())
 }
 
 pub fn upsert_universal_provider(provider_json: &str) -> Result<bool, String> {
-    let provider: UniversalProvider =
+    let mut provider: UniversalProvider =
         serde_json::from_str(provider_json).map_err(|e| e.to_string())?;
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
     let state = AppState::new(db);
+    if let Some(existing_provider) =
+        ProviderService::get_universal(&state, &provider.id).map_err(|e| e.to_string())?
+    {
+        restore_redacted_secret_values_for(&existing_provider, &mut provider)
+            .map_err(|e| e.to_string())?;
+    }
     ProviderService::upsert_universal(&state, provider).map_err(|e| e.to_string())
 }
 

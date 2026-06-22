@@ -62,10 +62,6 @@ pub fn get_claude_api_format(provider: &Provider) -> &'static str {
         };
     }
 
-    if claude_provider_prefers_openai_responses(provider) {
-        return "openai_responses";
-    }
-
     // 3) Backward compatibility: legacy openrouter_compat_mode (bool/number/string)
     let raw = provider.settings_config.get("openrouter_compat_mode");
     let enabled = match raw {
@@ -83,79 +79,6 @@ pub fn get_claude_api_format(provider: &Provider) -> &'static str {
     } else {
         "anthropic"
     }
-}
-
-fn claude_provider_prefers_openai_responses(provider: &Provider) -> bool {
-    let Some(model) = claude_provider_model(provider) else {
-        return false;
-    };
-    if !is_codex_family_model(&model) {
-        return false;
-    }
-
-    let category_is_aggregator = provider.category.as_deref() == Some("aggregator");
-    let base_url = claude_provider_base_url(provider).unwrap_or_default();
-    category_is_aggregator || openai_compatible_base_url(&base_url)
-}
-
-fn claude_provider_model(provider: &Provider) -> Option<String> {
-    provider
-        .settings_config
-        .pointer("/env/ANTHROPIC_MODEL")
-        .and_then(|value| value.as_str())
-        .or_else(|| {
-            provider
-                .settings_config
-                .get("model")
-                .and_then(|value| value.as_str())
-        })
-        .map(str::trim)
-        .filter(|model| !model.is_empty())
-        .map(ToString::to_string)
-}
-
-fn claude_provider_base_url(provider: &Provider) -> Option<String> {
-    provider
-        .settings_config
-        .pointer("/env/ANTHROPIC_BASE_URL")
-        .and_then(|value| value.as_str())
-        .or_else(|| {
-            provider
-                .settings_config
-                .get("base_url")
-                .and_then(|value| value.as_str())
-        })
-        .or_else(|| {
-            provider
-                .settings_config
-                .get("baseURL")
-                .and_then(|value| value.as_str())
-        })
-        .or_else(|| {
-            provider
-                .settings_config
-                .get("apiEndpoint")
-                .and_then(|value| value.as_str())
-        })
-        .map(str::trim)
-        .filter(|base_url| !base_url.is_empty())
-        .map(ToString::to_string)
-}
-
-fn openai_compatible_base_url(base_url: &str) -> bool {
-    let normalized = base_url.trim_end_matches('/').to_ascii_lowercase();
-    normalized.ends_with("/v1")
-        || normalized.contains("/openai")
-        || normalized.contains("/responses")
-        || normalized.contains("/chat/completions")
-}
-
-fn is_codex_family_model(model: &str) -> bool {
-    model
-        .trim()
-        .to_ascii_lowercase()
-        .split(|c: char| c == '-' || c == '_' || c == '.' || c.is_whitespace())
-        .any(|part| part == "codex")
 }
 
 pub fn claude_api_format_needs_transform(api_format: &str) -> bool {
@@ -222,6 +145,58 @@ pub fn normalize_anthropic_tool_thinking_history_for_provider(
     normalize_anthropic_tool_thinking_history(body)
 }
 
+const DEEPSEEK_OFFICIAL_ANTHROPIC_URL: &str = "https://api.deepseek.com/anthropic";
+
+fn is_deepseek_official_anthropic_endpoint(provider: &Provider) -> bool {
+    let settings = &provider.settings_config;
+    let base_url = settings
+        .get("env")
+        .and_then(|env| env.get("ANTHROPIC_BASE_URL"))
+        .and_then(|v| v.as_str())
+        .or_else(|| settings.get("base_url").and_then(|v| v.as_str()))
+        .or_else(|| settings.get("baseURL").and_then(|v| v.as_str()))
+        .or_else(|| settings.get("apiEndpoint").and_then(|v| v.as_str()));
+
+    base_url.map(|u| u.trim_end_matches('/')) == Some(DEEPSEEK_OFFICIAL_ANTHROPIC_URL)
+}
+
+pub fn normalize_deepseek_thinking_disabled_strip_effort(
+    body: &mut Value,
+    provider: &Provider,
+) -> bool {
+    if !is_deepseek_official_anthropic_endpoint(provider) {
+        return false;
+    }
+
+    let thinking_type = body
+        .get("thinking")
+        .and_then(|t| t.get("type"))
+        .and_then(|t| t.as_str());
+
+    if thinking_type != Some("disabled") {
+        return false;
+    }
+
+    let mut changed = false;
+
+    if let Some(output_config) = body
+        .get_mut("output_config")
+        .and_then(|value| value.as_object_mut())
+    {
+        changed |= output_config.remove("effort").is_some();
+        if output_config.is_empty() {
+            body.as_object_mut().unwrap().remove("output_config");
+        }
+    }
+
+    if body.get("reasoning_effort").is_some() {
+        body.as_object_mut().unwrap().remove("reasoning_effort");
+        changed = true;
+    }
+
+    changed
+}
+
 pub fn normalize_anthropic_messages_for_provider(
     body: &mut Value,
     provider: &Provider,
@@ -231,75 +206,10 @@ pub fn normalize_anthropic_messages_for_provider(
         return false;
     }
 
-    let mut changed = normalize_anthropic_system_role_messages(body);
-    changed |= normalize_anthropic_tool_thinking_history_for_provider(body, provider, api_format);
+    let mut changed =
+        normalize_anthropic_tool_thinking_history_for_provider(body, provider, api_format);
+    changed |= normalize_deepseek_thinking_disabled_strip_effort(body, provider);
     changed
-}
-
-fn normalize_anthropic_system_role_messages(body: &mut Value) -> bool {
-    let mut system_parts = Vec::new();
-    let changed = {
-        let Some(messages) = body.get_mut("messages").and_then(Value::as_array_mut) else {
-            return false;
-        };
-
-        let original_len = messages.len();
-        let mut kept_messages = Vec::with_capacity(messages.len());
-        for message in std::mem::take(messages) {
-            if message.get("role").and_then(Value::as_str) == Some("system") {
-                if let Some(content) = message.get("content") {
-                    append_anthropic_system_parts(content, &mut system_parts);
-                }
-            } else {
-                kept_messages.push(message);
-            }
-        }
-
-        let changed = kept_messages.len() != original_len;
-        *messages = kept_messages;
-        changed
-    };
-
-    if !changed || system_parts.is_empty() {
-        return changed;
-    }
-
-    let mut merged_parts = Vec::new();
-    if let Some(existing) = body.get("system") {
-        append_anthropic_system_parts(existing, &mut merged_parts);
-    }
-    merged_parts.extend(system_parts);
-
-    if !merged_parts.is_empty() {
-        body["system"] = Value::Array(merged_parts);
-    }
-
-    true
-}
-
-fn append_anthropic_system_parts(content: &Value, parts: &mut Vec<Value>) {
-    match content {
-        Value::String(text) if !text.trim().is_empty() => {
-            parts.push(json!({
-                "type": "text",
-                "text": text
-            }));
-        }
-        Value::Array(items) => {
-            for item in items {
-                append_anthropic_system_parts(item, parts);
-            }
-        }
-        Value::Object(obj)
-            if obj
-                .get("text")
-                .and_then(Value::as_str)
-                .is_some_and(|text| !text.trim().is_empty()) =>
-        {
-            parts.push(Value::Object(obj.clone()));
-        }
-        _ => {}
-    }
 }
 
 fn normalize_anthropic_tool_thinking_history(body: &mut Value) -> bool {
@@ -1609,42 +1519,6 @@ mod tests {
     }
 
     #[test]
-    fn test_get_claude_api_format_uses_responses_for_codex_aggregator_model() {
-        let provider = create_provider(json!({
-            "env": {
-                "ANTHROPIC_BASE_URL": "http://127.0.0.1:20128/v1",
-                "ANTHROPIC_AUTH_TOKEN": "test-key",
-                "ANTHROPIC_MODEL": "gpt-5.3-codex-spark"
-            }
-        }));
-        let mut provider = provider;
-        provider.category = Some("aggregator".to_string());
-
-        assert_eq!(get_claude_api_format(&provider), "openai_responses");
-        assert!(ClaudeAdapter::new().needs_transform(&provider));
-    }
-
-    #[test]
-    fn test_get_claude_api_format_respects_explicit_anthropic_for_codex_model() {
-        let provider = create_provider_with_meta(
-            json!({
-                "env": {
-                    "ANTHROPIC_BASE_URL": "http://127.0.0.1:20128/v1",
-                    "ANTHROPIC_AUTH_TOKEN": "test-key",
-                    "ANTHROPIC_MODEL": "gpt-5.3-codex-spark"
-                }
-            }),
-            ProviderMeta {
-                api_format: Some("anthropic".to_string()),
-                ..Default::default()
-            },
-        );
-
-        assert_eq!(get_claude_api_format(&provider), "anthropic");
-        assert!(!ClaudeAdapter::new().needs_transform(&provider));
-    }
-
-    #[test]
     fn test_github_copilot_detection_by_url() {
         let adapter = ClaudeAdapter::new();
 
@@ -2230,7 +2104,7 @@ mod tests {
     }
 
     #[test]
-    fn test_anthropic_system_role_messages_move_to_top_level_system() {
+    fn test_anthropic_messages_no_longer_hoists_system_role_messages() {
         let provider = create_provider(json!({
             "env": {
                 "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic",
@@ -2252,15 +2126,13 @@ mod tests {
 
         let changed = normalize_anthropic_messages_for_provider(&mut body, &provider, "anthropic");
 
-        assert!(changed);
+        assert!(!changed);
         let messages = body["messages"].as_array().unwrap();
-        assert_eq!(messages.len(), 1);
-        assert_eq!(messages[0]["role"], "user");
-
-        let system = body["system"].as_array().unwrap();
-        assert_eq!(system[0]["text"], "Existing top-level system.");
-        assert_eq!(system[1]["text"], "Message system one.");
-        assert_eq!(system[2]["text"], "Message system two.");
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[0]["role"], "system");
+        assert_eq!(messages[1]["role"], "user");
+        assert_eq!(messages[2]["role"], "system");
+        assert_eq!(body["system"], "Existing top-level system.");
     }
 
     #[test]
@@ -2412,5 +2284,117 @@ mod tests {
 
         assert!(!changed);
         assert_eq!(body, original);
+    }
+
+    fn deepseek_official_provider() -> Provider {
+        create_provider(json!({
+            "env": {
+                "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic",
+                "ANTHROPIC_API_KEY": "test-key"
+            }
+        }))
+    }
+
+    #[test]
+    fn test_deepseek_official_strips_both_effort_fields_when_thinking_disabled() {
+        let mut body = json!({
+            "model": "deepseek-v4-pro",
+            "thinking": { "type": "disabled" },
+            "output_config": { "effort": "max" },
+            "reasoning_effort": "high",
+            "max_tokens": 100000
+        });
+
+        let changed = normalize_deepseek_thinking_disabled_strip_effort(
+            &mut body,
+            &deepseek_official_provider(),
+        );
+
+        assert!(changed);
+        assert_eq!(body["thinking"]["type"], "disabled");
+        assert!(body.get("output_config").is_none());
+        assert!(body.get("reasoning_effort").is_none());
+    }
+
+    #[test]
+    fn test_deepseek_official_preserves_output_config_other_fields() {
+        let mut body = json!({
+            "model": "deepseek-v4-pro",
+            "thinking": { "type": "disabled" },
+            "output_config": { "effort": "max", "temperature": 0.5 },
+            "max_tokens": 100000
+        });
+
+        let changed = normalize_deepseek_thinking_disabled_strip_effort(
+            &mut body,
+            &deepseek_official_provider(),
+        );
+
+        assert!(changed);
+        assert_eq!(body["output_config"]["temperature"], 0.5);
+        assert!(body["output_config"].get("effort").is_none());
+    }
+
+    #[test]
+    fn test_deepseek_official_non_disabled_not_modified() {
+        let mut body = json!({
+            "model": "deepseek-v4-pro",
+            "thinking": { "type": "enabled", "budget_tokens": 16000 },
+            "output_config": { "effort": "max" },
+            "reasoning_effort": "high",
+            "max_tokens": 100000
+        });
+        let original = body.clone();
+
+        let changed = normalize_deepseek_thinking_disabled_strip_effort(
+            &mut body,
+            &deepseek_official_provider(),
+        );
+
+        assert!(!changed);
+        assert_eq!(body, original);
+    }
+
+    #[test]
+    fn test_non_deepseek_endpoint_effort_not_modified() {
+        let provider = create_provider(json!({
+            "env": {
+                "ANTHROPIC_BASE_URL": "https://api.example.com/anthropic",
+                "ANTHROPIC_API_KEY": "test-key"
+            }
+        }));
+        let mut body = json!({
+            "model": "deepseek-v4-pro",
+            "thinking": { "type": "disabled" },
+            "output_config": { "effort": "max" },
+            "max_tokens": 100000
+        });
+        let original = body.clone();
+
+        let changed = normalize_deepseek_thinking_disabled_strip_effort(&mut body, &provider);
+
+        assert!(!changed);
+        assert_eq!(body, original);
+    }
+
+    #[test]
+    fn test_normalize_messages_pipeline_strips_effort_for_deepseek() {
+        let mut body = json!({
+            "model": "deepseek-v4-pro",
+            "thinking": { "type": "disabled" },
+            "output_config": { "effort": "max" },
+            "max_tokens": 100000,
+            "messages": [{ "role": "user", "content": "hello" }]
+        });
+
+        let changed = normalize_anthropic_messages_for_provider(
+            &mut body,
+            &deepseek_official_provider(),
+            "anthropic",
+        );
+
+        assert!(changed);
+        assert_eq!(body["thinking"]["type"], "disabled");
+        assert!(body.get("output_config").is_none());
     }
 }

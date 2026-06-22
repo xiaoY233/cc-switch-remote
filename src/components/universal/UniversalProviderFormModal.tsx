@@ -18,6 +18,7 @@ import {
   type UniversalProviderPreset,
 } from "@/config/universalProviderPresets";
 import { deepClone } from "@/utils/deepClone";
+import { getDisplaySecretValue } from "@/utils/providerConfigUtils";
 
 interface UniversalProviderFormModalProps {
   isOpen: boolean;
@@ -71,7 +72,7 @@ export function UniversalProviderFormModal({
       // 编辑模式：加载现有数据
       setName(editingProvider.name);
       setBaseUrl(editingProvider.baseUrl);
-      setApiKey(editingProvider.apiKey);
+      setApiKey(getDisplaySecretValue(editingProvider.apiKey));
       setWebsiteUrl(editingProvider.websiteUrl || "");
       setNotes(editingProvider.notes || "");
       setClaudeEnabled(editingProvider.apps.claude);

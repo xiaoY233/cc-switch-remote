@@ -42,11 +42,13 @@ import {
 } from "@/lib/api/copilot";
 import type { CopilotModel } from "@/lib/api/copilot";
 import {
+  canUseStoredRemoteProviderApiKey,
   fetchCodexOauthModels,
-  fetchModelsForConfig,
+  fetchModelsForProviderConfig,
   showFetchModelsError,
   type FetchedModel,
 } from "@/lib/api/model-fetch";
+import type { ManagementTarget } from "@/lib/api/remote";
 import { CustomUserAgentField } from "./CustomUserAgentField";
 import type {
   ProviderCategory,
@@ -70,6 +72,7 @@ interface EndpointCandidate {
 
 interface ClaudeFormFieldsProps {
   providerId?: string;
+  modelFetchTarget?: ManagementTarget;
   // API Key
   shouldShowApiKey: boolean;
   apiKey: string;
@@ -150,6 +153,7 @@ interface ClaudeFormFieldsProps {
 
 export function ClaudeFormFields({
   providerId,
+  modelFetchTarget,
   shouldShowApiKey,
   apiKey,
   onApiKeyChange,
@@ -250,9 +254,12 @@ export function ClaudeFormFields({
   );
 
   const handleFetchModels = useCallback(() => {
-    if (!baseUrl || !apiKey) {
+    const hasApiKeyForFetch =
+      !!apiKey ||
+      canUseStoredRemoteProviderApiKey(modelFetchTarget, providerId);
+    if (!baseUrl || !hasApiKeyForFetch) {
       showFetchModelsError(null, t, {
-        hasApiKey: !!apiKey,
+        hasApiKey: hasApiKeyForFetch,
         hasBaseUrl: !!baseUrl,
       });
       return;
@@ -266,7 +273,16 @@ export function ClaudeFormFields({
     const modelsUrl = matchedPreset?.modelsUrl;
 
     setIsFetchingModels(true);
-    fetchModelsForConfig(baseUrl, apiKey, isFullUrl, modelsUrl, customUserAgent)
+    fetchModelsForProviderConfig({
+      app: "claude",
+      providerId,
+      target: modelFetchTarget,
+      baseUrl,
+      apiKey,
+      isFullUrl,
+      modelsUrl,
+      customUserAgent,
+    })
       .then((models) => {
         setFetchedModels(models);
         showModelFetchResult(models.length);
@@ -276,7 +292,16 @@ export function ClaudeFormFields({
         showFetchModelsError(err, t);
       })
       .finally(() => setIsFetchingModels(false));
-  }, [baseUrl, apiKey, isFullUrl, customUserAgent, showModelFetchResult, t]);
+  }, [
+    baseUrl,
+    apiKey,
+    isFullUrl,
+    customUserAgent,
+    modelFetchTarget,
+    providerId,
+    showModelFetchResult,
+    t,
+  ]);
 
   const handleFetchCopilotModels = useCallback(() => {
     if (!isCopilotAuthenticated) {

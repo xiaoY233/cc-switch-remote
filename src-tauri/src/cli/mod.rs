@@ -88,6 +88,40 @@ mod tests {
     }
 
     #[test]
+    fn status_advertises_provider_model_fetch_capability() {
+        let response = run_command(&["status".to_string()]);
+        let capabilities = response
+            .get("data")
+            .and_then(|data| data.get("capabilities"))
+            .and_then(Value::as_array)
+            .expect("status capabilities");
+
+        assert!(capabilities
+            .iter()
+            .any(|capability| capability == "provider-model-fetch"));
+    }
+
+    #[test]
+    fn providers_fetch_models_command_is_registered() {
+        let response = run_command(&[
+            "providers".to_string(),
+            "fetch-models".to_string(),
+            "not-an-app".to_string(),
+            "provider-id".to_string(),
+            "{}".to_string(),
+        ]);
+
+        assert_eq!(response.get("ok").and_then(Value::as_bool), Some(false));
+        assert_eq!(
+            response
+                .get("error")
+                .and_then(|error| error.get("code"))
+                .and_then(Value::as_str),
+            Some("invalid_app")
+        );
+    }
+
+    #[test]
     fn import_export_preflight_sql_b64_returns_report() {
         let settings = serde_json::json!({
             "auth": {},
@@ -386,6 +420,25 @@ pub(crate) fn run_command(args: &[String]) -> Value {
             Err(err) => serde_json::to_value(types::err::<()>("invalid_app", err.to_string()))
                 .expect("serialize invalid app error"),
         },
+        [group, cmd, app, provider_id, options_json]
+            if group == "providers" && cmd == "fetch-models" =>
+        {
+            match app.parse() {
+                Ok(app_type) => {
+                    match commands::fetch_models_for_provider(app_type, provider_id, options_json) {
+                        Ok(value) => serde_json::to_value(types::ok(value))
+                            .expect("serialize fetched models"),
+                        Err(message) => serde_json::to_value(types::err::<()>(
+                            "providers_fetch_models_failed",
+                            message,
+                        ))
+                        .expect("serialize provider fetch models error"),
+                    }
+                }
+                Err(err) => serde_json::to_value(types::err::<()>("invalid_app", err.to_string()))
+                    .expect("serialize invalid app error"),
+            }
+        }
         [group, cmd, app] if group == "providers" && cmd == "import" => match app.parse() {
             Ok(app_type) => match commands::import_providers(app_type) {
                 Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize import"),

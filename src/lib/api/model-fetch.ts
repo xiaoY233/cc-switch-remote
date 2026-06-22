@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { TFunction } from "i18next";
 import { toast } from "sonner";
+import { remoteApi, type ManagementTarget } from "./remote";
+import type { AppId } from "./types";
 
 export interface FetchedModel {
   id: string;
@@ -27,6 +29,58 @@ export async function fetchModelsForConfig(
     modelsUrl,
     customUserAgent,
   });
+}
+
+export interface FetchModelsForProviderConfigOptions {
+  app: AppId;
+  providerId?: string;
+  target?: ManagementTarget;
+  baseUrl: string;
+  apiKey: string;
+  isFullUrl?: boolean;
+  modelsUrl?: string;
+  customUserAgent?: string;
+}
+
+export function canUseStoredRemoteProviderApiKey(
+  target: ManagementTarget | undefined,
+  providerId: string | undefined,
+): boolean {
+  return target?.type === "remote" && Boolean(providerId?.trim());
+}
+
+export async function fetchModelsForProviderConfig({
+  app,
+  providerId,
+  target = { type: "local" },
+  baseUrl,
+  apiKey,
+  isFullUrl,
+  modelsUrl,
+  customUserAgent,
+}: FetchModelsForProviderConfigOptions): Promise<FetchedModel[]> {
+  if (target.type === "remote" && providerId?.trim() && !apiKey.trim()) {
+    return remoteApi.fetchModelsForProvider(
+      target.profile,
+      app,
+      providerId,
+      {
+        baseUrl,
+        isFullUrl,
+        modelsUrl,
+        customUserAgent,
+      },
+      target.secret,
+    );
+  }
+
+  return fetchModelsForConfig(
+    baseUrl,
+    apiKey,
+    isFullUrl,
+    modelsUrl,
+    customUserAgent,
+  );
 }
 
 /**

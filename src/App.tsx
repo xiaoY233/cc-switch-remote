@@ -629,6 +629,10 @@ function App() {
     }
   });
 
+  useTauriEvent("remote-universal-provider-synced", async () => {
+    await queryClient.invalidateQueries({ queryKey: ["providers"] });
+  });
+
   useTauriEvent<SyncStatusUpdatedPayload | null | undefined>(
     "webdav-sync-status-updated",
     async (payload) => {

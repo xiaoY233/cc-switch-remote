@@ -84,4 +84,25 @@ describe("UniversalProviderFormModal", () => {
     await waitFor(() => expect(handleSave).toHaveBeenCalledTimes(1));
     expect(handleSave.mock.calls[0][0].apiKey).toBe("sk-existing");
   });
+
+  it("hides redacted remote API keys and submits the sentinel to preserve the remote secret", async () => {
+    const handleSave = vi.fn();
+
+    render(
+      <UniversalProviderFormModal
+        isOpen
+        onClose={vi.fn()}
+        onSave={handleSave}
+        editingProvider={{ ...editingProvider, apiKey: "[redacted]" }}
+        target={remoteTarget}
+      />,
+    );
+
+    expect(screen.getByLabelText("API Key")).toHaveValue("");
+
+    fireEvent.click(screen.getByRole("button", { name: "添加" }));
+
+    await waitFor(() => expect(handleSave).toHaveBeenCalledTimes(1));
+    expect(handleSave.mock.calls[0][0].apiKey).toBe("[redacted]");
+  });
 });

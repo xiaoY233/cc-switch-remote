@@ -2040,6 +2040,7 @@ function ProviderFormFull({
           {appId === "claude" && (
             <ClaudeFormFields
               providerId={providerId}
+              modelFetchTarget={target}
               shouldShowApiKey={
                 (category !== "cloud_provider" ||
                   hasApiKeyField(form.getValues("settingsConfig"), "claude")) &&
@@ -2119,6 +2120,7 @@ function ProviderFormFull({
           {appId === "codex" && (
             <CodexFormFields
               providerId={providerId}
+              modelFetchTarget={target}
               codexApiKey={codexApiKey}
               onApiKeyChange={handleCodexApiKeyChange}
               apiKeyPlaceholder={remoteKeepApiKeyPlaceholder}
@@ -2154,6 +2156,7 @@ function ProviderFormFull({
           {appId === "gemini" && (
             <GeminiFormFields
               providerId={providerId}
+              modelFetchTarget={target}
               shouldShowApiKey={shouldShowApiKey(
                 form.getValues("settingsConfig"),
                 isEditMode,
@@ -2183,6 +2186,8 @@ function ProviderFormFull({
 
           {appId === "opencode" && !isAnyOmoCategory && (
             <OpenCodeFormFields
+              providerId={providerId}
+              modelFetchTarget={target}
               npm={opencodeForm.opencodeNpm}
               onNpmChange={opencodeForm.handleOpencodeNpmChange}
               apiKey={opencodeForm.opencodeApiKey}
@@ -2227,6 +2232,8 @@ function ProviderFormFull({
           {/* OpenClaw 专属字段 */}
           {appId === "openclaw" && (
             <OpenClawFormFields
+              providerId={providerId}
+              modelFetchTarget={target}
               baseUrl={openclawForm.openclawBaseUrl}
               onBaseUrlChange={openclawForm.handleOpenclawBaseUrlChange}
               apiKey={openclawForm.openclawApiKey}
@@ -2249,6 +2256,8 @@ function ProviderFormFull({
           {/* Hermes 专属字段 */}
           {appId === "hermes" && (
             <HermesFormFields
+              providerId={providerId}
+              modelFetchTarget={target}
               baseUrl={hermesForm.hermesBaseUrl}
               onBaseUrlChange={hermesForm.handleHermesBaseUrlChange}
               apiKey={hermesForm.hermesApiKey}

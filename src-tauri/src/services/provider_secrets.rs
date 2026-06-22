@@ -1,3 +1,4 @@
+use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
 
 use crate::provider::Provider;
@@ -39,10 +40,20 @@ pub fn restore_redacted_secret_values(
     existing_provider: &Provider,
     provider: &mut Provider,
 ) -> Result<(), serde_json::Error> {
-    let existing = serde_json::to_value(existing_provider)?;
-    let mut incoming = serde_json::to_value(&provider)?;
-    merge_redacted_secret_values(&existing, &mut incoming);
-    *provider = serde_json::from_value(incoming)?;
+    restore_redacted_secret_values_for(existing_provider, provider)
+}
+
+pub fn restore_redacted_secret_values_for<T>(
+    existing: &T,
+    incoming: &mut T,
+) -> Result<(), serde_json::Error>
+where
+    T: Serialize + DeserializeOwned,
+{
+    let existing = serde_json::to_value(existing)?;
+    let mut incoming_value = serde_json::to_value(&incoming)?;
+    merge_redacted_secret_values(&existing, &mut incoming_value);
+    *incoming = serde_json::from_value(incoming_value)?;
     Ok(())
 }
 
@@ -153,5 +164,30 @@ mod tests {
             value["secret-provider"]["settingsConfig"]["env"]["ANTHROPIC_BASE_URL"],
             "https://example.com"
         );
+    }
+
+    #[derive(Debug, serde::Deserialize, serde::Serialize, PartialEq)]
+    struct UniversalLike {
+        #[serde(rename = "apiKey")]
+        api_key: String,
+        base_url: String,
+    }
+
+    #[test]
+    fn generic_restore_preserves_redacted_universal_provider_api_key() {
+        let existing = UniversalLike {
+            api_key: "sk-existing".to_string(),
+            base_url: "https://old.example.com".to_string(),
+        };
+        let mut incoming = UniversalLike {
+            api_key: REDACTED_SECRET_SENTINEL.to_string(),
+            base_url: "https://new.example.com".to_string(),
+        };
+
+        restore_redacted_secret_values_for(&existing, &mut incoming)
+            .expect("restore redacted universal provider secret");
+
+        assert_eq!(incoming.api_key, "sk-existing");
+        assert_eq!(incoming.base_url, "https://new.example.com");
     }
 }

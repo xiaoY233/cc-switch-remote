@@ -11,8 +11,10 @@ const copilotApiMock = vi.hoisted(() => ({
 }));
 
 const modelFetchApiMock = vi.hoisted(() => ({
+  canUseStoredRemoteProviderApiKey: vi.fn(),
   fetchCodexOauthModels: vi.fn(),
   fetchModelsForConfig: vi.fn(),
+  fetchModelsForProviderConfig: vi.fn(),
   showFetchModelsError: vi.fn(),
 }));
 
@@ -22,8 +24,11 @@ vi.mock("@/lib/api/copilot", () => ({
 }));
 
 vi.mock("@/lib/api/model-fetch", () => ({
+  canUseStoredRemoteProviderApiKey:
+    modelFetchApiMock.canUseStoredRemoteProviderApiKey,
   fetchCodexOauthModels: modelFetchApiMock.fetchCodexOauthModels,
   fetchModelsForConfig: modelFetchApiMock.fetchModelsForConfig,
+  fetchModelsForProviderConfig: modelFetchApiMock.fetchModelsForProviderConfig,
   showFetchModelsError: modelFetchApiMock.showFetchModelsError,
 }));
 
@@ -122,6 +127,11 @@ describe("ClaudeFormFields", () => {
     copilotApiMock.copilotGetModelsForAccount.mockResolvedValue([]);
     modelFetchApiMock.fetchCodexOauthModels.mockResolvedValue([]);
     modelFetchApiMock.fetchModelsForConfig.mockResolvedValue([]);
+    modelFetchApiMock.fetchModelsForProviderConfig.mockResolvedValue([]);
+    modelFetchApiMock.canUseStoredRemoteProviderApiKey.mockImplementation(
+      (target, providerId) => target?.type === "remote" && Boolean(providerId),
+    );
+    modelFetchApiMock.showFetchModelsError.mockReset();
   });
 
   it("不会在 Copilot 表单打开时自动获取模型列表", () => {
@@ -168,5 +178,49 @@ describe("ClaudeFormFields", () => {
         "chatgpt-1",
       );
     });
+  });
+
+  it("远程编辑已保存供应商时 API Key 留空也能用远端已保存密钥获取模型", async () => {
+    const remoteTarget: ClaudeFormFieldsProps["modelFetchTarget"] = {
+      type: "remote",
+      profile: {
+        id: "pve-matx",
+        name: "PVE-Matx",
+        host: "192.0.2.10",
+        port: 22,
+        username: "root",
+        authMethod: { type: "sshAgent" },
+        helperPath: "/root/.local/bin/cc-switch-remote-helper",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    };
+
+    renderCopilotForm({
+      providerId: "remote-claude",
+      isCopilotPreset: false,
+      usesOAuth: false,
+      isCopilotAuthenticated: false,
+      selectedGitHubAccountId: null,
+      shouldShowApiKey: true,
+      apiKey: "",
+      baseUrl: "https://api.example.com/anthropic",
+      modelFetchTarget: remoteTarget,
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "providerForm.fetchModels",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(modelFetchApiMock.fetchModelsForProviderConfig).toHaveBeenCalled();
+    });
+    expect(modelFetchApiMock.showFetchModelsError).not.toHaveBeenCalledWith(
+      null,
+      expect.any(Function),
+      expect.objectContaining({ hasApiKey: false }),
+    );
   });
 });

@@ -41,10 +41,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ApiKeySection } from "./shared";
 import {
-  fetchModelsForConfig,
+  canUseStoredRemoteProviderApiKey,
+  fetchModelsForProviderConfig,
   showFetchModelsError,
   type FetchedModel,
 } from "@/lib/api/model-fetch";
+import type { ManagementTarget } from "@/lib/api/remote";
 import {
   hermesApiModes,
   type HermesApiMode,
@@ -53,6 +55,8 @@ import {
 import type { ProviderCategory } from "@/types";
 
 interface HermesFormFieldsProps {
+  providerId?: string;
+  modelFetchTarget?: ManagementTarget;
   baseUrl: string;
   onBaseUrlChange: (value: string) => void;
   apiKey: string;
@@ -141,6 +145,8 @@ function AdvancedSection({
 }
 
 export function HermesFormFields({
+  providerId,
+  modelFetchTarget,
   baseUrl,
   onBaseUrlChange,
   apiKey,
@@ -225,15 +231,24 @@ export function HermesFormFields({
   };
 
   const handleFetchModels = useCallback(() => {
-    if (!baseUrl || !apiKey) {
+    const hasApiKeyForFetch =
+      !!apiKey ||
+      canUseStoredRemoteProviderApiKey(modelFetchTarget, providerId);
+    if (!baseUrl || !hasApiKeyForFetch) {
       showFetchModelsError(null, t, {
-        hasApiKey: !!apiKey,
+        hasApiKey: hasApiKeyForFetch,
         hasBaseUrl: !!baseUrl,
       });
       return;
     }
     setIsFetchingModels(true);
-    fetchModelsForConfig(baseUrl, apiKey)
+    fetchModelsForProviderConfig({
+      app: "hermes",
+      providerId,
+      target: modelFetchTarget,
+      baseUrl,
+      apiKey,
+    })
       .then((fetched) => {
         setFetchedModels(fetched);
         if (fetched.length === 0) {
@@ -249,7 +264,7 @@ export function HermesFormFields({
         showFetchModelsError(err, t);
       })
       .finally(() => setIsFetchingModels(false));
-  }, [baseUrl, apiKey, t]);
+  }, [baseUrl, apiKey, modelFetchTarget, providerId, t]);
 
   const handleRemoveModel = (index: number) => {
     modelKeysRef.current.splice(index, 1);

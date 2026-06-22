@@ -31,6 +31,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::path::PathBuf;
+use tauri::{AppHandle, Emitter};
 
 const GITHUB_API_USER_AGENT: &str = "cc-switch-remote";
 
@@ -57,6 +58,31 @@ struct GitHubReleaseAsset {
 pub struct RemoteProviderState {
     pub providers: IndexMap<String, Provider>,
     pub current_provider_id: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteFetchModelsOptions {
+    pub base_url: Option<String>,
+    pub is_full_url: Option<bool>,
+    pub models_url: Option<String>,
+    pub custom_user_agent: Option<String>,
+}
+
+#[derive(Clone, serde::Serialize)]
+struct RemoteUniversalProviderSyncedEvent {
+    action: String,
+    id: String,
+}
+
+fn emit_remote_universal_provider_synced(app: &AppHandle, action: &str, id: &str) {
+    let _ = app.emit(
+        "remote-universal-provider-synced",
+        RemoteUniversalProviderSyncedEvent {
+            action: action.to_string(),
+            id: id.to_string(),
+        },
+    );
 }
 
 #[tauri::command]
@@ -1825,6 +1851,31 @@ pub async fn remote_stream_check_provider(
 }
 
 #[tauri::command]
+#[allow(non_snake_case)]
+pub async fn remote_fetch_models_for_provider(
+    profile: RemoteHostProfile,
+    app: String,
+    providerId: String,
+    options: RemoteFetchModelsOptions,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Vec<crate::services::model_fetch::FetchedModel>, String> {
+    let options_json = serde_json::to_string(&options).map_err(|e| e.to_string())?;
+    run_remote_helper_json(
+        profile,
+        vec![
+            "providers".to_string(),
+            "fetch-models".to_string(),
+            app,
+            providerId,
+            options_json,
+        ],
+        secret,
+        "Remote provider fetch models",
+    )
+    .await
+}
+
+#[tauri::command]
 pub async fn remote_get_stream_check_config(
     profile: RemoteHostProfile,
     secret: Option<RemoteConnectionSecret>,
@@ -1960,12 +2011,14 @@ pub async fn remote_get_universal_provider(
 
 #[tauri::command]
 pub async fn remote_upsert_universal_provider(
+    app: AppHandle,
     profile: RemoteHostProfile,
     provider: UniversalProvider,
     secret: Option<RemoteConnectionSecret>,
 ) -> Result<bool, String> {
+    let id = provider.id.clone();
     let provider_json = serde_json::to_string(&provider).map_err(|e| e.to_string())?;
-    run_remote_helper_json(
+    let result = run_remote_helper_json(
         profile,
         vec![
             "universal-providers".to_string(),
@@ -1975,37 +2028,53 @@ pub async fn remote_upsert_universal_provider(
         secret,
         "Remote universal provider upsert",
     )
-    .await
+    .await?;
+    emit_remote_universal_provider_synced(&app, "upsert", &id);
+    Ok(result)
 }
 
 #[tauri::command]
 pub async fn remote_delete_universal_provider(
+    app: AppHandle,
     profile: RemoteHostProfile,
     id: String,
     secret: Option<RemoteConnectionSecret>,
 ) -> Result<bool, String> {
-    run_remote_helper_json(
+    let result = run_remote_helper_json(
         profile,
-        vec!["universal-providers".to_string(), "delete".to_string(), id],
+        vec![
+            "universal-providers".to_string(),
+            "delete".to_string(),
+            id.clone(),
+        ],
         secret,
         "Remote universal provider delete",
     )
-    .await
+    .await?;
+    emit_remote_universal_provider_synced(&app, "delete", &id);
+    Ok(result)
 }
 
 #[tauri::command]
 pub async fn remote_sync_universal_provider(
+    app: AppHandle,
     profile: RemoteHostProfile,
     id: String,
     secret: Option<RemoteConnectionSecret>,
 ) -> Result<bool, String> {
-    run_remote_helper_json(
+    let result = run_remote_helper_json(
         profile,
-        vec!["universal-providers".to_string(), "sync".to_string(), id],
+        vec![
+            "universal-providers".to_string(),
+            "sync".to_string(),
+            id.clone(),
+        ],
         secret,
         "Remote universal provider sync",
     )
-    .await
+    .await?;
+    emit_remote_universal_provider_synced(&app, "sync", &id);
+    Ok(result)
 }
 
 #[tauri::command]
@@ -3239,11 +3308,12 @@ mod tests {
         assert!(command.contains("Downloaded remote helper is not compatible with this server"));
         assert!(command.contains("No compatible cc-switch-remote helper release asset found"));
         assert!(command.contains("\"$helper_path\" --json status"));
-        assert!(command.contains("'\"settings\"'"));
-        assert!(command.contains("'\"plugin\"'"));
-        assert!(command.contains("'\"session\"'"));
-        assert!(command.contains("'\"usage\"'"));
-        assert!(command.contains("'\"auth\"'"));
+        assert!(command.contains("'\"providers\"'"));
+        assert!(!command.contains("'\"settings\"'"));
+        assert!(!command.contains("'\"plugin\"'"));
+        assert!(!command.contains("'\"session\"'"));
+        assert!(!command.contains("'\"usage\"'"));
+        assert!(!command.contains("'\"auth\"'"));
         assert!(command.contains(&REMOTE_HELPER_REQUIRED_CAPABILITIES.join(", ")));
         assert!(!command.contains("rustup.rs"));
         assert!(!command.contains("cargo install --git"));

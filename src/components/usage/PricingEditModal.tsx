@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Save, Plus } from "lucide-react";
+import { Save, Plus, Globe } from "lucide-react";
 import { FullScreenPanel } from "@/components/common/FullScreenPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,7 @@ import { useUpdateModelPricing } from "@/lib/query/usage";
 import { LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
 import type { ManagementTarget } from "@/lib/api/remote";
 import { isNonNegativeDecimalString, type ModelPricing } from "@/types/usage";
+import { ModelsDevPickerDialog } from "./ModelsDevPickerDialog";
 
 interface PricingEditModalProps {
   open: boolean;
@@ -30,6 +31,7 @@ export function PricingEditModal({
 }: PricingEditModalProps) {
   const { t } = useTranslation();
   const updatePricing = useUpdateModelPricing(target);
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
 
   const [formData, setFormData] = useState({
     modelId: model.modelId,
@@ -115,6 +117,27 @@ export function PricingEditModal({
         </Button>
       }
     >
+      {isNew && (
+        <div className="mb-6 flex items-center justify-between gap-3 rounded-md border border-border/50 bg-muted/20 px-3 py-2.5">
+          <p className="text-xs text-muted-foreground">
+            {t(
+              "usage.modelsDevHint",
+              "无需手动填写，可从 models.dev 选择模型定价",
+            )}
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setIsPickerOpen(true)}
+            className="shrink-0"
+          >
+            <Globe className="mr-1.5 h-4 w-4" />
+            {t("usage.importFromModelsDev", "从 models.dev 导入")}
+          </Button>
+        </div>
+      )}
+
       <form id="pricing-form" onSubmit={handleSubmit} className="space-y-6">
         {isNew && (
           <div className="space-y-2">
@@ -224,6 +247,18 @@ export function PricingEditModal({
           />
         </div>
       </form>
+
+      {isNew && isPickerOpen && (
+        <ModelsDevPickerDialog
+          open={isPickerOpen}
+          onClose={() => setIsPickerOpen(false)}
+          onImported={() => {
+            setIsPickerOpen(false);
+            onClose();
+          }}
+          target={target}
+        />
+      )}
     </FullScreenPanel>
   );
 }

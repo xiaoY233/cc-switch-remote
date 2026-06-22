@@ -1,5 +1,6 @@
 pub const REMOTE_HELPER_CAPABILITIES: &[&str] = &[
     "providers",
+    "provider-model-fetch",
     "universal-providers",
     "routing-config",
     #[cfg(feature = "proxy-runtime")]
@@ -23,7 +24,7 @@ pub const REMOTE_HELPER_CAPABILITIES: &[&str] = &[
     "session",
 ];
 
-pub const REMOTE_HELPER_REQUIRED_CAPABILITIES: &[&str] = REMOTE_HELPER_CAPABILITIES;
+pub const REMOTE_HELPER_REQUIRED_CAPABILITIES: &[&str] = &["providers"];
 
 pub fn remote_helper_capabilities() -> Vec<String> {
     REMOTE_HELPER_CAPABILITIES

@@ -36,14 +36,18 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { ApiKeySection } from "./shared";
 import {
-  fetchModelsForConfig,
+  canUseStoredRemoteProviderApiKey,
+  fetchModelsForProviderConfig,
   showFetchModelsError,
   type FetchedModel,
 } from "@/lib/api/model-fetch";
+import type { ManagementTarget } from "@/lib/api/remote";
 import { openclawApiProtocols } from "@/config/openclawProviderPresets";
 import type { ProviderCategory, OpenClawModel } from "@/types";
 
 interface OpenClawFormFieldsProps {
+  providerId?: string;
+  modelFetchTarget?: ManagementTarget;
   // Base URL
   baseUrl: string;
   onBaseUrlChange: (value: string) => void;
@@ -72,6 +76,8 @@ interface OpenClawFormFieldsProps {
 }
 
 export function OpenClawFormFields({
+  providerId,
+  modelFetchTarget,
   baseUrl,
   onBaseUrlChange,
   apiKey,
@@ -134,15 +140,24 @@ export function OpenClawFormFields({
 
   // Fetch models from API
   const handleFetchModels = useCallback(() => {
-    if (!baseUrl || !apiKey) {
+    const hasApiKeyForFetch =
+      !!apiKey ||
+      canUseStoredRemoteProviderApiKey(modelFetchTarget, providerId);
+    if (!baseUrl || !hasApiKeyForFetch) {
       showFetchModelsError(null, t, {
-        hasApiKey: !!apiKey,
+        hasApiKey: hasApiKeyForFetch,
         hasBaseUrl: !!baseUrl,
       });
       return;
     }
     setIsFetchingModels(true);
-    fetchModelsForConfig(baseUrl, apiKey)
+    fetchModelsForProviderConfig({
+      app: "openclaw",
+      providerId,
+      target: modelFetchTarget,
+      baseUrl,
+      apiKey,
+    })
       .then((models) => {
         setFetchedModels(models);
         if (models.length === 0) {
@@ -158,7 +173,7 @@ export function OpenClawFormFields({
         showFetchModelsError(err, t);
       })
       .finally(() => setIsFetchingModels(false));
-  }, [baseUrl, apiKey, t]);
+  }, [baseUrl, apiKey, modelFetchTarget, providerId, t]);
 
   // Remove a model entry
   const handleRemoveModel = (index: number) => {

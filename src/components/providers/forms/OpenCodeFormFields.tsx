@@ -14,10 +14,12 @@ import { toast } from "sonner";
 import { Download, Plus, Trash2, ChevronRight, Loader2 } from "lucide-react";
 import { ApiKeySection, ModelDropdown } from "./shared";
 import {
-  fetchModelsForConfig,
+  canUseStoredRemoteProviderApiKey,
+  fetchModelsForProviderConfig,
   showFetchModelsError,
   type FetchedModel,
 } from "@/lib/api/model-fetch";
+import type { ManagementTarget } from "@/lib/api/remote";
 import { opencodeNpmPackages } from "@/config/opencodeProviderPresets";
 import { cn } from "@/lib/utils";
 import {
@@ -143,6 +145,8 @@ function ModelOptionKeyInput({
 }
 
 interface OpenCodeFormFieldsProps {
+  providerId?: string;
+  modelFetchTarget?: ManagementTarget;
   // NPM Package
   npm: string;
   onNpmChange: (value: string) => void;
@@ -171,6 +175,8 @@ interface OpenCodeFormFieldsProps {
 }
 
 export function OpenCodeFormFields({
+  providerId,
+  modelFetchTarget,
   npm,
   onNpmChange,
   apiKey,
@@ -194,15 +200,24 @@ export function OpenCodeFormFields({
   const [isFetchingModels, setIsFetchingModels] = useState(false);
 
   const handleFetchModels = useCallback(() => {
-    if (!baseUrl || !apiKey) {
+    const hasApiKeyForFetch =
+      !!apiKey ||
+      canUseStoredRemoteProviderApiKey(modelFetchTarget, providerId);
+    if (!baseUrl || !hasApiKeyForFetch) {
       showFetchModelsError(null, t, {
-        hasApiKey: !!apiKey,
+        hasApiKey: hasApiKeyForFetch,
         hasBaseUrl: !!baseUrl,
       });
       return;
     }
     setIsFetchingModels(true);
-    fetchModelsForConfig(baseUrl, apiKey)
+    fetchModelsForProviderConfig({
+      app: "opencode",
+      providerId,
+      target: modelFetchTarget,
+      baseUrl,
+      apiKey,
+    })
       .then((models) => {
         setFetchedModels(models);
         if (models.length === 0) {
@@ -218,7 +233,7 @@ export function OpenCodeFormFields({
         showFetchModelsError(err, t);
       })
       .finally(() => setIsFetchingModels(false));
-  }, [baseUrl, apiKey, t]);
+  }, [baseUrl, apiKey, modelFetchTarget, providerId, t]);
 
   // Track which models have expanded options panel
   const [expandedModels, setExpandedModels] = useState<Set<string>>(new Set());
