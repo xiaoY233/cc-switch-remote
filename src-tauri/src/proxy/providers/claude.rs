@@ -62,6 +62,10 @@ pub fn get_claude_api_format(provider: &Provider) -> &'static str {
         };
     }
 
+    if claude_provider_prefers_openai_responses(provider) {
+        return "openai_responses";
+    }
+
     // 3) Backward compatibility: legacy openrouter_compat_mode (bool/number/string)
     let raw = provider.settings_config.get("openrouter_compat_mode");
     let enabled = match raw {
@@ -79,6 +83,79 @@ pub fn get_claude_api_format(provider: &Provider) -> &'static str {
     } else {
         "anthropic"
     }
+}
+
+fn claude_provider_prefers_openai_responses(provider: &Provider) -> bool {
+    let Some(model) = claude_provider_model(provider) else {
+        return false;
+    };
+    if !is_codex_family_model(&model) {
+        return false;
+    }
+
+    let category_is_aggregator = provider.category.as_deref() == Some("aggregator");
+    let base_url = claude_provider_base_url(provider).unwrap_or_default();
+    category_is_aggregator || openai_compatible_base_url(&base_url)
+}
+
+fn claude_provider_model(provider: &Provider) -> Option<String> {
+    provider
+        .settings_config
+        .pointer("/env/ANTHROPIC_MODEL")
+        .and_then(|value| value.as_str())
+        .or_else(|| {
+            provider
+                .settings_config
+                .get("model")
+                .and_then(|value| value.as_str())
+        })
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+        .map(ToString::to_string)
+}
+
+fn claude_provider_base_url(provider: &Provider) -> Option<String> {
+    provider
+        .settings_config
+        .pointer("/env/ANTHROPIC_BASE_URL")
+        .and_then(|value| value.as_str())
+        .or_else(|| {
+            provider
+                .settings_config
+                .get("base_url")
+                .and_then(|value| value.as_str())
+        })
+        .or_else(|| {
+            provider
+                .settings_config
+                .get("baseURL")
+                .and_then(|value| value.as_str())
+        })
+        .or_else(|| {
+            provider
+                .settings_config
+                .get("apiEndpoint")
+                .and_then(|value| value.as_str())
+        })
+        .map(str::trim)
+        .filter(|base_url| !base_url.is_empty())
+        .map(ToString::to_string)
+}
+
+fn openai_compatible_base_url(base_url: &str) -> bool {
+    let normalized = base_url.trim_end_matches('/').to_ascii_lowercase();
+    normalized.ends_with("/v1")
+        || normalized.contains("/openai")
+        || normalized.contains("/responses")
+        || normalized.contains("/chat/completions")
+}
+
+fn is_codex_family_model(model: &str) -> bool {
+    model
+        .trim()
+        .to_ascii_lowercase()
+        .split(|c: char| c == '-' || c == '_' || c == '.' || c.is_whitespace())
+        .any(|part| part == "codex")
 }
 
 pub fn claude_api_format_needs_transform(api_format: &str) -> bool {
@@ -1529,6 +1606,42 @@ mod tests {
             },
         );
         assert!(!adapter.needs_transform(&unknown_format));
+    }
+
+    #[test]
+    fn test_get_claude_api_format_uses_responses_for_codex_aggregator_model() {
+        let provider = create_provider(json!({
+            "env": {
+                "ANTHROPIC_BASE_URL": "http://127.0.0.1:20128/v1",
+                "ANTHROPIC_AUTH_TOKEN": "test-key",
+                "ANTHROPIC_MODEL": "gpt-5.3-codex-spark"
+            }
+        }));
+        let mut provider = provider;
+        provider.category = Some("aggregator".to_string());
+
+        assert_eq!(get_claude_api_format(&provider), "openai_responses");
+        assert!(ClaudeAdapter::new().needs_transform(&provider));
+    }
+
+    #[test]
+    fn test_get_claude_api_format_respects_explicit_anthropic_for_codex_model() {
+        let provider = create_provider_with_meta(
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "http://127.0.0.1:20128/v1",
+                    "ANTHROPIC_AUTH_TOKEN": "test-key",
+                    "ANTHROPIC_MODEL": "gpt-5.3-codex-spark"
+                }
+            }),
+            ProviderMeta {
+                api_format: Some("anthropic".to_string()),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(get_claude_api_format(&provider), "anthropic");
+        assert!(!ClaudeAdapter::new().needs_transform(&provider));
     }
 
     #[test]

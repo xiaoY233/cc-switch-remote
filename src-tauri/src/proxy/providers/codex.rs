@@ -26,6 +26,10 @@ pub struct CodexAdapter;
 /// OpenAI Chat Completions, even if the local Codex client is talking to CC
 /// Switch through the Responses API.
 pub fn codex_provider_uses_chat_completions(provider: &Provider) -> bool {
+    if codex_provider_prefers_native_responses(provider) {
+        return false;
+    }
+
     if let Some(api_format) = provider
         .meta
         .as_ref()
@@ -71,6 +75,33 @@ pub fn codex_provider_uses_chat_completions(provider: &Provider) -> bool {
         .and_then(extract_codex_base_url_from_toml)
         .map(|url| is_chat_completions_url(&url))
         .unwrap_or(false)
+}
+
+fn codex_provider_prefers_native_responses(provider: &Provider) -> bool {
+    let Some(model) = codex_provider_upstream_model(provider) else {
+        return false;
+    };
+    if !is_codex_family_model(&model) {
+        return false;
+    }
+
+    let wire_api = provider
+        .settings_config
+        .get("config")
+        .and_then(|v| v.as_str())
+        .and_then(extract_codex_wire_api_from_toml);
+
+    wire_api
+        .as_deref()
+        .is_some_and(|wire_api| !is_chat_wire_api(wire_api))
+}
+
+fn is_codex_family_model(model: &str) -> bool {
+    model
+        .trim()
+        .to_ascii_lowercase()
+        .split(|c: char| c == '-' || c == '_' || c == '.' || c.is_whitespace())
+        .any(|part| part == "codex")
 }
 
 pub fn should_convert_codex_responses_to_chat(provider: &Provider, endpoint: &str) -> bool {
@@ -782,6 +813,31 @@ wire_api = "chat"
         });
 
         assert!(should_convert_codex_responses_to_chat(
+            &provider,
+            "/v1/responses"
+        ));
+    }
+
+    #[test]
+    fn test_codex_model_with_responses_wire_api_ignores_stale_chat_meta() {
+        let mut provider = create_provider(json!({
+            "config": r#"
+model_provider = "custom"
+model = "gpt-5.3-codex-spark"
+
+[model_providers.custom]
+name = "NewAPI"
+base_url = "https://example.com/v1"
+wire_api = "responses"
+"#
+        }));
+        provider.meta = Some(crate::provider::ProviderMeta {
+            api_format: Some("openai_chat".to_string()),
+            ..Default::default()
+        });
+
+        assert!(!codex_provider_uses_chat_completions(&provider));
+        assert!(!should_convert_codex_responses_to_chat(
             &provider,
             "/v1/responses"
         ));
