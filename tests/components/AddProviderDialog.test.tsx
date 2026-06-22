@@ -2,6 +2,22 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AddProviderDialog } from "@/components/providers/AddProviderDialog";
 import type { ProviderFormValues } from "@/components/providers/forms/ProviderForm";
+import type { ManagementTarget } from "@/lib/api";
+import type { UniversalProvider } from "@/types";
+
+const apiMocks = vi.hoisted(() => ({
+  getAllUniversalProviders: vi.fn(),
+  upsertUniversalProvider: vi.fn(),
+  syncUniversalProvider: vi.fn(),
+}));
+
+vi.mock("@/lib/api", () => ({
+  universalProvidersApi: {
+    getAll: apiMocks.getAllUniversalProviders,
+    upsert: apiMocks.upsertUniversalProvider,
+    sync: apiMocks.syncUniversalProvider,
+  },
+}));
 
 vi.mock("@/components/ui/dialog", () => ({
   Dialog: ({ children }: { children: React.ReactNode }) => (
@@ -42,8 +58,42 @@ vi.mock("@/components/providers/forms/ProviderForm", () => ({
   ),
 }));
 
+const universalProviderFromModal: UniversalProvider = {
+  id: "universal-remote-provider",
+  name: "Remote Unified Provider",
+  providerType: "newapi",
+  baseUrl: "https://api.example.com",
+  apiKey: "sk-test",
+  apps: {
+    claude: true,
+    codex: true,
+    gemini: true,
+  },
+  models: {},
+};
+
+vi.mock("@/components/universal/UniversalProviderFormModal", () => ({
+  UniversalProviderFormModal: ({
+    isOpen,
+    onSave,
+  }: {
+    isOpen: boolean;
+    onSave: (provider: UniversalProvider) => void;
+  }) =>
+    isOpen ? (
+      <button type="button" onClick={() => onSave(universalProviderFromModal)}>
+        save-universal-provider
+      </button>
+    ) : null,
+}));
+
 describe("AddProviderDialog", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
+    apiMocks.getAllUniversalProviders.mockResolvedValue({});
+    apiMocks.upsertUniversalProvider.mockResolvedValue(undefined);
+    apiMocks.syncUniversalProvider.mockResolvedValue(undefined);
+
     mockFormValues = {
       name: "Test Provider",
       websiteUrl: "https://provider.example.com",
@@ -124,5 +174,59 @@ describe("AddProviderDialog", () => {
         lastUsed: undefined,
       },
     });
+  });
+
+  it("添加远程统一供应商后同步到具体应用供应商配置", async () => {
+    const remoteTarget: ManagementTarget = {
+      type: "remote",
+      profile: {
+        id: "remote-1",
+        name: "PVE-Matx",
+        host: "192.168.123.206",
+        port: 22,
+        username: "root",
+        authMethod: { type: "password" },
+        helperPath: "/root/.local/bin/cc-switch-remote-helper",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    };
+
+    const handleOpenChange = vi.fn();
+
+    render(
+      <AddProviderDialog
+        open
+        onOpenChange={handleOpenChange}
+        appId="claude"
+        target={remoteTarget}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    const universalTab = screen.getByRole("tab", {
+      name: "provider.tabUniversal",
+    });
+    fireEvent.pointerDown(universalTab, { button: 0, ctrlKey: false });
+    fireEvent.mouseDown(universalTab, { button: 0, ctrlKey: false });
+    fireEvent.click(universalTab);
+    fireEvent.click(
+      screen.getByRole("button", { name: "universalProvider.add" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "save-universal-provider" }),
+    );
+
+    await waitFor(() =>
+      expect(apiMocks.upsertUniversalProvider).toHaveBeenCalledWith(
+        universalProviderFromModal,
+        remoteTarget,
+      ),
+    );
+    expect(apiMocks.syncUniversalProvider).toHaveBeenCalledWith(
+      "universal-remote-provider",
+      remoteTarget,
+    );
+    expect(handleOpenChange).toHaveBeenCalledWith(false);
   });
 });

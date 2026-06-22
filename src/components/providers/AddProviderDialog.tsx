@@ -63,9 +63,10 @@ export function AddProviderDialog({
     async (provider: UniversalProvider) => {
       try {
         await universalProvidersApi.upsert(provider, target);
+        await universalProvidersApi.sync(provider.id, target);
         toast.success(
-          t("universalProvider.addSuccess", {
-            defaultValue: "统一供应商添加成功",
+          t("universalProvider.addedAndSynced", {
+            defaultValue: "统一供应商已添加并同步",
           }),
         );
         setUniversalFormOpen(false);
