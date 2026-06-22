@@ -674,6 +674,57 @@ fn routing_config_commands_round_trip_through_json_cli() {
 
 #[test]
 #[serial]
+fn routing_runtime_stop_clears_enabled_app_routing_configs() {
+    let (stop_response, claude_response, codex_response, gemini_response) = with_temp_home(|| {
+        let db = cc_switch_lib::Database::init().expect("init db");
+        let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
+        runtime.block_on(async {
+            for app_type in ["claude", "codex", "gemini"] {
+                let mut config = db
+                    .get_proxy_config_for_app(app_type)
+                    .await
+                    .expect("get app proxy config");
+                config.enabled = true;
+                db.update_proxy_config_for_app(config)
+                    .await
+                    .expect("mark app routing enabled");
+            }
+        });
+
+        let stop_response =
+            cc_switch_lib::cli::run(&["routing-runtime".to_string(), "stop".to_string()]);
+        let claude_response = cc_switch_lib::cli::run(&[
+            "routing-config".to_string(),
+            "app".to_string(),
+            "claude".to_string(),
+        ]);
+        let codex_response = cc_switch_lib::cli::run(&[
+            "routing-config".to_string(),
+            "app".to_string(),
+            "codex".to_string(),
+        ]);
+        let gemini_response = cc_switch_lib::cli::run(&[
+            "routing-config".to_string(),
+            "app".to_string(),
+            "gemini".to_string(),
+        ]);
+
+        (
+            stop_response,
+            claude_response,
+            codex_response,
+            gemini_response,
+        )
+    });
+
+    assert_eq!(stop_response["ok"], true, "stop_response={stop_response:?}");
+    assert_eq!(claude_response["data"]["enabled"], false);
+    assert_eq!(codex_response["data"]["enabled"], false);
+    assert_eq!(gemini_response["data"]["enabled"], false);
+}
+
+#[test]
+#[serial]
 fn status_accepts_json_flag_for_remote_invocation() {
     let response = cc_switch_lib::cli::run(&["--json".to_string(), "status".to_string()]);
 

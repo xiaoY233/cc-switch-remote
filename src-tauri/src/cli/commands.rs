@@ -444,6 +444,17 @@ async fn repair_enabled_routing_takeovers(state: &AppState) -> Result<(), String
 }
 
 #[cfg(feature = "proxy-runtime")]
+async fn disable_enabled_routing_takeovers(state: &AppState) -> Result<(), String> {
+    for app_type in ["claude", "codex", "gemini"] {
+        state
+            .proxy_service
+            .set_takeover_for_app(app_type, false)
+            .await?;
+    }
+    Ok(())
+}
+
+#[cfg(feature = "proxy-runtime")]
 pub fn routing_runtime_status() -> Result<crate::proxy::types::ProxyStatus, String> {
     let state = routing_state()?;
     routing_runtime()?.block_on(state.proxy_service.get_status())
@@ -473,10 +484,10 @@ pub fn routing_runtime_start() -> Result<crate::proxy::types::ProxyServerInfo, S
 pub fn routing_runtime_stop() -> Result<bool, String> {
     let state = routing_state()?;
     routing_runtime()?.block_on(async {
-        if !state.proxy_service.is_running().await {
-            return Ok(true);
+        disable_enabled_routing_takeovers(state).await?;
+        if state.proxy_service.is_running().await {
+            state.proxy_service.stop().await?;
         }
-        state.proxy_service.stop().await?;
         Ok(true)
     })
 }
