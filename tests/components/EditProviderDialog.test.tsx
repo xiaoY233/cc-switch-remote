@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Provider } from "@/types";
+import type { AppId, ManagementTarget } from "@/lib/api";
 
 const apiMocks = vi.hoisted(() => ({
   getCurrent: vi.fn(),
@@ -202,4 +203,156 @@ describe("EditProviderDialog", () => {
       JSON.parse(screen.getByTestId("settings-config").textContent ?? "{}"),
     ).toEqual(provider.settingsConfig);
   });
+
+  it.each<[AppId, Record<string, unknown>, Record<string, unknown>, string]>([
+    [
+      "claude",
+      {
+        env: {
+          ANTHROPIC_BASE_URL: "https://api.example.com",
+          ANTHROPIC_AUTH_TOKEN: "[redacted]",
+        },
+      },
+      {
+        env: {
+          ANTHROPIC_BASE_URL: "https://api.example.com",
+          ANTHROPIC_AUTH_TOKEN: "",
+        },
+      },
+      "Claude",
+    ],
+    [
+      "gemini",
+      {
+        env: {
+          GOOGLE_GEMINI_BASE_URL: "https://api.example.com",
+          GEMINI_API_KEY: "[redacted]",
+        },
+        config: {},
+      },
+      {
+        env: {
+          GOOGLE_GEMINI_BASE_URL: "https://api.example.com",
+          GEMINI_API_KEY: "",
+        },
+        config: {},
+      },
+      "Gemini",
+    ],
+    [
+      "opencode",
+      {
+        npm: "@ai-sdk/openai-compatible",
+        options: {
+          baseURL: "https://api.example.com/v1",
+          apiKey: "[redacted]",
+        },
+        models: {},
+      },
+      {
+        npm: "@ai-sdk/openai-compatible",
+        options: {
+          baseURL: "https://api.example.com/v1",
+          apiKey: "",
+        },
+        models: {},
+      },
+      "OpenCode",
+    ],
+    [
+      "openclaw",
+      {
+        baseUrl: "https://api.example.com/v1",
+        apiKey: "[redacted]",
+        api: "openai-completions",
+        models: [],
+      },
+      {
+        baseUrl: "https://api.example.com/v1",
+        apiKey: "",
+        api: "openai-completions",
+        models: [],
+      },
+      "OpenClaw",
+    ],
+    [
+      "hermes",
+      {
+        base_url: "https://api.example.com/v1",
+        api_key: "[redacted]",
+      },
+      {
+        base_url: "https://api.example.com/v1",
+        api_key: "",
+      },
+      "Hermes",
+    ],
+    [
+      "codex",
+      {
+        auth: {
+          OPENAI_API_KEY: "[redacted]",
+        },
+        config:
+          'model_provider = "custom"\n[model_providers.custom]\nbase_url = "https://api.example.com/v1"\nexperimental_bearer_token = "[redacted]"\n',
+      },
+      {
+        auth: {
+          OPENAI_API_KEY: "",
+        },
+        config:
+          'model_provider = "custom"\n[model_providers.custom]\nbase_url = "https://api.example.com/v1"\nexperimental_bearer_token = ""\n',
+      },
+      "Codex",
+    ],
+  ])(
+    "远程编辑 %s 供应商时隐藏 redacted secret 但提交保留哨兵",
+    async (appId, settingsConfig, hiddenConfig, label) => {
+      const remoteTarget: ManagementTarget = {
+        type: "remote",
+        profile: {
+          id: "pve-matx",
+          name: "PVE-Matx",
+          host: "192.0.2.10",
+          port: 22,
+          username: "root",
+          authMethod: { type: "sshAgent" },
+          helperPath: "/root/.local/bin/cc-switch-remote-helper",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      };
+      const provider: Provider = {
+        id: `${appId}-provider`,
+        name: `${label} Provider`,
+        category: "custom",
+        settingsConfig,
+      };
+      const handleSubmit = vi.fn().mockResolvedValue(undefined);
+
+      render(
+        <EditProviderDialog
+          open
+          provider={provider}
+          onOpenChange={vi.fn()}
+          onSubmit={handleSubmit}
+          appId={appId}
+          target={remoteTarget}
+        />,
+      );
+
+      await waitFor(() => {
+        expect(
+          JSON.parse(screen.getByTestId("settings-config").textContent ?? "{}"),
+        ).toEqual(hiddenConfig);
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "common.save" }));
+
+      await waitFor(() => expect(handleSubmit).toHaveBeenCalledTimes(1));
+      expect(handleSubmit.mock.calls[0][0].provider.settingsConfig).toEqual(
+        settingsConfig,
+      );
+    },
+  );
 });
