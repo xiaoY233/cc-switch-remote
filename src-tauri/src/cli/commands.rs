@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 use crate::proxy::providers::codex_oauth_auth::{CodexOAuthError, CodexOAuthManager};
 use crate::proxy::providers::copilot_auth::{
-    CopilotAuthError, CopilotAuthManager, GitHubAccount, GitHubDeviceCodeResponse,
+    CopilotAuthError, CopilotAuthManager, CopilotModel, GitHubAccount, GitHubDeviceCodeResponse,
 };
 
 #[cfg(feature = "proxy-runtime")]
@@ -112,6 +112,34 @@ pub struct RemoteFetchModelsOptions {
     pub custom_user_agent: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteTestUsageScriptOptions {
+    pub script_code: String,
+    pub timeout: Option<u64>,
+    pub api_key: Option<String>,
+    pub base_url: Option<String>,
+    pub access_token: Option<String>,
+    pub user_id: Option<String>,
+    pub template_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteBalanceOptions {
+    pub base_url: String,
+    pub api_key: String,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteCodingPlanQuotaOptions {
+    pub base_url: String,
+    pub api_key: String,
+    pub access_key_id: Option<String>,
+    pub secret_access_key: Option<String>,
+}
+
 fn auth_runtime() -> Result<&'static tokio::runtime::Runtime, String> {
     AUTH_RUNTIME.as_ref().map_err(Clone::clone)
 }
@@ -150,6 +178,77 @@ pub fn fetch_models_for_provider(
     ))
 }
 
+fn build_command_state() -> Result<AppState, String> {
+    let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
+    Ok(AppState::new_with_managed_auth_runtime(
+        db,
+        crate::proxy::managed_auth_runtime::ManagedAuthRuntime {
+            copilot: Some(COPILOT_AUTH_MANAGER.clone()),
+            codex_oauth: Some(CODEX_OAUTH_MANAGER.clone()),
+        },
+    ))
+}
+
+pub fn query_provider_usage(
+    app_type: AppType,
+    provider_id: &str,
+) -> Result<crate::provider::UsageResult, String> {
+    let state = build_command_state()?;
+    auth_runtime()?
+        .block_on(crate::services::ProviderService::query_usage(
+            &state,
+            app_type,
+            provider_id,
+        ))
+        .map_err(|e| e.to_string())
+}
+
+pub fn test_usage_script(
+    app_type: AppType,
+    provider_id: &str,
+    options_json: &str,
+) -> Result<crate::provider::UsageResult, String> {
+    let options: RemoteTestUsageScriptOptions = serde_json::from_str(options_json)
+        .map_err(|e| format!("Invalid usage script test options: {e}"))?;
+    let state = build_command_state()?;
+    auth_runtime()?
+        .block_on(crate::services::ProviderService::test_usage_script(
+            &state,
+            app_type,
+            provider_id,
+            &options.script_code,
+            options.timeout.unwrap_or(10),
+            options.api_key.as_deref(),
+            options.base_url.as_deref(),
+            options.access_token.as_deref(),
+            options.user_id.as_deref(),
+            options.template_type.as_deref(),
+        ))
+        .map_err(|e| e.to_string())
+}
+
+pub fn get_balance(options_json: &str) -> Result<crate::provider::UsageResult, String> {
+    let options: RemoteBalanceOptions =
+        serde_json::from_str(options_json).map_err(|e| format!("Invalid balance options: {e}"))?;
+    auth_runtime()?.block_on(crate::services::balance::get_balance(
+        &options.base_url,
+        &options.api_key,
+    ))
+}
+
+pub fn get_coding_plan_quota(
+    options_json: &str,
+) -> Result<crate::services::subscription::SubscriptionQuota, String> {
+    let options: RemoteCodingPlanQuotaOptions = serde_json::from_str(options_json)
+        .map_err(|e| format!("Invalid coding plan quota options: {e}"))?;
+    auth_runtime()?.block_on(crate::services::coding_plan::get_coding_plan_quota(
+        &options.base_url,
+        &options.api_key,
+        options.access_key_id.as_deref(),
+        options.secret_access_key.as_deref(),
+    ))
+}
+
 pub fn fetch_codex_oauth_models(
     auth_provider: &str,
     account_id: Option<&str>,
@@ -178,6 +277,111 @@ pub fn fetch_codex_oauth_models(
             .map_err(|e| format!("Codex OAuth token unavailable: {e}"))?;
 
         crate::services::codex_oauth_models::fetch_models_with_token(&token, &id).await
+    })
+}
+
+pub fn get_codex_oauth_quota(
+    auth_provider: &str,
+    account_id: Option<&str>,
+) -> Result<crate::services::subscription::SubscriptionQuota, String> {
+    if ensure_auth_provider(auth_provider)? != AUTH_PROVIDER_CODEX_OAUTH {
+        return Err(format!(
+            "Quota is only supported for {AUTH_PROVIDER_CODEX_OAUTH}"
+        ));
+    }
+
+    auth_runtime()?.block_on(async {
+        let resolved = match account_id
+            .map(str::trim)
+            .filter(|id| !id.is_empty() && *id != "-")
+        {
+            Some(id) => Some(id.to_string()),
+            None => CODEX_OAUTH_MANAGER.default_account_id().await,
+        };
+        let Some(id) = resolved else {
+            return Ok(crate::services::subscription::SubscriptionQuota::not_found(
+                AUTH_PROVIDER_CODEX_OAUTH,
+            ));
+        };
+
+        let token = match CODEX_OAUTH_MANAGER.get_valid_token_for_account(&id).await {
+            Ok(token) => token,
+            Err(e) => {
+                return Ok(crate::services::subscription::SubscriptionQuota::error(
+                    AUTH_PROVIDER_CODEX_OAUTH,
+                    crate::services::subscription::CredentialStatus::Expired,
+                    format!("Codex OAuth token unavailable: {e}"),
+                ));
+            }
+        };
+
+        Ok(crate::services::subscription::query_codex_quota(
+            &token,
+            Some(&id),
+            AUTH_PROVIDER_CODEX_OAUTH,
+            "Codex OAuth access token expired or rejected. Please re-login via cc-switch.",
+        )
+        .await)
+    })
+}
+
+pub fn get_subscription_quota(
+    tool: &str,
+) -> Result<crate::services::subscription::SubscriptionQuota, String> {
+    auth_runtime()?.block_on(crate::services::subscription::get_subscription_quota(tool))
+}
+
+pub fn fetch_copilot_models(
+    auth_provider: &str,
+    account_id: Option<&str>,
+) -> Result<Vec<CopilotModel>, String> {
+    if ensure_auth_provider(auth_provider)? != AUTH_PROVIDER_GITHUB_COPILOT {
+        return Err(format!(
+            "Model list is only supported for {AUTH_PROVIDER_GITHUB_COPILOT}"
+        ));
+    }
+
+    auth_runtime()?.block_on(async {
+        match account_id
+            .map(str::trim)
+            .filter(|id| !id.is_empty() && *id != "-")
+        {
+            Some(id) => COPILOT_AUTH_MANAGER
+                .fetch_models_for_account(id)
+                .await
+                .map_err(|e| e.to_string()),
+            None => COPILOT_AUTH_MANAGER
+                .fetch_models()
+                .await
+                .map_err(|e| e.to_string()),
+        }
+    })
+}
+
+pub fn fetch_copilot_usage(
+    auth_provider: &str,
+    account_id: Option<&str>,
+) -> Result<crate::proxy::providers::copilot_auth::CopilotUsageResponse, String> {
+    if ensure_auth_provider(auth_provider)? != AUTH_PROVIDER_GITHUB_COPILOT {
+        return Err(format!(
+            "Usage is only supported for {AUTH_PROVIDER_GITHUB_COPILOT}"
+        ));
+    }
+
+    auth_runtime()?.block_on(async {
+        match account_id
+            .map(str::trim)
+            .filter(|id| !id.is_empty() && *id != "-")
+        {
+            Some(id) => COPILOT_AUTH_MANAGER
+                .fetch_usage_for_account(id)
+                .await
+                .map_err(|e| e.to_string()),
+            None => COPILOT_AUTH_MANAGER
+                .fetch_usage()
+                .await
+                .map_err(|e| e.to_string()),
+        }
     })
 }
 

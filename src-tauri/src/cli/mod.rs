@@ -122,6 +122,45 @@ mod tests {
     }
 
     #[test]
+    fn providers_query_usage_command_is_registered() {
+        let response = run_command(&[
+            "providers".to_string(),
+            "query-usage".to_string(),
+            "claude".to_string(),
+            "__missing_provider__".to_string(),
+        ]);
+
+        assert_eq!(response.get("ok").and_then(Value::as_bool), Some(false));
+        assert_eq!(
+            response
+                .get("error")
+                .and_then(|error| error.get("code"))
+                .and_then(Value::as_str),
+            Some("providers_query_usage_failed")
+        );
+    }
+
+    #[test]
+    fn providers_test_usage_script_command_is_registered() {
+        let response = run_command(&[
+            "providers".to_string(),
+            "test-usage-script".to_string(),
+            "claude".to_string(),
+            "__missing_provider__".to_string(),
+            "not-json".to_string(),
+        ]);
+
+        assert_eq!(response.get("ok").and_then(Value::as_bool), Some(false));
+        assert_eq!(
+            response
+                .get("error")
+                .and_then(|error| error.get("code"))
+                .and_then(Value::as_str),
+            Some("providers_test_usage_script_failed")
+        );
+    }
+
+    #[test]
     fn openclaw_scan_health_command_is_registered() {
         let dir = tempfile::tempdir().expect("temp test home");
         let previous_home = std::env::var_os("CC_SWITCH_TEST_HOME");
@@ -148,7 +187,7 @@ mod tests {
             "auth".to_string(),
             "models".to_string(),
             "codex_oauth".to_string(),
-            "-".to_string(),
+            "__missing_codex_oauth_account__".to_string(),
         ]);
 
         match previous_home {
@@ -163,6 +202,108 @@ mod tests {
                 .and_then(|error| error.get("code"))
                 .and_then(Value::as_str),
             Some("codex_oauth_models_failed")
+        );
+    }
+
+    #[test]
+    fn copilot_models_command_is_registered() {
+        let dir = tempfile::tempdir().expect("temp test home");
+        let previous_home = std::env::var_os("CC_SWITCH_TEST_HOME");
+        std::env::set_var("CC_SWITCH_TEST_HOME", dir.path());
+
+        let response = run_command(&[
+            "auth".to_string(),
+            "models".to_string(),
+            "github_copilot".to_string(),
+            "-".to_string(),
+        ]);
+
+        match previous_home {
+            Some(value) => std::env::set_var("CC_SWITCH_TEST_HOME", value),
+            None => std::env::remove_var("CC_SWITCH_TEST_HOME"),
+        }
+
+        assert_eq!(response.get("ok").and_then(Value::as_bool), Some(false));
+        assert_eq!(
+            response
+                .get("error")
+                .and_then(|error| error.get("code"))
+                .and_then(Value::as_str),
+            Some("copilot_models_failed")
+        );
+    }
+
+    #[test]
+    fn codex_oauth_quota_command_is_registered() {
+        let dir = tempfile::tempdir().expect("temp test home");
+        let previous_home = std::env::var_os("CC_SWITCH_TEST_HOME");
+        std::env::set_var("CC_SWITCH_TEST_HOME", dir.path());
+
+        let response = run_command(&[
+            "auth".to_string(),
+            "quota".to_string(),
+            "codex_oauth".to_string(),
+            "__missing_codex_oauth_account__".to_string(),
+        ]);
+
+        match previous_home {
+            Some(value) => std::env::set_var("CC_SWITCH_TEST_HOME", value),
+            None => std::env::remove_var("CC_SWITCH_TEST_HOME"),
+        }
+
+        assert_eq!(response.get("ok").and_then(Value::as_bool), Some(true));
+        assert_eq!(
+            response
+                .get("data")
+                .and_then(|data| data.get("credentialStatus"))
+                .and_then(Value::as_str),
+            Some("expired")
+        );
+    }
+
+    #[test]
+    fn copilot_usage_command_is_registered() {
+        let dir = tempfile::tempdir().expect("temp test home");
+        let previous_home = std::env::var_os("CC_SWITCH_TEST_HOME");
+        std::env::set_var("CC_SWITCH_TEST_HOME", dir.path());
+
+        let response = run_command(&[
+            "auth".to_string(),
+            "usage".to_string(),
+            "github_copilot".to_string(),
+            "__missing_copilot_account__".to_string(),
+        ]);
+
+        match previous_home {
+            Some(value) => std::env::set_var("CC_SWITCH_TEST_HOME", value),
+            None => std::env::remove_var("CC_SWITCH_TEST_HOME"),
+        }
+
+        assert_eq!(response.get("ok").and_then(Value::as_bool), Some(false));
+        assert_eq!(
+            response
+                .get("error")
+                .and_then(|error| error.get("code"))
+                .and_then(Value::as_str),
+            Some("copilot_usage_failed")
+        );
+    }
+
+    #[test]
+    fn subscription_quota_command_is_registered() {
+        let response = run_command(&[
+            "subscription".to_string(),
+            "quota".to_string(),
+            "__unknown_tool__".to_string(),
+        ]);
+
+        assert_eq!(response.get("ok").and_then(Value::as_bool), Some(true));
+        assert_eq!(
+            response
+                .get("data")
+                .and_then(|data| data.get("credentialStatus"))
+                .and_then(Value::as_str),
+            Some("not_found")
         );
     }
 
@@ -250,6 +391,42 @@ mod tests {
                 .and_then(|error| error.get("code"))
                 .and_then(Value::as_str),
             Some("usage_request_logs_failed")
+        );
+    }
+
+    #[test]
+    fn usage_balance_command_is_registered() {
+        let response = run_command(&[
+            "usage".to_string(),
+            "balance".to_string(),
+            "not-json".to_string(),
+        ]);
+
+        assert_eq!(response.get("ok").and_then(Value::as_bool), Some(false));
+        assert_eq!(
+            response
+                .get("error")
+                .and_then(|error| error.get("code"))
+                .and_then(Value::as_str),
+            Some("usage_balance_failed")
+        );
+    }
+
+    #[test]
+    fn usage_coding_plan_quota_command_is_registered() {
+        let response = run_command(&[
+            "usage".to_string(),
+            "coding-plan-quota".to_string(),
+            "not-json".to_string(),
+        ]);
+
+        assert_eq!(response.get("ok").and_then(Value::as_bool), Some(false));
+        assert_eq!(
+            response
+                .get("error")
+                .and_then(|error| error.get("code"))
+                .and_then(Value::as_str),
+            Some("usage_coding_plan_quota_failed")
         );
     }
 
@@ -478,6 +655,41 @@ pub(crate) fn run_command(args: &[String]) -> Value {
                             message,
                         ))
                         .expect("serialize provider fetch models error"),
+                    }
+                }
+                Err(err) => serde_json::to_value(types::err::<()>("invalid_app", err.to_string()))
+                    .expect("serialize invalid app error"),
+            }
+        }
+        [group, cmd, app, provider_id] if group == "providers" && cmd == "query-usage" => {
+            match app.parse() {
+                Ok(app_type) => match commands::query_provider_usage(app_type, provider_id) {
+                    Ok(value) => {
+                        serde_json::to_value(types::ok(value)).expect("serialize provider usage")
+                    }
+                    Err(message) => serde_json::to_value(types::err::<()>(
+                        "providers_query_usage_failed",
+                        message,
+                    ))
+                    .expect("serialize provider usage error"),
+                },
+                Err(err) => serde_json::to_value(types::err::<()>("invalid_app", err.to_string()))
+                    .expect("serialize invalid app error"),
+            }
+        }
+        [group, cmd, app, provider_id, options_json]
+            if group == "providers" && cmd == "test-usage-script" =>
+        {
+            match app.parse() {
+                Ok(app_type) => {
+                    match commands::test_usage_script(app_type, provider_id, options_json) {
+                        Ok(value) => serde_json::to_value(types::ok(value))
+                            .expect("serialize usage script test"),
+                        Err(message) => serde_json::to_value(types::err::<()>(
+                            "providers_test_usage_script_failed",
+                            message,
+                        ))
+                        .expect("serialize usage script test error"),
                     }
                 }
                 Err(err) => serde_json::to_value(types::err::<()>("invalid_app", err.to_string()))
@@ -782,6 +994,30 @@ pub(crate) fn run_command(args: &[String]) -> Value {
                 .expect("serialize usage model pricing update error"),
             }
         }
+        [group, cmd, options_json] if group == "usage" && cmd == "balance" => {
+            match commands::get_balance(options_json) {
+                Ok(value) => {
+                    serde_json::to_value(types::ok(value)).expect("serialize usage balance")
+                }
+                Err(message) => serde_json::to_value(types::err::<()>(
+                    "usage_balance_failed",
+                    message,
+                ))
+                .expect("serialize usage balance error"),
+            }
+        }
+        [group, cmd, options_json] if group == "usage" && cmd == "coding-plan-quota" => {
+            match commands::get_coding_plan_quota(options_json) {
+                Ok(value) => {
+                    serde_json::to_value(types::ok(value)).expect("serialize coding plan quota")
+                }
+                Err(message) => serde_json::to_value(types::err::<()>(
+                    "usage_coding_plan_quota_failed",
+                    message,
+                ))
+                .expect("serialize coding plan quota error"),
+            }
+        }
         [group, cmd, model_id] if group == "usage" && cmd == "delete-model-pricing" => {
             match commands::usage_delete_model_pricing(model_id) {
                 Ok(value) => serde_json::to_value(types::ok(value))
@@ -880,15 +1116,95 @@ pub(crate) fn run_command(args: &[String]) -> Value {
             } else {
                 Some(account_id.as_str())
             };
-            match commands::fetch_codex_oauth_models(auth_provider, account_id) {
-                Ok(value) => {
-                    serde_json::to_value(types::ok(value)).expect("serialize auth models")
+            match auth_provider.as_str() {
+                "codex_oauth" => match commands::fetch_codex_oauth_models(auth_provider, account_id)
+                {
+                    Ok(value) => {
+                        serde_json::to_value(types::ok(value)).expect("serialize auth models")
+                    }
+                    Err(message) => serde_json::to_value(types::err::<()>(
+                        "codex_oauth_models_failed",
+                        message,
+                    ))
+                    .expect("serialize auth models error"),
+                },
+                "github_copilot" => match commands::fetch_copilot_models(auth_provider, account_id)
+                {
+                    Ok(value) => {
+                        serde_json::to_value(types::ok(value)).expect("serialize auth models")
+                    }
+                    Err(message) => serde_json::to_value(types::err::<()>(
+                        "copilot_models_failed",
+                        message,
+                    ))
+                    .expect("serialize auth models error"),
                 }
-                Err(message) => serde_json::to_value(types::err::<()>(
-                    "codex_oauth_models_failed",
-                    message,
+                _ => serde_json::to_value(types::err::<()>(
+                    "auth_models_failed",
+                    format!("Unsupported auth provider: {auth_provider}"),
                 ))
                 .expect("serialize auth models error"),
+            }
+        }
+        [group, cmd, auth_provider, account_id] if group == "auth" && cmd == "usage" => {
+            let account_id = if account_id == "-" {
+                None
+            } else {
+                Some(account_id.as_str())
+            };
+            match auth_provider.as_str() {
+                "github_copilot" => match commands::fetch_copilot_usage(auth_provider, account_id)
+                {
+                    Ok(value) => {
+                        serde_json::to_value(types::ok(value)).expect("serialize auth usage")
+                    }
+                    Err(message) => serde_json::to_value(types::err::<()>(
+                        "copilot_usage_failed",
+                        message,
+                    ))
+                    .expect("serialize auth usage error"),
+                },
+                _ => serde_json::to_value(types::err::<()>(
+                    "auth_usage_failed",
+                    format!("Unsupported auth provider: {auth_provider}"),
+                ))
+                .expect("serialize auth usage error"),
+            }
+        }
+        [group, cmd, auth_provider, account_id] if group == "auth" && cmd == "quota" => {
+            let account_id = if account_id == "-" {
+                None
+            } else {
+                Some(account_id.as_str())
+            };
+            match auth_provider.as_str() {
+                "codex_oauth" => match commands::get_codex_oauth_quota(auth_provider, account_id) {
+                    Ok(value) => {
+                        serde_json::to_value(types::ok(value)).expect("serialize auth quota")
+                    }
+                    Err(message) => serde_json::to_value(types::err::<()>(
+                        "codex_oauth_quota_failed",
+                        message,
+                    ))
+                    .expect("serialize auth quota error"),
+                },
+                _ => serde_json::to_value(types::err::<()>(
+                    "auth_quota_failed",
+                    format!("Unsupported auth provider: {auth_provider}"),
+                ))
+                .expect("serialize auth quota error"),
+            }
+        }
+        [group, cmd, tool] if group == "subscription" && cmd == "quota" => {
+            match commands::get_subscription_quota(tool) {
+                Ok(value) => {
+                    serde_json::to_value(types::ok(value)).expect("serialize subscription quota")
+                }
+                Err(message) => serde_json::to_value(types::err::<()>(
+                    "subscription_quota_failed",
+                    message,
+                ))
+                .expect("serialize subscription quota error"),
             }
         }
         [group, cmd, auth_provider, account_id] if group == "auth" && cmd == "remove" => {

@@ -6,8 +6,7 @@ import { ClaudeFormFields } from "@/components/providers/forms/ClaudeFormFields"
 import { Form } from "@/components/ui/form";
 
 const copilotApiMock = vi.hoisted(() => ({
-  copilotGetModels: vi.fn(),
-  copilotGetModelsForAccount: vi.fn(),
+  copilotGetModelsForTarget: vi.fn(),
 }));
 
 const modelFetchApiMock = vi.hoisted(() => ({
@@ -19,10 +18,10 @@ const modelFetchApiMock = vi.hoisted(() => ({
 }));
 
 const codexOAuthSectionMock = vi.hoisted(() => vi.fn());
+const copilotAuthSectionMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/api/copilot", () => ({
-  copilotGetModels: copilotApiMock.copilotGetModels,
-  copilotGetModelsForAccount: copilotApiMock.copilotGetModelsForAccount,
+  copilotGetModelsForTarget: copilotApiMock.copilotGetModelsForTarget,
 }));
 
 vi.mock("@/lib/api/model-fetch", () => ({
@@ -35,7 +34,10 @@ vi.mock("@/lib/api/model-fetch", () => ({
 }));
 
 vi.mock("@/components/providers/forms/CopilotAuthSection", () => ({
-  CopilotAuthSection: () => <div data-testid="copilot-auth-section" />,
+  CopilotAuthSection: (props: unknown) => {
+    copilotAuthSectionMock(props);
+    return <div data-testid="copilot-auth-section" />;
+  },
 }));
 
 vi.mock("@/components/providers/forms/CodexOAuthSection", () => ({
@@ -129,8 +131,9 @@ const renderCodexOauthForm = (overrides: Partial<ClaudeFormFieldsProps> = {}) =>
 describe("ClaudeFormFields", () => {
   beforeEach(() => {
     codexOAuthSectionMock.mockReset();
-    copilotApiMock.copilotGetModels.mockResolvedValue([]);
-    copilotApiMock.copilotGetModelsForAccount.mockResolvedValue([]);
+    copilotAuthSectionMock.mockReset();
+    copilotApiMock.copilotGetModelsForTarget.mockReset();
+    copilotApiMock.copilotGetModelsForTarget.mockResolvedValue([]);
     modelFetchApiMock.fetchCodexOauthModels.mockResolvedValue([]);
     modelFetchApiMock.fetchModelsForConfig.mockResolvedValue([]);
     modelFetchApiMock.fetchModelsForProviderConfig.mockResolvedValue([]);
@@ -143,8 +146,7 @@ describe("ClaudeFormFields", () => {
   it("不会在 Copilot 表单打开时自动获取模型列表", () => {
     renderCopilotForm();
 
-    expect(copilotApiMock.copilotGetModels).not.toHaveBeenCalled();
-    expect(copilotApiMock.copilotGetModelsForAccount).not.toHaveBeenCalled();
+    expect(copilotApiMock.copilotGetModelsForTarget).not.toHaveBeenCalled();
   });
 
   it("点击获取模型列表后才请求当前 Copilot 账号的模型", async () => {
@@ -157,11 +159,47 @@ describe("ClaudeFormFields", () => {
     );
 
     await waitFor(() => {
-      expect(copilotApiMock.copilotGetModelsForAccount).toHaveBeenCalledWith(
+      expect(copilotApiMock.copilotGetModelsForTarget).toHaveBeenCalledWith(
         "gh-1",
+        undefined,
       );
     });
-    expect(copilotApiMock.copilotGetModels).not.toHaveBeenCalled();
+  });
+
+  it("远程 Copilot 表单使用远端账号并从远端获取模型列表", async () => {
+    const remoteTarget: ClaudeFormFieldsProps["modelFetchTarget"] = {
+      type: "remote",
+      profile: {
+        id: "remote-host",
+        name: "Remote Host",
+        host: "192.0.2.10",
+        port: 22,
+        username: "root",
+        authMethod: { type: "sshAgent" },
+        helperPath: "/root/.local/bin/cc-switch-remote-helper",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    };
+
+    renderCopilotForm({ modelFetchTarget: remoteTarget });
+
+    expect(copilotAuthSectionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ target: remoteTarget }),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "providerForm.fetchModels",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(copilotApiMock.copilotGetModelsForTarget).toHaveBeenCalledWith(
+        "gh-1",
+        remoteTarget,
+      );
+    });
   });
 
   it("不会在 Codex OAuth 表单打开时自动获取模型列表", () => {
@@ -191,8 +229,8 @@ describe("ClaudeFormFields", () => {
     const remoteTarget: ClaudeFormFieldsProps["modelFetchTarget"] = {
       type: "remote",
       profile: {
-        id: "pve-matx",
-        name: "PVE-Matx",
+        id: "remote-host",
+        name: "Remote Host",
         host: "192.0.2.10",
         port: 22,
         username: "root",
@@ -227,8 +265,8 @@ describe("ClaudeFormFields", () => {
     const remoteTarget: ClaudeFormFieldsProps["modelFetchTarget"] = {
       type: "remote",
       profile: {
-        id: "pve-matx",
-        name: "PVE-Matx",
+        id: "remote-host",
+        name: "Remote Host",
         host: "192.0.2.10",
         port: 22,
         username: "root",

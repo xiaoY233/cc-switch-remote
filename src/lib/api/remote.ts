@@ -16,11 +16,13 @@ import type {
   SessionMeta,
   UniversalProvider,
   UniversalProvidersMap,
+  UsageResult,
 } from "@/types";
 import type { AppId } from "./types";
 import type { ProviderSortUpdate, SwitchResult } from "./providers";
 import type { StreamCheckConfig, StreamCheckResult } from "./model-test";
 import type { BackupEntry, LogConfig } from "./settings";
+import type { SubscriptionQuota } from "@/types/subscription";
 import type { Prompt } from "./prompts";
 import type {
   DiscoverableSkill,
@@ -74,6 +76,7 @@ import type {
   ManagedAuthProvider,
   ManagedAuthStatus,
 } from "./auth";
+import type { CopilotModel, CopilotUsageResponse } from "./copilot";
 import type { FetchedModel } from "./model-fetch";
 
 export type RemoteAuthMethod =
@@ -139,6 +142,28 @@ export interface RemoteFetchModelsOptions {
   isFullUrl?: boolean;
   modelsUrl?: string;
   customUserAgent?: string;
+}
+
+export interface RemoteTestUsageScriptOptions {
+  scriptCode: string;
+  timeout?: number;
+  apiKey?: string;
+  baseUrl?: string;
+  accessToken?: string;
+  userId?: string;
+  templateType?: string;
+}
+
+export interface RemoteBalanceOptions {
+  baseUrl: string;
+  apiKey: string;
+}
+
+export interface RemoteCodingPlanQuotaOptions {
+  baseUrl: string;
+  apiKey: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
 }
 
 export interface RemoteToolVersion {
@@ -951,6 +976,60 @@ export const remoteApi = {
     });
   },
 
+  queryProviderUsage(
+    profile: RemoteHostProfile,
+    app: AppId,
+    providerId: string,
+    secret?: RemoteConnectionSecret,
+  ): Promise<UsageResult> {
+    return invoke<UsageResult>("remote_query_provider_usage", {
+      profile,
+      app,
+      providerId,
+      secret,
+    });
+  },
+
+  testUsageScript(
+    profile: RemoteHostProfile,
+    app: AppId,
+    providerId: string,
+    options: RemoteTestUsageScriptOptions,
+    secret?: RemoteConnectionSecret,
+  ): Promise<UsageResult> {
+    return invoke<UsageResult>("remote_test_usage_script", {
+      profile,
+      app,
+      providerId,
+      options,
+      secret,
+    });
+  },
+
+  getBalance(
+    profile: RemoteHostProfile,
+    options: RemoteBalanceOptions,
+    secret?: RemoteConnectionSecret,
+  ): Promise<UsageResult> {
+    return invoke<UsageResult>("remote_get_balance", {
+      profile,
+      options,
+      secret,
+    });
+  },
+
+  getCodingPlanQuota(
+    profile: RemoteHostProfile,
+    options: RemoteCodingPlanQuotaOptions,
+    secret?: RemoteConnectionSecret,
+  ): Promise<SubscriptionQuota> {
+    return invoke<SubscriptionQuota>("remote_get_coding_plan_quota", {
+      profile,
+      options,
+      secret,
+    });
+  },
+
   fetchCodexOauthModels(
     profile: RemoteHostProfile,
     accountId?: string | null,
@@ -959,6 +1038,54 @@ export const remoteApi = {
     return invoke<FetchedModel[]>("remote_fetch_codex_oauth_models", {
       profile,
       accountId: accountId || null,
+      secret,
+    });
+  },
+
+  fetchCopilotModels(
+    profile: RemoteHostProfile,
+    accountId?: string | null,
+    secret?: RemoteConnectionSecret,
+  ): Promise<CopilotModel[]> {
+    return invoke<CopilotModel[]>("remote_fetch_copilot_models", {
+      profile,
+      accountId: accountId || null,
+      secret,
+    });
+  },
+
+  fetchCopilotUsage(
+    profile: RemoteHostProfile,
+    accountId?: string | null,
+    secret?: RemoteConnectionSecret,
+  ): Promise<CopilotUsageResponse> {
+    return invoke<CopilotUsageResponse>("remote_fetch_copilot_usage", {
+      profile,
+      accountId: accountId || null,
+      secret,
+    });
+  },
+
+  getCodexOauthQuota(
+    profile: RemoteHostProfile,
+    accountId?: string | null,
+    secret?: RemoteConnectionSecret,
+  ): Promise<SubscriptionQuota> {
+    return invoke<SubscriptionQuota>("remote_get_codex_oauth_quota", {
+      profile,
+      accountId: accountId || null,
+      secret,
+    });
+  },
+
+  getSubscriptionQuota(
+    profile: RemoteHostProfile,
+    tool: string,
+    secret?: RemoteConnectionSecret,
+  ): Promise<SubscriptionQuota> {
+    return invoke<SubscriptionQuota>("remote_get_subscription_quota", {
+      profile,
+      tool,
       secret,
     });
   },

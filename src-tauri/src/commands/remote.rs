@@ -1875,6 +1875,115 @@ pub async fn remote_fetch_models_for_provider(
     .await
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteTestUsageScriptOptions {
+    pub script_code: String,
+    pub timeout: Option<u64>,
+    pub api_key: Option<String>,
+    pub base_url: Option<String>,
+    pub access_token: Option<String>,
+    pub user_id: Option<String>,
+    pub template_type: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteBalanceOptions {
+    pub base_url: String,
+    pub api_key: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteCodingPlanQuotaOptions {
+    pub base_url: String,
+    pub api_key: String,
+    pub access_key_id: Option<String>,
+    pub secret_access_key: Option<String>,
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn remote_query_provider_usage(
+    profile: RemoteHostProfile,
+    app: String,
+    provider_id: String,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<crate::provider::UsageResult, String> {
+    run_remote_helper_json(
+        profile,
+        vec![
+            "providers".to_string(),
+            "query-usage".to_string(),
+            app,
+            provider_id,
+        ],
+        secret,
+        "Remote provider query usage",
+    )
+    .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn remote_test_usage_script(
+    profile: RemoteHostProfile,
+    app: String,
+    provider_id: String,
+    options: RemoteTestUsageScriptOptions,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<crate::provider::UsageResult, String> {
+    let options_json = serde_json::to_string(&options).map_err(|e| e.to_string())?;
+    run_remote_helper_json(
+        profile,
+        vec![
+            "providers".to_string(),
+            "test-usage-script".to_string(),
+            app,
+            provider_id,
+            options_json,
+        ],
+        secret,
+        "Remote provider test usage script",
+    )
+    .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn remote_get_balance(
+    profile: RemoteHostProfile,
+    options: RemoteBalanceOptions,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<crate::provider::UsageResult, String> {
+    let options_json = serde_json::to_string(&options).map_err(|e| e.to_string())?;
+    run_remote_helper_json(
+        profile,
+        vec!["usage".to_string(), "balance".to_string(), options_json],
+        secret,
+        "Remote usage balance",
+    )
+    .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn remote_get_coding_plan_quota(
+    profile: RemoteHostProfile,
+    options: RemoteCodingPlanQuotaOptions,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<crate::services::subscription::SubscriptionQuota, String> {
+    let options_json = serde_json::to_string(&options).map_err(|e| e.to_string())?;
+    run_remote_helper_json(
+        profile,
+        vec![
+            "usage".to_string(),
+            "coding-plan-quota".to_string(),
+            options_json,
+        ],
+        secret,
+        "Remote coding plan quota",
+    )
+    .await
+}
+
 #[tauri::command(rename_all = "camelCase")]
 pub async fn remote_fetch_codex_oauth_models(
     profile: RemoteHostProfile,
@@ -1891,6 +2000,81 @@ pub async fn remote_fetch_codex_oauth_models(
         ],
         secret,
         "Remote Codex OAuth fetch models",
+    )
+    .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn remote_get_codex_oauth_quota(
+    profile: RemoteHostProfile,
+    account_id: Option<String>,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<crate::services::subscription::SubscriptionQuota, String> {
+    run_remote_helper_json(
+        profile,
+        vec![
+            "auth".to_string(),
+            "quota".to_string(),
+            "codex_oauth".to_string(),
+            account_id.unwrap_or_else(|| "-".to_string()),
+        ],
+        secret,
+        "Remote Codex OAuth quota",
+    )
+    .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn remote_fetch_copilot_models(
+    profile: RemoteHostProfile,
+    account_id: Option<String>,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Vec<crate::proxy::providers::copilot_auth::CopilotModel>, String> {
+    run_remote_helper_json(
+        profile,
+        vec![
+            "auth".to_string(),
+            "models".to_string(),
+            "github_copilot".to_string(),
+            account_id.unwrap_or_else(|| "-".to_string()),
+        ],
+        secret,
+        "Remote Copilot fetch models",
+    )
+    .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn remote_fetch_copilot_usage(
+    profile: RemoteHostProfile,
+    account_id: Option<String>,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<crate::proxy::providers::copilot_auth::CopilotUsageResponse, String> {
+    run_remote_helper_json(
+        profile,
+        vec![
+            "auth".to_string(),
+            "usage".to_string(),
+            "github_copilot".to_string(),
+            account_id.unwrap_or_else(|| "-".to_string()),
+        ],
+        secret,
+        "Remote Copilot usage",
+    )
+    .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn remote_get_subscription_quota(
+    profile: RemoteHostProfile,
+    tool: String,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<crate::services::subscription::SubscriptionQuota, String> {
+    run_remote_helper_json(
+        profile,
+        vec!["subscription".to_string(), "quota".to_string(), tool],
+        secret,
+        "Remote subscription quota",
     )
     .await
 }

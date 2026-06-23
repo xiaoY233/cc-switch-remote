@@ -6,6 +6,8 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import { LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
+import { remoteApi, type ManagementTarget } from "./remote";
 
 /**
  * GitHub 设备码响应
@@ -167,6 +169,24 @@ export async function copilotGetUsage(): Promise<CopilotUsageResponse> {
   return invoke<CopilotUsageResponse>("copilot_get_usage");
 }
 
+/**
+ * 获取指定管理目标上的 Copilot 使用量信息。
+ */
+export async function copilotGetUsageForTarget(
+  accountId?: string | null,
+  target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+): Promise<CopilotUsageResponse> {
+  if (target.type === "remote") {
+    return remoteApi.fetchCopilotUsage(
+      target.profile,
+      accountId || null,
+      target.secret,
+    );
+  }
+
+  return accountId ? copilotGetUsageForAccount(accountId) : copilotGetUsage();
+}
+
 // ==================== 多账号管理 API ====================
 
 /**
@@ -241,6 +261,27 @@ export async function copilotGetModelsForAccount(
   return invoke<CopilotModel[]>("copilot_get_models_for_account", {
     accountId,
   });
+}
+
+/**
+ * 获取指定管理目标上的 Copilot 可用模型列表。
+ *
+ * 本地目标保持原有 Tauri command；远程目标通过 helper 读取远端账号与 token，
+ * 避免远程 provider 表单误用本地 Copilot 登录状态。
+ */
+export async function copilotGetModelsForTarget(
+  accountId?: string | null,
+  target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+): Promise<CopilotModel[]> {
+  if (target.type === "remote") {
+    return remoteApi.fetchCopilotModels(
+      target.profile,
+      accountId || null,
+      target.secret,
+    );
+  }
+
+  return accountId ? copilotGetModelsForAccount(accountId) : copilotGetModels();
 }
 
 /**

@@ -50,10 +50,14 @@ export function useIsLiveTakeoverActive() {
 /**
  * 获取各应用接管状态
  */
-export function useProxyTakeoverStatus() {
+export function useProxyTakeoverStatus(
+  target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+) {
+  const targetKey = getManagementTargetKey(target);
   return useQuery({
-    queryKey: ["proxyTakeoverStatus"],
+    queryKey: ["proxyTakeoverStatus", targetKey],
     queryFn: () => proxyApi.getProxyTakeoverStatus(),
+    enabled: target.type === "local",
     refetchInterval: 2000,
   });
 }

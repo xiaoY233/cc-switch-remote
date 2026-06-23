@@ -10,6 +10,7 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionManagerPage } from "@/components/sessions/SessionManagerPage";
 import { sessionsApi } from "@/lib/api/sessions";
+import type { ManagementTarget } from "@/lib/api";
 import type { SessionMessage, SessionMeta } from "@/types";
 import { setSessionFixtures } from "../msw/state";
 
@@ -56,7 +57,7 @@ vi.mock("@/components/ConfirmDialog", () => ({
     ) : null,
 }));
 
-const renderPage = () => {
+const renderPage = (target?: ManagementTarget) => {
   const client = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -68,7 +69,7 @@ const renderPage = () => {
     client,
     ...render(
       <QueryClientProvider client={client}>
-        <SessionManagerPage appId="codex" />
+        <SessionManagerPage appId="codex" target={target} />
       </QueryClientProvider>,
     ),
   };
@@ -180,6 +181,57 @@ describe("SessionManagerPage", () => {
     expect(
       screen.getByRole("button", { name: "session-1.jsonl" }),
     ).toBeInTheDocument();
+  });
+
+  it("does not expose local terminal resume controls for remote sessions", async () => {
+    const sessions: SessionMeta[] = [
+      {
+        providerId: "codex",
+        sessionId: "remote-codex-session",
+        title: "Remote Codex Session",
+        summary: "Remote summary",
+        projectDir: "/remote/project",
+        createdAt: 1,
+        lastActiveAt: 2,
+        sourcePath: "/remote/codex/session.jsonl",
+        resumeCommand: "codex resume remote-codex-session",
+      },
+    ];
+    const listSpy = vi.spyOn(sessionsApi, "list").mockResolvedValue(sessions);
+    const messagesSpy = vi
+      .spyOn(sessionsApi, "getMessages")
+      .mockResolvedValue([{ role: "user", content: "remote", ts: 2 }]);
+    const launchSpy = vi.spyOn(sessionsApi, "launchTerminal");
+
+    renderPage({
+      type: "remote",
+      profile: {
+        id: "remote-1",
+        name: "Remote",
+        host: "192.0.2.10",
+        port: 22,
+        username: "root",
+        authMethod: { type: "password" },
+        helperPath: "~/.local/bin/cc-switch-remote-helper",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      secret: { password: "secret" },
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "Remote Codex Session" }),
+      ).toBeInTheDocument(),
+    );
+
+    expect(screen.queryByRole("button", { name: /恢复会话/i })).toBeNull();
+    expect(screen.queryByText("codex resume remote-codex-session")).toBeNull();
+    expect(launchSpy).not.toHaveBeenCalled();
+
+    listSpy.mockRestore();
+    messagesSpy.mockRestore();
+    launchSpy.mockRestore();
   });
 
   it("removes a deleted session from filtered search results", async () => {

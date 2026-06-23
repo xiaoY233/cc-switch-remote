@@ -113,6 +113,230 @@ describe("remote API invoke mappings", () => {
     });
   });
 
+  it("fetches Copilot models through the remote helper command", async () => {
+    const remoteProfile = profile();
+    const secret: RemoteConnectionSecret = { password: "secret" };
+    invokeMock.mockResolvedValueOnce([
+      {
+        id: "gpt-5-copilot",
+        name: "GPT-5 Copilot",
+        vendor: "openai",
+        model_picker_enabled: true,
+      },
+    ]);
+
+    const result = await remoteApi.fetchCopilotModels(
+      remoteProfile,
+      "github-1",
+      secret,
+    );
+
+    expect(result).toEqual([
+      {
+        id: "gpt-5-copilot",
+        name: "GPT-5 Copilot",
+        vendor: "openai",
+        model_picker_enabled: true,
+      },
+    ]);
+    expect(invokeMock).toHaveBeenCalledWith("remote_fetch_copilot_models", {
+      profile: remoteProfile,
+      accountId: "github-1",
+      secret,
+    });
+  });
+
+  it("fetches Copilot usage through the remote helper command", async () => {
+    const remoteProfile = profile();
+    const secret: RemoteConnectionSecret = { password: "secret" };
+    invokeMock.mockResolvedValueOnce({
+      copilot_plan: "individual",
+      quota_reset_date: "2026-01-01T00:00:00Z",
+      quota_snapshots: {
+        chat: { entitlement: 0, remaining: 0, percent_remaining: 0, unlimited: true },
+        completions: { entitlement: 0, remaining: 0, percent_remaining: 0, unlimited: true },
+        premium_interactions: {
+          entitlement: 300,
+          remaining: 200,
+          percent_remaining: 66,
+          unlimited: false,
+        },
+      },
+    });
+
+    const result = await remoteApi.fetchCopilotUsage(
+      remoteProfile,
+      "github-1",
+      secret,
+    );
+
+    expect(result.copilot_plan).toBe("individual");
+    expect(invokeMock).toHaveBeenCalledWith("remote_fetch_copilot_usage", {
+      profile: remoteProfile,
+      accountId: "github-1",
+      secret,
+    });
+  });
+
+  it("gets Codex OAuth quota through the remote helper command", async () => {
+    const remoteProfile = profile();
+    const secret: RemoteConnectionSecret = { password: "secret" };
+    invokeMock.mockResolvedValueOnce({
+      success: false,
+      tool: "codex_oauth",
+      credentialStatus: "not_found",
+    });
+
+    const result = await remoteApi.getCodexOauthQuota(
+      remoteProfile,
+      "chatgpt-1",
+      secret,
+    );
+
+    expect(result).toEqual({
+      success: false,
+      tool: "codex_oauth",
+      credentialStatus: "not_found",
+    });
+    expect(invokeMock).toHaveBeenCalledWith("remote_get_codex_oauth_quota", {
+      profile: remoteProfile,
+      accountId: "chatgpt-1",
+      secret,
+    });
+  });
+
+  it("gets official subscription quota through the remote helper command", async () => {
+    const remoteProfile = profile();
+    const secret: RemoteConnectionSecret = { password: "secret" };
+    invokeMock.mockResolvedValueOnce({
+      success: false,
+      tool: "claude",
+      credentialStatus: "not_found",
+    });
+
+    const result = await remoteApi.getSubscriptionQuota(
+      remoteProfile,
+      "claude",
+      secret,
+    );
+
+    expect(result).toEqual({
+      success: false,
+      tool: "claude",
+      credentialStatus: "not_found",
+    });
+    expect(invokeMock).toHaveBeenCalledWith("remote_get_subscription_quota", {
+      profile: remoteProfile,
+      tool: "claude",
+      secret,
+    });
+  });
+
+  it("queries provider usage through the remote helper command", async () => {
+    const remoteProfile = profile();
+    const secret: RemoteConnectionSecret = { password: "secret" };
+    invokeMock.mockResolvedValueOnce({ success: true, data: [], error: null });
+
+    const result = await remoteApi.queryProviderUsage(
+      remoteProfile,
+      "claude",
+      "provider-1",
+      secret,
+    );
+
+    expect(result).toEqual({ success: true, data: [], error: null });
+    expect(invokeMock).toHaveBeenCalledWith("remote_query_provider_usage", {
+      profile: remoteProfile,
+      app: "claude",
+      providerId: "provider-1",
+      secret,
+    });
+  });
+
+  it("tests provider usage scripts through the remote helper command", async () => {
+    const remoteProfile = profile();
+    const secret: RemoteConnectionSecret = { password: "secret" };
+    invokeMock.mockResolvedValueOnce({ success: true, data: [], error: null });
+
+    const options = {
+      scriptCode: "({ request: {}, extractor: () => ({ remaining: 1 }) })",
+      timeout: 10,
+      apiKey: "api-key",
+      baseUrl: "https://example.test",
+      accessToken: "access-token",
+      userId: "user-1",
+      templateType: "custom",
+    };
+    const result = await remoteApi.testUsageScript(
+      remoteProfile,
+      "claude",
+      "provider-1",
+      options,
+      secret,
+    );
+
+    expect(result).toEqual({ success: true, data: [], error: null });
+    expect(invokeMock).toHaveBeenCalledWith("remote_test_usage_script", {
+      profile: remoteProfile,
+      app: "claude",
+      providerId: "provider-1",
+      options,
+      secret,
+    });
+  });
+
+  it("gets balance through the remote helper command", async () => {
+    const remoteProfile = profile();
+    const secret: RemoteConnectionSecret = { password: "secret" };
+    invokeMock.mockResolvedValueOnce({ success: true, data: [], error: null });
+
+    const options = {
+      baseUrl: "https://example.test",
+      apiKey: "api-key",
+    };
+    const result = await remoteApi.getBalance(remoteProfile, options, secret);
+
+    expect(result).toEqual({ success: true, data: [], error: null });
+    expect(invokeMock).toHaveBeenCalledWith("remote_get_balance", {
+      profile: remoteProfile,
+      options,
+      secret,
+    });
+  });
+
+  it("gets coding plan quota through the remote helper command", async () => {
+    const remoteProfile = profile();
+    const secret: RemoteConnectionSecret = { password: "secret" };
+    invokeMock.mockResolvedValueOnce({
+      success: false,
+      tool: "coding_plan",
+      credentialStatus: "not_found",
+    });
+
+    const options = {
+      baseUrl: "https://example.test",
+      apiKey: "api-key",
+      accessKeyId: "ak",
+      secretAccessKey: "sk",
+    };
+    const result = await remoteApi.getCodingPlanQuota(
+      remoteProfile,
+      options,
+      secret,
+    );
+
+    expect(result).toEqual({
+      success: false,
+      tool: "coding_plan",
+      credentialStatus: "not_found",
+    });
+    expect(invokeMock).toHaveBeenCalledWith("remote_get_coding_plan_quota", {
+      profile: remoteProfile,
+      options,
+      secret,
+    });
+  });
+
   it("scans OpenClaw health through the remote helper command", async () => {
     const remoteProfile = profile();
     const secret: RemoteConnectionSecret = { password: "secret" };

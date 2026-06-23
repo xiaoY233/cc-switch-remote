@@ -2,6 +2,7 @@ import React from "react";
 import { RefreshCw, AlertCircle, Clock } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ProviderMeta } from "@/types";
+import type { ManagementTarget } from "@/lib/api";
 import { useCopilotQuota } from "@/lib/query/copilot";
 import { resolveManagedAccountId } from "@/lib/authBinding";
 import { PROVIDER_TYPES } from "@/config/constants";
@@ -15,6 +16,7 @@ interface CopilotQuotaFooterProps {
   inline?: boolean;
   /** 是否为当前激活的供应商 */
   isCurrent?: boolean;
+  target?: ManagementTarget;
 }
 
 /** 格式化相对时间 */
@@ -36,6 +38,7 @@ const CopilotQuotaFooter: React.FC<CopilotQuotaFooterProps> = ({
   meta,
   inline = false,
   isCurrent = false,
+  target,
 }) => {
   const { t } = useTranslation();
   const accountId = resolveManagedAccountId(
@@ -47,7 +50,7 @@ const CopilotQuotaFooter: React.FC<CopilotQuotaFooterProps> = ({
     data: quota,
     isFetching: loading,
     refetch,
-  } = useCopilotQuota(accountId, { enabled: true, autoQuery: isCurrent });
+  } = useCopilotQuota(accountId, { enabled: true, autoQuery: isCurrent, target });
 
   const [now, setNow] = React.useState(Date.now());
   React.useEffect(() => {

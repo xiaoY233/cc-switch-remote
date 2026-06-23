@@ -248,6 +248,7 @@ export function ProviderCard({
   const { data: usage } = useUsageQuery(provider.id, appId, {
     enabled: usageEnabled && !isOfficial && !isOfficialSubscriptionUsage,
     autoQueryInterval,
+    target,
   });
 
   const isTokenPlan =
@@ -476,12 +477,14 @@ export function ProviderCard({
                   meta={provider.meta}
                   inline={true}
                   isCurrent={isCurrent}
+                  target={target}
                 />
               ) : isCodexOauth ? (
                 <CodexOauthQuotaFooter
                   meta={provider.meta}
                   inline={true}
                   isCurrent={isCurrent}
+                  target={target}
                 />
               ) : isOfficial ? (
                 officialSubscriptionEnabled ? (
@@ -489,6 +492,7 @@ export function ProviderCard({
                     appId={appId}
                     inline={true}
                     isCurrent={isCurrent}
+                    target={target}
                     autoQueryInterval={
                       provider.meta?.usage_script?.autoQueryInterval ?? 0
                     }
@@ -512,6 +516,7 @@ export function ProviderCard({
                   isCurrent={isCurrent}
                   isInConfig={isInConfig}
                   inline={true}
+                  target={target}
                 />
               )}
               {hasMultiplePlans && (
@@ -598,6 +603,7 @@ export function ProviderCard({
             isCurrent={isCurrent}
             isInConfig={isInConfig}
             inline={false}
+            target={target}
           />
         </div>
       )}

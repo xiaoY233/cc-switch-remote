@@ -12,6 +12,8 @@ const getInstalledSkillsMock = vi.fn();
 const migrateSkillStorageMock = vi.fn();
 const startProxyServerMock = vi.fn();
 const stopWithRestoreMock = vi.fn();
+const hasCodexUnifyHistoryBackupMock = vi.fn();
+const restoreCodexUnifiedHistoryMock = vi.fn();
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
@@ -27,6 +29,13 @@ vi.mock("@/lib/api", async () => {
   const actual = await vi.importActual<any>("@/lib/api");
   return {
     ...actual,
+    settingsApi: {
+      ...actual.settingsApi,
+      hasCodexUnifyHistoryBackup: (...args: unknown[]) =>
+        hasCodexUnifyHistoryBackupMock(...args),
+      restoreCodexUnifiedHistory: (...args: unknown[]) =>
+        restoreCodexUnifiedHistoryMock(...args),
+    },
     remoteApi: {
       ...actual.remoteApi,
       checkHealth: (...args: unknown[]) => checkHealthMock(...args),
@@ -139,6 +148,8 @@ describe("RemoteSettingsPage", () => {
     migrateSkillStorageMock.mockReset();
     startProxyServerMock.mockReset();
     stopWithRestoreMock.mockReset();
+    hasCodexUnifyHistoryBackupMock.mockReset();
+    restoreCodexUnifiedHistoryMock.mockReset();
 
     checkHealthMock.mockResolvedValue({
       reachable: true,
@@ -327,6 +338,55 @@ describe("RemoteSettingsPage", () => {
         { password: "secret" },
       );
     });
+  });
+
+  it("does not run local Codex history backup actions from remote general settings", async () => {
+    const user = userEvent.setup();
+    getSettingsMock.mockResolvedValueOnce({
+      ...settings,
+      unifyCodexSessionHistory: true,
+      unifyCodexMigrateExisting: true,
+    });
+
+    render(
+      <RemoteSettingsPage
+        open
+        onOpenChange={vi.fn()}
+        defaultTab="general"
+        target={{ type: "remote", profile, secret: { password: "secret" } }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("switch", {
+          name: /unifyCodexSessionHistory|统一/,
+        }),
+      ).toBeChecked();
+    });
+
+    await user.click(
+      screen.getByRole("switch", {
+        name: /unifyCodexSessionHistory|统一/,
+      }),
+    );
+
+    expect(hasCodexUnifyHistoryBackupMock).not.toHaveBeenCalled();
+    expect(screen.queryByText(/恢复/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /confirm|确认/ }));
+
+    await waitFor(() => {
+      expect(saveSettingsMock).toHaveBeenCalledWith(
+        profile,
+        expect.objectContaining({
+          unifyCodexSessionHistory: false,
+          unifyCodexMigrateExisting: false,
+        }),
+        { password: "secret" },
+      );
+    });
+    expect(restoreCodexUnifiedHistoryMock).not.toHaveBeenCalled();
   });
 
   it("gates remote import/export when the helper lacks the capability", async () => {

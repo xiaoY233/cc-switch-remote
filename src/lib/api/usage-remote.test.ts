@@ -8,6 +8,8 @@ const remoteGetUsageSummaryByAppMock = vi.fn();
 const remoteGetUsageTrendsMock = vi.fn();
 const remoteGetProviderStatsMock = vi.fn();
 const remoteGetModelStatsMock = vi.fn();
+const remoteQueryProviderUsageMock = vi.fn();
+const remoteTestUsageScriptMock = vi.fn();
 const remoteGetRequestLogsMock = vi.fn();
 const remoteGetRequestDetailMock = vi.fn();
 const remoteGetDataSourceBreakdownMock = vi.fn();
@@ -29,6 +31,9 @@ vi.mock("./remote", () => ({
     getProviderStats: (...args: unknown[]) =>
       remoteGetProviderStatsMock(...args),
     getModelStats: (...args: unknown[]) => remoteGetModelStatsMock(...args),
+    queryProviderUsage: (...args: unknown[]) =>
+      remoteQueryProviderUsageMock(...args),
+    testUsageScript: (...args: unknown[]) => remoteTestUsageScriptMock(...args),
     getRequestLogs: (...args: unknown[]) => remoteGetRequestLogsMock(...args),
     getRequestDetail: (...args: unknown[]) =>
       remoteGetRequestDetailMock(...args),
@@ -70,6 +75,8 @@ describe("remote usage API", () => {
     remoteGetUsageTrendsMock.mockReset();
     remoteGetProviderStatsMock.mockReset();
     remoteGetModelStatsMock.mockReset();
+    remoteQueryProviderUsageMock.mockReset();
+    remoteTestUsageScriptMock.mockReset();
     remoteGetRequestLogsMock.mockReset();
     remoteGetRequestDetailMock.mockReset();
     remoteGetDataSourceBreakdownMock.mockReset();
@@ -205,6 +212,57 @@ describe("remote usage API", () => {
     );
     expect(remoteGetDataSourceBreakdownMock).toHaveBeenCalledWith(
       profile,
+      remoteTarget.secret,
+    );
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it("routes provider usage script queries to the selected remote target", async () => {
+    const { usageApi } = await import("./usage");
+    remoteQueryProviderUsageMock.mockResolvedValue({
+      success: true,
+      data: [],
+      error: null,
+    });
+    remoteTestUsageScriptMock.mockResolvedValue({
+      success: true,
+      data: [],
+      error: null,
+    });
+
+    await usageApi.query("provider-1", "claude", remoteTarget);
+    await usageApi.testScript(
+      "provider-1",
+      "claude",
+      "({ request: {}, extractor: () => ({ remaining: 1 }) })",
+      10,
+      "api-key",
+      "https://example.test",
+      "access-token",
+      "user-1",
+      "custom",
+      remoteTarget,
+    );
+
+    expect(remoteQueryProviderUsageMock).toHaveBeenCalledWith(
+      profile,
+      "claude",
+      "provider-1",
+      remoteTarget.secret,
+    );
+    expect(remoteTestUsageScriptMock).toHaveBeenCalledWith(
+      profile,
+      "claude",
+      "provider-1",
+      {
+        scriptCode: "({ request: {}, extractor: () => ({ remaining: 1 }) })",
+        timeout: 10,
+        apiKey: "api-key",
+        baseUrl: "https://example.test",
+        accessToken: "access-token",
+        userId: "user-1",
+        templateType: "custom",
+      },
       remoteTarget.secret,
     );
     expect(invokeMock).not.toHaveBeenCalled();

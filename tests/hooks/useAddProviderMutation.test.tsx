@@ -134,4 +134,49 @@ describe("useAddProviderMutation", () => {
     expect(apiMocks.add).not.toHaveBeenCalled();
     expect(persistedProvider).toEqual(seedProvider);
   });
+
+  it("does not run the local Claude Desktop official seed flow for remote targets", async () => {
+    const remoteTarget = {
+      type: "remote" as const,
+      profile: {
+        id: "remote-host",
+        name: "Remote Host",
+        host: "192.168.1.20",
+        port: 22,
+        username: "root",
+        authMethod: { type: "password" as const },
+        helperPath: "~/.local/bin/cc-switch-remote-helper",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      secret: { password: "secret" },
+    };
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(
+      () => useAddProviderMutation("claude-desktop", remoteTarget),
+      { wrapper },
+    );
+
+    await act(async () =>
+      result.current.mutateAsync({
+        name: "Remote Claude Desktop Official",
+        settingsConfig: { env: {} },
+        category: "official",
+        ensureClaudeDesktopOfficialSeed: true,
+      }),
+    );
+
+    expect(apiMocks.ensureClaudeDesktopOfficialProvider).not.toHaveBeenCalled();
+    expect(apiMocks.getAll).not.toHaveBeenCalled();
+    expect(apiMocks.add).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "generated-uuid",
+        name: "Remote Claude Desktop Official",
+        category: "official",
+      }),
+      "claude-desktop",
+      undefined,
+      remoteTarget,
+    );
+  });
 });

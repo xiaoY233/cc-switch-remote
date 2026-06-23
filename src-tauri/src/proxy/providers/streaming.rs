@@ -2,6 +2,8 @@
 //!
 //! 实现 OpenAI SSE → Anthropic SSE 格式转换
 
+use super::transform_gemini::{rectify_tool_call_args, AnthropicToolSchemaHints};
+use crate::proxy::json_canonical::canonical_json_string;
 use crate::proxy::sse::{strip_sse_field, take_sse_block};
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
@@ -147,7 +149,15 @@ fn build_message_delta_event(stop_reason: Option<String>, usage_json: Option<Val
 pub fn create_anthropic_sse_stream<E: std::error::Error + Send + 'static>(
     stream: impl Stream<Item = Result<Bytes, E>> + Send + 'static,
 ) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send {
+    create_anthropic_sse_stream_with_tool_schema_hints(stream, None)
+}
+
+pub fn create_anthropic_sse_stream_with_tool_schema_hints<E: std::error::Error + Send + 'static>(
+    stream: impl Stream<Item = Result<Bytes, E>> + Send + 'static,
+    tool_schema_hints: Option<AnthropicToolSchemaHints>,
+) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send {
     async_stream::stream! {
+        let buffer_tool_args_for_rectifier = tool_schema_hints.is_some();
         let mut buffer = String::new();
         let mut utf8_remainder: Vec<u8> = Vec::new();
         let mut message_id = None;
@@ -185,6 +195,59 @@ pub fn create_anthropic_sse_stream<E: std::error::Error + Send + 'static>(
                             if let Some(data) = strip_sse_field(l, "data") {
                                 if data.trim() == "[DONE]" {
                                     log::debug!("[Claude/OpenRouter] <<< OpenAI SSE: [DONE]");
+
+                                    if let Some(hints) = tool_schema_hints.as_ref() {
+                                        let mut finalized_args: Vec<(u32, String)> =
+                                            tool_blocks_by_index
+                                                .values_mut()
+                                                .filter(|state| {
+                                                    state.started
+                                                        && !state.aborted
+                                                        && open_tool_block_indices
+                                                            .contains(&state.anthropic_index)
+                                                        && !state.pending_args.is_empty()
+                                                })
+                                                .map(|state| {
+                                                    let args = std::mem::take(&mut state.pending_args);
+                                                    let args = rectify_tool_arguments_json(
+                                                        &state.name,
+                                                        &args,
+                                                        hints,
+                                                    );
+                                                    (state.anthropic_index, args)
+                                                })
+                                                .collect();
+                                        finalized_args.sort_unstable_by_key(|(index, _)| *index);
+                                        for (index, args) in finalized_args {
+                                            let event = json!({
+                                                "type": "content_block_delta",
+                                                "index": index,
+                                                "delta": {
+                                                    "type": "input_json_delta",
+                                                    "partial_json": args
+                                                }
+                                            });
+                                            let sse_data = format!("event: content_block_delta\ndata: {}\n\n",
+                                                serde_json::to_string(&event).unwrap_or_default());
+                                            yield Ok(Bytes::from(sse_data));
+                                        }
+                                    }
+
+                                    if !open_tool_block_indices.is_empty() {
+                                        let mut tool_indices: Vec<u32> =
+                                            open_tool_block_indices.iter().copied().collect();
+                                        tool_indices.sort_unstable();
+                                        for index in tool_indices {
+                                            let event = json!({
+                                                "type": "content_block_stop",
+                                                "index": index
+                                            });
+                                            let sse_data = format!("event: content_block_stop\ndata: {}\n\n",
+                                                serde_json::to_string(&event).unwrap_or_default());
+                                            yield Ok(Bytes::from(sse_data));
+                                        }
+                                        open_tool_block_indices.clear();
+                                    }
 
                                     // 流正常结束，发出缓存的 message_delta（含完整 usage）。
                                     if let Some((stop_reason, usage_json)) = pending_message_delta.take() {
@@ -417,6 +480,7 @@ pub fn create_anthropic_sse_stream<E: std::error::Error + Send + 'static>(
                                                         }
                                                         let pending_after_start = if should_start
                                                             && !state.pending_args.is_empty()
+                                                            && !buffer_tool_args_for_rectifier
                                                         {
                                                             Some(std::mem::take(&mut state.pending_args))
                                                         } else {
@@ -441,6 +505,9 @@ pub fn create_anthropic_sse_stream<E: std::error::Error + Send + 'static>(
                                                                     state.name
                                                                 );
                                                                 state.aborted = true;
+                                                                None
+                                                            } else if buffer_tool_args_for_rectifier {
+                                                                state.pending_args.push_str(&args);
                                                                 None
                                                             } else if state.started {
                                                                 Some(args)
@@ -561,7 +628,11 @@ pub fn create_anthropic_sse_stream<E: std::error::Error + Send + 'static>(
                                                     state.name.clone()
                                                 };
                                                 state.started = true;
-                                                let pending = std::mem::take(&mut state.pending_args);
+                                                let pending = if buffer_tool_args_for_rectifier {
+                                                    String::new()
+                                                } else {
+                                                    std::mem::take(&mut state.pending_args)
+                                                };
                                                 late_tool_starts.push((
                                                     state.anthropic_index,
                                                     fallback_id,
@@ -596,6 +667,43 @@ pub fn create_anthropic_sse_stream<E: std::error::Error + Send + 'static>(
                                                     let delta_sse = format!("event: content_block_delta\ndata: {}\n\n",
                                                         serde_json::to_string(&delta_event).unwrap_or_default());
                                                     yield Ok(Bytes::from(delta_sse));
+                                                }
+                                            }
+
+                                            if let Some(hints) = tool_schema_hints.as_ref() {
+                                                let mut finalized_args: Vec<(u32, String)> =
+                                                    tool_blocks_by_index
+                                                        .values_mut()
+                                                        .filter(|state| {
+                                                            state.started
+                                                                && !state.aborted
+                                                                && open_tool_block_indices
+                                                                    .contains(&state.anthropic_index)
+                                                                && !state.pending_args.is_empty()
+                                                        })
+                                                        .map(|state| {
+                                                            let args = std::mem::take(&mut state.pending_args);
+                                                            let args = rectify_tool_arguments_json(
+                                                                &state.name,
+                                                                &args,
+                                                                hints,
+                                                            );
+                                                            (state.anthropic_index, args)
+                                                        })
+                                                        .collect();
+                                                finalized_args.sort_unstable_by_key(|(index, _)| *index);
+                                                for (index, args) in finalized_args {
+                                                    let event = json!({
+                                                        "type": "content_block_delta",
+                                                        "index": index,
+                                                        "delta": {
+                                                            "type": "input_json_delta",
+                                                            "partial_json": args
+                                                        }
+                                                    });
+                                                    let sse_data = format!("event: content_block_delta\ndata: {}\n\n",
+                                                        serde_json::to_string(&event).unwrap_or_default());
+                                                    yield Ok(Bytes::from(sse_data));
                                                 }
                                             }
 
@@ -645,6 +753,53 @@ pub fn create_anthropic_sse_stream<E: std::error::Error + Send + 'static>(
         // 流自然结束但未收到 [DONE] 时，确保发送缓存的 message_delta 和 message_stop。
         // 若上游已显式报错，则只保留 error 事件，避免把失败伪装成成功完成。
         if !stream_ended_with_error {
+            if let Some(hints) = tool_schema_hints.as_ref() {
+                let mut finalized_args: Vec<(u32, String)> =
+                    tool_blocks_by_index
+                        .values_mut()
+                        .filter(|state| {
+                            state.started
+                                && !state.aborted
+                                && open_tool_block_indices.contains(&state.anthropic_index)
+                                && !state.pending_args.is_empty()
+                        })
+                        .map(|state| {
+                            let args = std::mem::take(&mut state.pending_args);
+                            let args = rectify_tool_arguments_json(&state.name, &args, hints);
+                            (state.anthropic_index, args)
+                        })
+                        .collect();
+                finalized_args.sort_unstable_by_key(|(index, _)| *index);
+                for (index, args) in finalized_args {
+                    let event = json!({
+                        "type": "content_block_delta",
+                        "index": index,
+                        "delta": {
+                            "type": "input_json_delta",
+                            "partial_json": args
+                        }
+                    });
+                    let sse_data = format!("event: content_block_delta\ndata: {}\n\n",
+                        serde_json::to_string(&event).unwrap_or_default());
+                    yield Ok(Bytes::from(sse_data));
+                }
+            }
+
+            if !open_tool_block_indices.is_empty() {
+                let mut tool_indices: Vec<u32> = open_tool_block_indices.iter().copied().collect();
+                tool_indices.sort_unstable();
+                for index in tool_indices {
+                    let event = json!({
+                        "type": "content_block_stop",
+                        "index": index
+                    });
+                    let sse_data = format!("event: content_block_stop\ndata: {}\n\n",
+                        serde_json::to_string(&event).unwrap_or_default());
+                    yield Ok(Bytes::from(sse_data));
+                }
+                open_tool_block_indices.clear();
+            }
+
             let emitted_pending_message_delta = if let Some((stop_reason, usage_json)) =
                 pending_message_delta.take()
             {
@@ -667,6 +822,26 @@ pub fn create_anthropic_sse_stream<E: std::error::Error + Send + 'static>(
             }
         }
     }
+}
+
+fn rectify_tool_arguments_json(
+    tool_name: &str,
+    raw_arguments: &str,
+    tool_schema_hints: &AnthropicToolSchemaHints,
+) -> String {
+    if raw_arguments.trim().is_empty() {
+        return raw_arguments.to_string();
+    }
+
+    let Ok(mut value) = serde_json::from_str::<Value>(raw_arguments) else {
+        return raw_arguments.to_string();
+    };
+
+    if rectify_tool_call_args(tool_name, &mut value, Some(tool_schema_hints)) {
+        return canonical_json_string(&value);
+    }
+
+    raw_arguments.to_string()
 }
 
 /// Extract cache_read tokens from Usage, checking both direct field and nested details
@@ -713,6 +888,29 @@ mod tests {
             input.as_bytes().to_vec(),
         ))]);
         let converted = create_anthropic_sse_stream(upstream);
+        let chunks: Vec<_> = converted.collect().await;
+        let merged = chunks
+            .into_iter()
+            .map(|chunk| String::from_utf8_lossy(chunk.unwrap().as_ref()).to_string())
+            .collect::<String>();
+
+        merged
+            .split("\n\n")
+            .filter_map(|block| {
+                let data = block
+                    .lines()
+                    .find_map(|line| strip_sse_field(line, "data"))?;
+                serde_json::from_str::<Value>(data).ok()
+            })
+            .collect()
+    }
+
+    async fn collect_anthropic_events_with_tool_hints(input: &str, request: &Value) -> Vec<Value> {
+        let upstream = stream::iter(vec![Ok::<_, std::io::Error>(Bytes::from(
+            input.as_bytes().to_vec(),
+        ))]);
+        let hints = super::super::transform_gemini::extract_anthropic_tool_schema_hints(request);
+        let converted = create_anthropic_sse_stream_with_tool_schema_hints(upstream, Some(hints));
         let chunks: Vec<_> = converted.collect().await;
         let merged = chunks
             .into_iter()
@@ -834,6 +1032,71 @@ mod tests {
         assert!(events.iter().any(|event| {
             event.get("type").and_then(|v| v.as_str()) == Some("message_delta")
                 && event.pointer("/delta/stop_reason").and_then(|v| v.as_str()) == Some("tool_use")
+        }));
+    }
+
+    #[tokio::test]
+    async fn streaming_rectifies_wrapped_bash_tool_arguments_from_schema_hints() {
+        let request = json!({
+            "tools": [{
+                "name": "Bash",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "command": { "type": "string" }
+                    },
+                    "required": ["command"]
+                }
+            }]
+        });
+        let input = concat!(
+            "data: {\"id\":\"chatcmpl_bash\",\"model\":\"gpt-5-codex\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_bash\",\"type\":\"function\",\"function\":{\"name\":\"Bash\"}}]}}]}\n\n",
+            "data: {\"id\":\"chatcmpl_bash\",\"model\":\"gpt-5-codex\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"parameters\\\":{\\\"command\\\":\\\"pwd\\\"}}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n",
+            "data: [DONE]\n\n"
+        );
+
+        let events = collect_anthropic_events_with_tool_hints(input, &request).await;
+        let delta = events
+            .iter()
+            .find(|event| {
+                event.get("type").and_then(Value::as_str) == Some("content_block_delta")
+                    && event.pointer("/delta/type").and_then(Value::as_str)
+                        == Some("input_json_delta")
+            })
+            .expect("tool argument delta");
+
+        assert_eq!(delta["delta"]["partial_json"], r#"{"command":"pwd"}"#);
+    }
+
+    #[tokio::test]
+    async fn streaming_flushes_buffered_tool_arguments_on_done_without_finish_reason() {
+        let request = json!({
+            "tools": [{
+                "name": "Bash",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "command": { "type": "string" }
+                    },
+                    "required": ["command"]
+                }
+            }]
+        });
+        let input = concat!(
+            "data: {\"id\":\"chatcmpl_bash\",\"model\":\"gpt-5-codex\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_bash\",\"type\":\"function\",\"function\":{\"name\":\"Bash\"}}]}}]}\n\n",
+            "data: {\"id\":\"chatcmpl_bash\",\"model\":\"gpt-5-codex\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"parameters\\\":{\\\"command\\\":\\\"pwd\\\"}}\"}}]}}]}\n\n",
+            "data: [DONE]\n\n"
+        );
+
+        let events = collect_anthropic_events_with_tool_hints(input, &request).await;
+
+        assert!(events.iter().any(|event| {
+            event.get("type").and_then(Value::as_str) == Some("content_block_delta")
+                && event.pointer("/delta/partial_json").and_then(Value::as_str)
+                    == Some(r#"{"command":"pwd"}"#)
+        }));
+        assert!(events.iter().any(|event| {
+            event.get("type").and_then(Value::as_str) == Some("content_block_stop")
         }));
     }
 

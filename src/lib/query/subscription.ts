@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { subscriptionApi } from "@/lib/api/subscription";
-import type { AppId } from "@/lib/api/types";
+import type { AppId, ManagementTarget } from "@/lib/api";
 import type { ProviderMeta } from "@/types";
 import { resolveManagedAccountId } from "@/lib/authBinding";
 import { PROVIDER_TYPES } from "@/config/constants";
@@ -9,7 +9,8 @@ const REFETCH_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
 export const subscriptionKeys = {
   all: ["subscription"] as const,
-  quota: (appId: AppId) => [...subscriptionKeys.all, "quota", appId] as const,
+  quota: (appId: AppId, targetKey = "local") =>
+    [...subscriptionKeys.all, "quota", targetKey, appId] as const,
 };
 
 export function useSubscriptionQuota(
@@ -17,15 +18,18 @@ export function useSubscriptionQuota(
   enabled: boolean,
   autoQuery = false,
   autoQueryIntervalMinutes = 5,
+  target: ManagementTarget = { type: "local" },
 ) {
   const refetchInterval =
     autoQuery && autoQueryIntervalMinutes > 0
       ? Math.max(autoQueryIntervalMinutes, 1) * 60 * 1000
       : false;
+  const targetKey =
+    target.type === "remote" ? `remote:${target.profile.id}` : "local";
 
   return useQuery({
-    queryKey: subscriptionKeys.quota(appId),
-    queryFn: () => subscriptionApi.getQuota(appId),
+    queryKey: subscriptionKeys.quota(appId, targetKey),
+    queryFn: () => subscriptionApi.getQuota(appId, target),
     enabled: enabled && ["claude", "codex", "gemini"].includes(appId),
     refetchInterval,
     refetchIntervalInBackground: Boolean(refetchInterval),
@@ -42,6 +46,7 @@ export interface UseCodexOauthQuotaOptions {
   enabled?: boolean;
   /** 是否启用自动轮询（5 分钟）与窗口 focus 重取 */
   autoQuery?: boolean;
+  target?: ManagementTarget;
 }
 
 /**
@@ -57,11 +62,13 @@ export function useCodexOauthQuota(
   meta: ProviderMeta | undefined,
   options: UseCodexOauthQuotaOptions = {},
 ) {
-  const { enabled = true, autoQuery = false } = options;
+  const { enabled = true, autoQuery = false, target = { type: "local" } } = options;
   const accountId = resolveManagedAccountId(meta, PROVIDER_TYPES.CODEX_OAUTH);
+  const targetKey =
+    target.type === "remote" ? `remote:${target.profile.id}` : "local";
   return useQuery({
-    queryKey: ["codex_oauth", "quota", accountId ?? "default"],
-    queryFn: () => subscriptionApi.getCodexOauthQuota(accountId),
+    queryKey: ["codex_oauth", "quota", targetKey, accountId ?? "default"],
+    queryFn: () => subscriptionApi.getCodexOauthQuota(accountId, target),
     enabled,
     refetchInterval: autoQuery ? REFETCH_INTERVAL : false,
     refetchIntervalInBackground: autoQuery,

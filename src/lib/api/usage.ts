@@ -21,7 +21,20 @@ import { remoteApi, type ManagementTarget } from "./remote";
 
 export const usageApi = {
   // Provider usage script methods
-  query: async (providerId: string, appId: AppId): Promise<UsageResult> => {
+  query: async (
+    providerId: string,
+    appId: AppId,
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+  ): Promise<UsageResult> => {
+    if (target.type === "remote") {
+      return remoteApi.queryProviderUsage(
+        target.profile,
+        appId,
+        providerId,
+        target.secret,
+      );
+    }
+
     return invoke("queryProviderUsage", { providerId, app: appId });
   },
 
@@ -35,7 +48,26 @@ export const usageApi = {
     accessToken?: string,
     userId?: string,
     templateType?: TemplateType,
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
   ): Promise<UsageResult> => {
+    if (target.type === "remote") {
+      return remoteApi.testUsageScript(
+        target.profile,
+        appId,
+        providerId,
+        {
+          scriptCode,
+          timeout,
+          apiKey,
+          baseUrl,
+          accessToken,
+          userId,
+          templateType,
+        },
+        target.secret,
+      );
+    }
+
     return invoke("testUsageScript", {
       providerId,
       app: appId,

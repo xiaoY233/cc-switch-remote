@@ -1,5 +1,6 @@
 import React from "react";
 import type { ProviderMeta } from "@/types";
+import type { ManagementTarget } from "@/lib/api";
 import { useCodexOauthQuota } from "@/lib/query/subscription";
 import { SubscriptionQuotaView } from "@/components/SubscriptionQuotaFooter";
 
@@ -8,6 +9,7 @@ interface CodexOauthQuotaFooterProps {
   inline?: boolean;
   /** 是否为当前激活的供应商 */
   isCurrent?: boolean;
+  target?: ManagementTarget;
 }
 
 /**
@@ -20,12 +22,13 @@ const CodexOauthQuotaFooter: React.FC<CodexOauthQuotaFooterProps> = ({
   meta,
   inline = false,
   isCurrent = false,
+  target,
 }) => {
   const {
     data: quota,
     isFetching: loading,
     refetch,
-  } = useCodexOauthQuota(meta, { enabled: true, autoQuery: isCurrent });
+  } = useCodexOauthQuota(meta, { enabled: true, autoQuery: isCurrent, target });
 
   return (
     <SubscriptionQuotaView

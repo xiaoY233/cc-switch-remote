@@ -1024,7 +1024,7 @@ function App() {
       duplicatedProvider.addToLive = managementTarget.type === "remote";
     }
 
-    if (provider.sortIndex !== undefined && managementTarget.type === "local") {
+    if (provider.sortIndex !== undefined) {
       const updates = Object.values(providers)
         .filter(
           (p) =>
@@ -1039,7 +1039,11 @@ function App() {
 
       if (updates.length > 0) {
         try {
-          await providersApi.updateSortOrder(updates, activeApp);
+          await providersApi.updateSortOrder(
+            updates,
+            activeApp,
+            managementTarget,
+          );
         } catch (error) {
           console.error("[App] Failed to update sort order", error);
           toast.error(
@@ -1979,6 +1983,7 @@ function App() {
           provider={effectiveUsageProvider}
           appId={activeApp}
           isOpen={Boolean(usageProvider)}
+          target={managementTarget}
           onClose={() => setUsageProvider(null)}
           onSave={(script) => {
             if (usageProvider) {

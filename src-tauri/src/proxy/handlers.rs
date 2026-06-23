@@ -18,7 +18,7 @@ use super::{
     providers::{
         codex_chat_common::extract_reasoning_field_text,
         codex_chat_history::record_responses_sse_stream, get_adapter, get_claude_api_format,
-        streaming::create_anthropic_sse_stream,
+        streaming::create_anthropic_sse_stream_with_tool_schema_hints,
         streaming_codex_chat::create_responses_sse_stream_from_chat_with_context,
         streaming_gemini::create_anthropic_sse_stream_from_gemini,
         streaming_responses::create_anthropic_sse_stream_from_responses, transform,
@@ -328,7 +328,12 @@ async fn handle_claude_transform(
                 tool_schema_hints.clone(),
             )))
         } else {
-            Box::new(Box::pin(create_anthropic_sse_stream(stream)))
+            Box::new(Box::pin(
+                create_anthropic_sse_stream_with_tool_schema_hints(
+                    stream,
+                    tool_schema_hints.clone(),
+                ),
+            ))
         };
 
         // 创建使用量收集器；关闭 usage logging 时不要再解析转换后的 SSE。
@@ -469,7 +474,10 @@ async fn handle_claude_transform(
 
     // 根据 api_format 选择非流式转换器
     let anthropic_response = if api_format == "openai_responses" {
-        transform_responses::responses_to_anthropic(upstream_response)
+        transform_responses::responses_to_anthropic_with_tool_schema_hints(
+            upstream_response,
+            tool_schema_hints.as_ref(),
+        )
     } else if api_format == "gemini_native" {
         transform_gemini::gemini_to_anthropic_with_shadow_and_hints(
             upstream_response,
@@ -479,7 +487,10 @@ async fn handle_claude_transform(
             tool_schema_hints.as_ref(),
         )
     } else {
-        transform::openai_to_anthropic(upstream_response)
+        transform::openai_to_anthropic_with_tool_schema_hints(
+            upstream_response,
+            tool_schema_hints.as_ref(),
+        )
     }
     .map_err(|e| {
         log::error!("[Claude] 转换响应失败: {e}");

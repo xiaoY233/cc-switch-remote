@@ -1,7 +1,7 @@
 import React from "react";
 import { RefreshCw, AlertCircle, Clock } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { AppId } from "@/lib/api";
+import type { AppId, ManagementTarget } from "@/lib/api";
 import { useSubscriptionQuota } from "@/lib/query/subscription";
 import type { QuotaTier, SubscriptionQuota } from "@/types/subscription";
 
@@ -10,6 +10,7 @@ interface SubscriptionQuotaFooterProps {
   inline?: boolean;
   isCurrent?: boolean;
   autoQueryInterval?: number;
+  target?: ManagementTarget;
 }
 
 interface SubscriptionQuotaViewProps {
@@ -401,6 +402,7 @@ const SubscriptionQuotaFooter: React.FC<SubscriptionQuotaFooterProps> = ({
   inline = false,
   isCurrent = false,
   autoQueryInterval = 5,
+  target,
 }) => {
   const {
     data: quota,
@@ -411,6 +413,7 @@ const SubscriptionQuotaFooter: React.FC<SubscriptionQuotaFooterProps> = ({
     isCurrent,
     isCurrent && autoQueryInterval > 0,
     autoQueryInterval,
+    target,
   );
 
   if (!isCurrent) return null;

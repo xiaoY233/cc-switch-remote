@@ -3,6 +3,7 @@
 //! 实现 Anthropic ↔ OpenAI 格式转换，用于 OpenRouter 支持
 //! 参考: anthropic-proxy-rs
 
+use super::transform_gemini::{rectify_tool_call_args, AnthropicToolSchemaHints};
 use crate::proxy::{error::ProxyError, json_canonical::canonical_json_string};
 use serde_json::{json, Value};
 
@@ -514,6 +515,13 @@ pub fn clean_schema(mut schema: Value) -> Value {
 
 /// OpenAI 响应 → Anthropic 响应
 pub fn openai_to_anthropic(body: Value) -> Result<Value, ProxyError> {
+    openai_to_anthropic_with_tool_schema_hints(body, None)
+}
+
+pub fn openai_to_anthropic_with_tool_schema_hints(
+    body: Value,
+    tool_schema_hints: Option<&AnthropicToolSchemaHints>,
+) -> Result<Value, ProxyError> {
     let choices = body
         .get("choices")
         .and_then(|c| c.as_array())
@@ -587,7 +595,10 @@ pub fn openai_to_anthropic(body: Value) -> Result<Value, ProxyError> {
                 .get("arguments")
                 .and_then(|a| a.as_str())
                 .unwrap_or("{}");
-            let input: Value = serde_json::from_str(args_str).unwrap_or(json!({}));
+            let mut input: Value = serde_json::from_str(args_str).unwrap_or(json!({}));
+            if let Some(hints) = tool_schema_hints {
+                rectify_tool_call_args(name, &mut input, Some(hints));
+            }
 
             content.push(json!({
                 "type": "tool_use",
@@ -610,11 +621,14 @@ pub fn openai_to_anthropic(body: Value) -> Result<Value, ProxyError> {
                 .unwrap_or("");
             let has_arguments = function_call.get("arguments").is_some();
 
-            let input = match function_call.get("arguments") {
+            let mut input = match function_call.get("arguments") {
                 Some(Value::String(s)) => serde_json::from_str(s).unwrap_or(json!({})),
                 Some(v @ Value::Object(_)) | Some(v @ Value::Array(_)) => v.clone(),
                 _ => json!({}),
             };
+            if let Some(hints) = tool_schema_hints {
+                rectify_tool_call_args(name, &mut input, Some(hints));
+            }
 
             if !name.is_empty() || has_arguments {
                 content.push(json!({
@@ -1123,6 +1137,49 @@ mod tests {
         assert_eq!(result["content"][0]["name"], "get_weather");
         assert_eq!(result["content"][0]["input"]["location"], "Tokyo");
         assert_eq!(result["stop_reason"], "tool_use");
+    }
+
+    #[test]
+    fn openai_to_anthropic_rectifies_wrapped_tool_arguments_from_schema_hints() {
+        let input = json!({
+            "id": "chatcmpl-bash",
+            "object": "chat.completion",
+            "created": 1234567890,
+            "model": "gpt-5-codex",
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": null,
+                    "tool_calls": [{
+                        "id": "call_bash",
+                        "type": "function",
+                        "function": {
+                            "name": "Bash",
+                            "arguments": "{\"parameters\":{\"command\":\"pwd\"}}"
+                        }
+                    }]
+                },
+                "finish_reason": "tool_calls"
+            }]
+        });
+        let request = json!({
+            "tools": [{
+                "name": "Bash",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "command": { "type": "string" }
+                    },
+                    "required": ["command"]
+                }
+            }]
+        });
+        let hints = super::super::transform_gemini::extract_anthropic_tool_schema_hints(&request);
+
+        let result = openai_to_anthropic_with_tool_schema_hints(input, Some(&hints)).unwrap();
+
+        assert_eq!(result["content"][0]["input"], json!({"command": "pwd"}));
     }
 
     #[test]

@@ -65,6 +65,7 @@ import {
   providersApi,
   type ClaudeDesktopDefaultRoute,
 } from "@/lib/api/providers";
+import type { ManagementTarget } from "@/lib/api";
 import { resolveManagedAccountId } from "@/lib/authBinding";
 
 export type ClaudeDesktopProviderFormValues = ProviderFormData & {
@@ -100,6 +101,7 @@ export interface ClaudeDesktopProviderFormProps {
     iconColor?: string;
   };
   showButtons?: boolean;
+  target?: ManagementTarget;
 }
 
 type RouteRow = {
@@ -252,6 +254,7 @@ export function ClaudeDesktopProviderForm({
   onSubmittingChange,
   initialData,
   showButtons = true,
+  target = { type: "local" },
 }: ClaudeDesktopProviderFormProps) {
   const { t } = useTranslation();
   const initialMode = initialData?.meta?.claudeDesktopMode ?? "direct";
@@ -753,11 +756,13 @@ export function ClaudeDesktopProviderForm({
               <div className="rounded-lg border border-border-default bg-muted/20 p-3">
                 {activeProviderType === "github_copilot" ? (
                   <CopilotAuthSection
+                    target={target}
                     selectedAccountId={selectedGitHubAccountId}
                     onAccountSelect={setSelectedGitHubAccountId}
                   />
                 ) : (
                   <CodexOAuthSection
+                    target={target}
                     selectedAccountId={selectedCodexAccountId}
                     onAccountSelect={setSelectedCodexAccountId}
                     fastModeEnabled={codexFastMode}

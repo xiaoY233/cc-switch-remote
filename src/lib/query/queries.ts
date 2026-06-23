@@ -141,6 +141,7 @@ export const useSettingsQuery = (): UseQueryResult<Settings> => {
 export interface UseUsageQueryOptions {
   enabled?: boolean;
   autoQueryInterval?: number; // 自动查询间隔（分钟），0 表示禁用
+  target?: ManagementTarget;
 }
 
 /** 最近一次成功的用量结果快照（keep-last-good 用）。 */
@@ -254,7 +255,11 @@ export const useUsageQuery = (
   appId: AppId,
   options?: UseUsageQueryOptions,
 ) => {
-  const { enabled = true, autoQueryInterval = 0 } = options || {};
+  const {
+    enabled = true,
+    autoQueryInterval = 0,
+    target = { type: "local" },
+  } = options || {};
 
   // 计算 staleTime：如果有自动刷新间隔，使用该间隔；否则默认 5 分钟
   // 这样可以避免切换 app 页面时重复触发查询
@@ -264,8 +269,8 @@ export const useUsageQuery = (
       : 5 * 60 * 1000; // 默认 5 分钟
 
   const query = useQuery<UsageResult>({
-    queryKey: usageKeys.script(providerId, appId),
-    queryFn: async () => usageApi.query(providerId, appId),
+    queryKey: [...usageKeys.script(providerId, appId), targetKey(target)],
+    queryFn: async () => usageApi.query(providerId, appId, target),
     enabled: enabled && !!providerId,
     refetchInterval:
       autoQueryInterval > 0

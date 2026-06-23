@@ -240,7 +240,7 @@ export function SessionManagerPage({
   const handleResume = async () => {
     if (!selectedSession?.resumeCommand) return;
 
-    if (!isMac()) {
+    if (isRemoteTarget || !isMac()) {
       await handleCopy(
         selectedSession.resumeCommand,
         t("sessionManager.resumeCommandCopied"),

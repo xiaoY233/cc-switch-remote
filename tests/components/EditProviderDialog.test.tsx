@@ -311,8 +311,8 @@ describe("EditProviderDialog", () => {
       const remoteTarget: ManagementTarget = {
         type: "remote",
         profile: {
-          id: "pve-matx",
-          name: "PVE-Matx",
+          id: "remote-host",
+          name: "Remote Host",
           host: "192.0.2.10",
           port: 22,
           username: "root",

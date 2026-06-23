@@ -47,7 +47,11 @@ export const useAddProviderMutation = (
         ...rest
       } = providerInput;
 
-      if (appId === "claude-desktop" && ensureClaudeDesktopOfficialSeed) {
+      if (
+        appId === "claude-desktop" &&
+        ensureClaudeDesktopOfficialSeed &&
+        target.type === "local"
+      ) {
         await providersApi.ensureClaudeDesktopOfficialProvider();
         const providers = await providersApi.getAll(appId);
         const officialProvider = providers["claude-desktop-official"];

@@ -36,10 +36,7 @@ import EndpointSpeedTest from "./EndpointSpeedTest";
 import { ApiKeySection, EndpointField, ModelInputWithFetch } from "./shared";
 import { CopilotAuthSection } from "./CopilotAuthSection";
 import { CodexOAuthSection } from "./CodexOAuthSection";
-import {
-  copilotGetModels,
-  copilotGetModelsForAccount,
-} from "@/lib/api/copilot";
+import { copilotGetModelsForTarget } from "@/lib/api/copilot";
 import type { CopilotModel } from "@/lib/api/copilot";
 import {
   canUseStoredRemoteProviderApiKey,
@@ -316,11 +313,7 @@ export function ClaudeFormFields({
     const requestId = copilotModelsRequestRef.current + 1;
     copilotModelsRequestRef.current = requestId;
     setModelsLoading(true);
-    const fetchModels = selectedGitHubAccountId
-      ? copilotGetModelsForAccount(selectedGitHubAccountId)
-      : copilotGetModels();
-
-    fetchModels
+    copilotGetModelsForTarget(selectedGitHubAccountId, modelFetchTarget)
       .then((models) => {
         if (copilotModelsRequestRef.current !== requestId) return;
         setCopilotModels(models);
@@ -342,6 +335,7 @@ export function ClaudeFormFields({
       });
   }, [
     isCopilotAuthenticated,
+    modelFetchTarget,
     selectedGitHubAccountId,
     showModelFetchResult,
     t,
@@ -605,6 +599,7 @@ export function ClaudeFormFields({
       {/* GitHub Copilot OAuth 认证 */}
       {isCopilotPreset && (
         <CopilotAuthSection
+          target={modelFetchTarget}
           selectedAccountId={selectedGitHubAccountId}
           onAccountSelect={onGitHubAccountSelect}
         />

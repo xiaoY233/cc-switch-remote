@@ -181,7 +181,7 @@ describe("AddProviderDialog", () => {
       type: "remote",
       profile: {
         id: "remote-1",
-        name: "PVE-Matx",
+        name: "Remote Host",
         host: "192.168.123.206",
         port: 22,
         username: "root",

@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { copilotGetUsage, copilotGetUsageForAccount } from "@/lib/api/copilot";
+import { copilotGetUsageForTarget } from "@/lib/api/copilot";
+import type { ManagementTarget } from "@/lib/api";
 import type { QuotaTier } from "@/types/subscription";
 
 const REFETCH_INTERVAL = 5 * 60 * 1000; // 5 minutes
@@ -17,19 +18,20 @@ export interface UseCopilotQuotaOptions {
   enabled?: boolean;
   /** 是否启用自动轮询（5 分钟）与窗口 focus 重取 */
   autoQuery?: boolean;
+  target?: ManagementTarget;
 }
 
 export function useCopilotQuota(
   accountId: string | null,
   options: UseCopilotQuotaOptions = {},
 ) {
-  const { enabled = true, autoQuery = false } = options;
+  const { enabled = true, autoQuery = false, target = { type: "local" } } = options;
+  const targetKey =
+    target.type === "remote" ? `remote:${target.profile.id}` : "local";
   return useQuery<CopilotQuota>({
-    queryKey: ["copilot", "quota", accountId ?? "default"],
+    queryKey: ["copilot", "quota", targetKey, accountId ?? "default"],
     queryFn: async (): Promise<CopilotQuota> => {
-      const usage = accountId
-        ? await copilotGetUsageForAccount(accountId)
-        : await copilotGetUsage();
+      const usage = await copilotGetUsageForTarget(accountId, target);
 
       const premium = usage.quota_snapshots.premium_interactions;
       const utilization =

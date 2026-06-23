@@ -4,6 +4,26 @@ import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { ClaudeDesktopProviderForm } from "@/components/providers/forms/ClaudeDesktopProviderForm";
 import { createTestQueryClient } from "../utils/testQueryClient";
+import type { ManagementTarget } from "@/lib/api";
+
+const { codexOAuthSectionMock, copilotAuthSectionMock } = vi.hoisted(() => ({
+  codexOAuthSectionMock: vi.fn(),
+  copilotAuthSectionMock: vi.fn(),
+}));
+
+vi.mock("@/components/providers/forms/CodexOAuthSection", () => ({
+  CodexOAuthSection: (props: unknown) => {
+    codexOAuthSectionMock(props);
+    return null;
+  },
+}));
+
+vi.mock("@/components/providers/forms/CopilotAuthSection", () => ({
+  CopilotAuthSection: (props: unknown) => {
+    copilotAuthSectionMock(props);
+    return null;
+  },
+}));
 
 vi.mock("@/lib/api/providers", () => ({
   providersApi: {
@@ -14,6 +34,7 @@ vi.mock("@/lib/api/providers", () => ({
 function renderForm(
   initialData: ComponentProps<typeof ClaudeDesktopProviderForm>["initialData"],
   onSubmit = vi.fn(),
+  extraProps: Partial<ComponentProps<typeof ClaudeDesktopProviderForm>> = {},
 ) {
   const queryClient = createTestQueryClient();
   const view = render(
@@ -23,6 +44,7 @@ function renderForm(
         onSubmit={onSubmit}
         onCancel={vi.fn()}
         initialData={initialData}
+        {...extraProps}
       />
     </QueryClientProvider>,
   );
@@ -30,6 +52,47 @@ function renderForm(
 }
 
 describe("ClaudeDesktopProviderForm", () => {
+  it("远程 Claude Desktop Codex OAuth 表单使用远程目标的账号状态", () => {
+    codexOAuthSectionMock.mockClear();
+    const target: ManagementTarget = {
+      type: "remote",
+      profile: {
+        id: "remote-host",
+        name: "Remote Host",
+        host: "192.168.1.20",
+        port: 22,
+        username: "root",
+        authMethod: { type: "password" },
+        helperPath: "~/.local/bin/cc-switch-remote-helper",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      secret: { password: "secret" },
+    };
+
+    renderForm(
+      {
+        name: "Codex OAuth",
+        category: "aggregator",
+        settingsConfig: {
+          env: {
+            ANTHROPIC_BASE_URL: "https://chatgpt.com/backend-api/codex",
+          },
+        },
+        meta: {
+          claudeDesktopMode: "proxy",
+          providerType: "codex_oauth",
+        },
+      },
+      vi.fn(),
+      { target },
+    );
+
+    expect(codexOAuthSectionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ target }),
+    );
+  });
+
   it("编辑模型映射的菜单显示名时保持输入框焦点", () => {
     renderForm({
       name: "Proxy Provider",

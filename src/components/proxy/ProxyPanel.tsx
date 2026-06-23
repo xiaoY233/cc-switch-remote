@@ -55,7 +55,7 @@ export function ProxyPanel({
   const { status, isRunning } = useProxyStatus(target);
 
   // 获取应用接管状态
-  const { data: takeoverStatus } = useProxyTakeoverStatus();
+  const { data: takeoverStatus } = useProxyTakeoverStatus(target);
   const setTakeoverForApp = useSetProxyTakeoverForApp();
 
   // 获取全局代理配置

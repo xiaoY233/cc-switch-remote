@@ -1,7 +1,7 @@
 import React from "react";
 import { RefreshCw, AlertCircle, Clock } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { type AppId } from "@/lib/api";
+import { type AppId, type ManagementTarget } from "@/lib/api";
 import { useUsageQuery } from "@/lib/query/queries";
 import { UsageData, Provider } from "@/types";
 import { TierBadge } from "@/components/SubscriptionQuotaFooter";
@@ -15,6 +15,7 @@ interface UsageFooterProps {
   isCurrent: boolean; // 是否为当前激活的供应商
   isInConfig?: boolean; // OpenCode: 是否已添加到配置
   inline?: boolean; // 是否内联显示（在按钮左侧）
+  target?: ManagementTarget;
 }
 
 /** UsageData → QuotaTier 转换（Token Plan 使用） */
@@ -50,6 +51,7 @@ const UsageFooter: React.FC<UsageFooterProps> = ({
   isCurrent,
   isInConfig = false,
   inline = false,
+  target,
 }) => {
   const { t } = useTranslation();
   const isTokenPlan =
@@ -70,6 +72,7 @@ const UsageFooter: React.FC<UsageFooterProps> = ({
   } = useUsageQuery(providerId, appId, {
     enabled: usageEnabled,
     autoQueryInterval,
+    target,
   });
 
   // 🆕 定期更新当前时间，用于刷新相对时间显示

@@ -8,6 +8,7 @@
 //! - system prompt 使用 `instructions` 字段而非 system role message
 //! - usage 字段命名与 Anthropic 一致 (input_tokens/output_tokens)
 
+use super::transform_gemini::{rectify_tool_call_args, AnthropicToolSchemaHints};
 use crate::proxy::{error::ProxyError, json_canonical::canonical_json_string};
 use serde_json::{json, Value};
 
@@ -519,6 +520,13 @@ fn convert_messages_to_input(messages: &[Value]) -> Result<Vec<Value>, ProxyErro
 
 /// OpenAI Responses 响应 → Anthropic 响应
 pub fn responses_to_anthropic(body: Value) -> Result<Value, ProxyError> {
+    responses_to_anthropic_with_tool_schema_hints(body, None)
+}
+
+pub fn responses_to_anthropic_with_tool_schema_hints(
+    body: Value,
+    tool_schema_hints: Option<&AnthropicToolSchemaHints>,
+) -> Result<Value, ProxyError> {
     let output = body
         .get("output")
         .and_then(|o| o.as_array())
@@ -559,7 +567,10 @@ pub fn responses_to_anthropic(body: Value) -> Result<Value, ProxyError> {
                     .get("arguments")
                     .and_then(|a| a.as_str())
                     .unwrap_or("{}");
-                let input: Value = serde_json::from_str(args_str).unwrap_or(json!({}));
+                let mut input: Value = serde_json::from_str(args_str).unwrap_or(json!({}));
+                if let Some(hints) = tool_schema_hints {
+                    rectify_tool_call_args(name, &mut input, Some(hints));
+                }
                 let input = sanitize_anthropic_tool_use_input(name, input);
 
                 content.push(json!({
@@ -950,6 +961,43 @@ mod tests {
         assert_eq!(result["content"][0]["name"], "get_weather");
         assert_eq!(result["content"][0]["input"]["location"], "Tokyo");
         assert_eq!(result["stop_reason"], "tool_use");
+    }
+
+    #[test]
+    fn responses_to_anthropic_rectifies_wrapped_tool_arguments_from_schema_hints() {
+        let input = json!({
+            "id": "resp_bash",
+            "object": "response",
+            "status": "completed",
+            "model": "gpt-5-codex",
+            "output": [{
+                "type": "function_call",
+                "id": "fc_bash",
+                "call_id": "call_bash",
+                "name": "Bash",
+                "arguments": "{\"parameters\":{\"command\":\"pwd\"}}",
+                "status": "completed"
+            }]
+        });
+        let request = json!({
+            "tools": [{
+                "name": "Bash",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "command": { "type": "string" }
+                    },
+                    "required": ["command"]
+                }
+            }]
+        });
+        let hints = crate::proxy::providers::transform_gemini::extract_anthropic_tool_schema_hints(
+            &request,
+        );
+
+        let result = responses_to_anthropic_with_tool_schema_hints(input, Some(&hints)).unwrap();
+
+        assert_eq!(result["content"][0]["input"], json!({"command": "pwd"}));
     }
 
     #[test]

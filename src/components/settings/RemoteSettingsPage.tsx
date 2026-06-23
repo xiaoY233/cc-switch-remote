@@ -593,6 +593,7 @@ export function RemoteSettingsPage({
                 settingsCapability={settingsCapability}
                 pluginCapability={pluginCapability}
                 skillsCapability={skillsCapability}
+                target={target}
                 settings={remoteSettings}
                 installedSkillCount={remoteInstalledSkillCount}
                 isLoading={isLoadingRemoteSettings}
@@ -1258,6 +1259,7 @@ interface RemoteGeneralSettingsSectionProps {
   settingsCapability: boolean;
   pluginCapability: boolean;
   skillsCapability: boolean;
+  target: Extract<ManagementTarget, { type: "remote" }>;
   settings: Settings | null;
   installedSkillCount: number;
   isLoading: boolean;
@@ -1273,6 +1275,7 @@ function RemoteGeneralSettingsSection({
   settingsCapability,
   pluginCapability,
   skillsCapability,
+  target,
   settings,
   installedSkillCount,
   isLoading,
@@ -1343,6 +1346,7 @@ function RemoteGeneralSettingsSection({
 
       <CodexAuthSettings
         settings={settings}
+        target={target}
         onChange={(updates) => void onSave(updates)}
       />
 

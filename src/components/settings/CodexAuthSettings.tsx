@@ -7,11 +7,14 @@ import type { Settings } from "@/types";
 import { ToggleRow } from "@/components/ui/toggle-row";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { settingsApi } from "@/lib/api";
+import type { ManagementTarget } from "@/lib/api";
+import { LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
 
 type CodexAuthSettingsState = Settings | SettingsFormState;
 
 interface CodexAuthSettingsProps<TSettings extends CodexAuthSettingsState> {
   settings: TSettings;
+  target?: ManagementTarget;
   /** 返回 false（或 resolve 为 false）表示保存失败；其余返回值视为成功 */
   onChange: (
     updates: Partial<TSettings>,
@@ -20,6 +23,7 @@ interface CodexAuthSettingsProps<TSettings extends CodexAuthSettingsState> {
 
 export function CodexAuthSettings<TSettings extends CodexAuthSettingsState>({
   settings,
+  target = LOCAL_MANAGEMENT_TARGET,
   onChange,
 }: CodexAuthSettingsProps<TSettings>) {
   const { t } = useTranslation();
@@ -30,6 +34,11 @@ export function CodexAuthSettings<TSettings extends CodexAuthSettingsState>({
   const handleUnifyHistoryChange = (checked: boolean) => {
     if (checked) {
       setShowEnableConfirm(true);
+      return;
+    }
+    if (target.type === "remote") {
+      setHasUnifyBackup(false);
+      setShowDisableConfirm(true);
       return;
     }
     // 先探测有无迁移备份，决定关闭弹窗是否提供"恢复备份"勾选
@@ -54,7 +63,8 @@ export function CodexAuthSettings<TSettings extends CodexAuthSettingsState>({
   // 备份尚未产出）。只要本轮勾选过"迁入既有会话"，就必须提供恢复入口；
   // 真正有没有账本交给后端 restore 的 skippedReason 判定。
   const showRestoreOption =
-    hasUnifyBackup || (settings.unifyCodexMigrateExisting ?? false);
+    target.type === "local" &&
+    (hasUnifyBackup || (settings.unifyCodexMigrateExisting ?? false));
 
   const handleDisableConfirm = async (restoreBackup: boolean) => {
     setShowDisableConfirm(false);
@@ -67,7 +77,7 @@ export function CodexAuthSettings<TSettings extends CodexAuthSettingsState>({
     if (saved === false) return;
     // 不再以探测结果短路：还原命令会在迁移锁上排队，等到迁移落盘后
     // 拿到完整账本；确实无账本时由 skippedReason 提示。
-    if (!restoreBackup) return;
+    if (!restoreBackup || target.type === "remote") return;
     try {
       const result = await settingsApi.restoreCodexUnifiedHistory();
       if (result.skippedReason) {

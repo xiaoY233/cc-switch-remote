@@ -4,9 +4,17 @@ import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { Provider, UsageScript, UsageData, createUsageScript } from "@/types";
-import { usageApi, settingsApi, type AppId } from "@/lib/api";
-import { copilotGetUsage, copilotGetUsageForAccount } from "@/lib/api/copilot";
+import {
+  usageApi,
+  settingsApi,
+  type AppId,
+  type ManagementTarget,
+} from "@/lib/api";
+import { copilotGetUsageForTarget } from "@/lib/api/copilot";
+import { LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
 import { useSettingsQuery } from "@/lib/query";
+import { subscriptionKeys } from "@/lib/query/subscription";
+import { usageKeys } from "@/lib/query/usage";
 import { resolveManagedAccountId } from "@/lib/authBinding";
 import {
   extractCodexBaseUrl,
@@ -29,6 +37,7 @@ import {
   detectCodingPlanProvider,
 } from "@/config/codingPlanProviders";
 import { formatUsageDataSummary } from "@/utils/usageDisplay";
+import { shouldPersistUsageConfirmation } from "@/utils/usageScriptTarget";
 
 interface UsageScriptModalProps {
   provider: Provider;
@@ -36,6 +45,7 @@ interface UsageScriptModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (script: UsageScript) => void;
+  target?: ManagementTarget;
 }
 
 // 生成预设模板的函数（支持国际化）
@@ -191,6 +201,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
   isOpen,
   onClose,
   onSave,
+  target = LOCAL_MANAGEMENT_TARGET,
 }) => {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -441,7 +452,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
   const handleUsageConfirm = async () => {
     setShowUsageConfirm(false);
     try {
-      if (settingsData) {
+      if (shouldPersistUsageConfirmation(target) && settingsData) {
         const { webdavSync: _, ...rest } = settingsData;
         await settingsApi.save({ ...rest, usageConfirmed: true });
         await queryClient.invalidateQueries({ queryKey: ["settings"] });
@@ -487,7 +498,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
       // 官方订阅额度模板使用 CLI/OAuth 凭据和官方 API
       if (selectedTemplate === TEMPLATE_TYPES.OFFICIAL_SUBSCRIPTION) {
         const { subscriptionApi } = await import("@/lib/api/subscription");
-        const quota = await subscriptionApi.getQuota(appId);
+        const quota = await subscriptionApi.getQuota(appId, target);
         if (quota.success && quota.tiers.length > 0) {
           const summary = quota.tiers
             .map((tier) => `${tier.name}: ${Math.round(tier.utilization)}%`)
@@ -496,7 +507,9 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
             duration: 3000,
             closeButton: true,
           });
-          queryClient.setQueryData(["subscription", "quota", appId], quota);
+          const key =
+            target.type === "remote" ? `remote:${target.profile.id}` : "local";
+          queryClient.setQueryData(subscriptionKeys.quota(appId, key), quota);
         } else {
           toast.error(
             `${t("usageScript.testFailed")}: ${quota.error || t("endpointTest.noResult")}`,
@@ -511,7 +524,11 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
         const baseUrl = providerCredentials.baseUrl ?? "";
         const apiKey = providerCredentials.apiKey ?? "";
         const { subscriptionApi } = await import("@/lib/api/subscription");
-        const result = await subscriptionApi.getBalance(baseUrl, apiKey);
+        const result = await subscriptionApi.getBalance(
+          baseUrl,
+          apiKey,
+          target,
+        );
         if (result.success && result.data && result.data.length > 0) {
           const summary = result.data
             .map((d) =>
@@ -526,7 +543,12 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
             duration: 3000,
             closeButton: true,
           });
-          queryClient.setQueryData(["usage", provider.id, appId], result);
+          const key =
+            target.type === "remote" ? `remote:${target.profile.id}` : "local";
+          queryClient.setQueryData(
+            [...usageKeys.script(provider.id, appId), key],
+            result,
+          );
         } else {
           toast.error(
             `${t("usageScript.testFailed")}: ${result.error || t("endpointTest.noResult")}`,
@@ -554,6 +576,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
           apiKey,
           isVolcengine ? script.accessKeyId : undefined,
           isVolcengine ? script.secretAccessKey : undefined,
+          target,
         );
         if (quota.success && quota.tiers.length > 0) {
           const summary = quota.tiers
@@ -571,10 +594,15 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
             used: tier.utilization,
             unit: "%",
           }));
-          queryClient.setQueryData(["usage", provider.id, appId], {
-            success: true,
-            data: usageData,
-          });
+          const key =
+            target.type === "remote" ? `remote:${target.profile.id}` : "local";
+          queryClient.setQueryData(
+            [...usageKeys.script(provider.id, appId), key],
+            {
+              success: true,
+              data: usageData,
+            },
+          );
         } else {
           toast.error(
             `${t("usageScript.testFailed")}: ${quota.error || t("endpointTest.noResult")}`,
@@ -590,9 +618,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
           provider.meta,
           PROVIDER_TYPES.GITHUB_COPILOT,
         );
-        const usage = accountId
-          ? await copilotGetUsageForAccount(accountId)
-          : await copilotGetUsage();
+        const usage = await copilotGetUsageForTarget(accountId, target);
         const premium = usage.quota_snapshots.premium_interactions;
         const used = premium.entitlement - premium.remaining;
         const summary = `[${usage.copilot_plan}] ${t("usage.remaining")} ${premium.remaining}/${premium.entitlement} (${t("usageScript.resetDate")}: ${usage.quota_reset_date})`;
@@ -626,6 +652,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
         script.accessToken,
         script.userId,
         selectedTemplate as "custom" | "general" | "newapi" | undefined,
+        target,
       );
       if (result.success && result.data && result.data.length > 0) {
         const summary = result.data
