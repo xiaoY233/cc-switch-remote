@@ -205,6 +205,90 @@ impl CodexChatHistoryStore {
     }
 }
 
+pub fn normalize_responses_request_tool_call_ids(body: &mut Value) -> usize {
+    let Some(input) = body.get_mut("input") else {
+        return 0;
+    };
+    normalize_responses_item_sequence(input)
+}
+
+fn normalize_responses_item_sequence(input: &mut Value) -> usize {
+    match input {
+        Value::Array(items) => normalize_responses_items(items),
+        Value::Object(_) => {
+            let mut items = vec![std::mem::take(input)];
+            let changed = normalize_responses_items(&mut items);
+            *input = items.into_iter().next().unwrap_or(Value::Null);
+            changed
+        }
+        _ => 0,
+    }
+}
+
+fn normalize_responses_items(items: &mut [Value]) -> usize {
+    let mut changed = 0usize;
+    let mut pending_call_ids: VecDeque<String> = VecDeque::new();
+
+    for (index, item) in items.iter_mut().enumerate() {
+        let Some(item_type) = item.get("type").and_then(|value| value.as_str()) else {
+            continue;
+        };
+
+        if is_call_item_type(item_type) {
+            let before = response_item_call_id(item);
+            let call_id = ensure_response_item_call_id(item, index, None);
+            if let Some(call_id) = call_id {
+                pending_call_ids.push_back(call_id);
+            }
+            if before != response_item_call_id(item) {
+                changed += 1;
+            }
+            continue;
+        }
+
+        if is_call_output_item_type(item_type) {
+            let fallback = pending_call_ids.pop_front();
+            let before = response_item_call_id(item);
+            let after = ensure_response_item_call_id(item, index, fallback.as_deref());
+            if before != after {
+                changed += 1;
+            }
+            if let Some(call_id) = after.as_deref() {
+                pending_call_ids.retain(|pending| pending != call_id);
+            }
+        }
+    }
+
+    changed
+}
+
+fn ensure_response_item_call_id(
+    item: &mut Value,
+    index: usize,
+    fallback: Option<&str>,
+) -> Option<String> {
+    if let Some(call_id) = response_item_call_id(item) {
+        return Some(call_id);
+    }
+
+    let generated = fallback
+        .map(ToString::to_string)
+        .or_else(|| {
+            item.get("id")
+                .and_then(|value| value.as_str())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToString::to_string)
+        })
+        .unwrap_or_else(|| format!("call_{index}"));
+
+    if let Some(object) = item.as_object_mut() {
+        object.insert("call_id".to_string(), Value::String(generated.clone()));
+    }
+
+    Some(generated)
+}
+
 impl CodexChatHistoryInner {
     fn insert_calls(&mut self, response_id: &str, calls: Vec<(String, Value)>) -> usize {
         if !self.responses.contains_key(response_id) {
@@ -497,6 +581,45 @@ mod tests {
     use super::*;
     use futures::StreamExt;
     use serde_json::json;
+
+    #[test]
+    fn normalizes_empty_call_ids_in_responses_request_pairs() {
+        let mut request = json!({
+            "model": "gpt-5.4",
+            "input": [
+                {
+                    "type": "function_call",
+                    "call_id": "",
+                    "name": "Bash",
+                    "arguments": "{\"command\":\"pwd\"}"
+                },
+                {
+                    "type": "function_call_output",
+                    "call_id": "",
+                    "output": "ok"
+                }
+            ]
+        });
+
+        assert_eq!(normalize_responses_request_tool_call_ids(&mut request), 2);
+        assert_eq!(request["input"][0]["call_id"], "call_0");
+        assert_eq!(request["input"][1]["call_id"], "call_0");
+    }
+
+    #[test]
+    fn normalizes_empty_call_id_output_without_matching_call() {
+        let mut request = json!({
+            "previous_response_id": "resp_1",
+            "input": [{
+                "type": "function_call_output",
+                "call_id": "",
+                "output": "ok"
+            }]
+        });
+
+        assert_eq!(normalize_responses_request_tool_call_ids(&mut request), 1);
+        assert_eq!(request["input"][0]["call_id"], "call_0");
+    }
 
     #[tokio::test]
     async fn enriches_tool_output_with_cached_function_call_from_previous_response() {

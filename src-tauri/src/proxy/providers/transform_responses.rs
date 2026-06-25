@@ -11,6 +11,38 @@
 use super::transform_gemini::{rectify_tool_call_args, AnthropicToolSchemaHints};
 use crate::proxy::{error::ProxyError, json_canonical::canonical_json_string};
 use serde_json::{json, Value};
+use std::collections::VecDeque;
+
+#[derive(Debug, Default)]
+struct ToolIdState {
+    next: usize,
+    pending: VecDeque<String>,
+}
+
+impl ToolIdState {
+    fn next_id(&mut self) -> String {
+        let id = format!("tool_call_{}", self.next);
+        self.next += 1;
+        id
+    }
+
+    fn tool_use_id(&mut self, raw: Option<&str>) -> String {
+        let id = non_empty_id(raw).unwrap_or_else(|| self.next_id());
+        self.pending.push_back(id.clone());
+        id
+    }
+
+    fn tool_result_id(&mut self, raw: Option<&str>) -> String {
+        non_empty_id(raw)
+            .unwrap_or_else(|| self.pending.pop_front().unwrap_or_else(|| self.next_id()))
+    }
+}
+
+fn non_empty_id(raw: Option<&str>) -> Option<String> {
+    raw.map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
 
 pub(crate) fn sanitize_anthropic_tool_use_input(name: &str, input: Value) -> Value {
     if name != "Read" {
@@ -385,6 +417,7 @@ pub(crate) fn build_anthropic_usage_from_responses(usage: Option<&Value>) -> Val
 /// - thinking blocks → 丢弃
 fn convert_messages_to_input(messages: &[Value]) -> Result<Vec<Value>, ProxyError> {
     let mut input = Vec::new();
+    let mut tool_ids = ToolIdState::default();
 
     for msg in messages {
         let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("user");
@@ -451,7 +484,7 @@ fn convert_messages_to_input(messages: &[Value]) -> Result<Vec<Value>, ProxyErro
                             }
 
                             // 提升为独立的 function_call item
-                            let id = block.get("id").and_then(|i| i.as_str()).unwrap_or("");
+                            let id = tool_ids.tool_use_id(block.get("id").and_then(|i| i.as_str()));
                             let name = block.get("name").and_then(|n| n.as_str()).unwrap_or("");
                             let arguments = block.get("input").cloned().unwrap_or(json!({}));
 
@@ -474,10 +507,8 @@ fn convert_messages_to_input(messages: &[Value]) -> Result<Vec<Value>, ProxyErro
                             }
 
                             // 提升为独立的 function_call_output item
-                            let call_id = block
-                                .get("tool_use_id")
-                                .and_then(|i| i.as_str())
-                                .unwrap_or("");
+                            let call_id = tool_ids
+                                .tool_result_id(block.get("tool_use_id").and_then(|i| i.as_str()));
                             let output = match block.get("content") {
                                 Some(Value::String(s)) => s.clone(),
                                 Some(v) => canonical_json_string(v),
@@ -535,7 +566,7 @@ pub fn responses_to_anthropic_with_tool_schema_hints(
     let mut content = Vec::new();
 
     let mut has_tool_use = false;
-    for item in output {
+    for (index, item) in output.iter().enumerate() {
         let item_type = item.get("type").and_then(|t| t.as_str()).unwrap_or("");
 
         match item_type {
@@ -561,7 +592,12 @@ pub fn responses_to_anthropic_with_tool_schema_hints(
             }
 
             "function_call" => {
-                let call_id = item.get("call_id").and_then(|i| i.as_str()).unwrap_or("");
+                let call_id = non_empty_id(
+                    item.get("call_id")
+                        .or_else(|| item.get("id"))
+                        .and_then(|i| i.as_str()),
+                )
+                .unwrap_or_else(|| format!("tool_call_{index}"));
                 let name = item.get("name").and_then(|n| n.as_str()).unwrap_or("");
                 let args_str = item
                     .get("arguments")
@@ -867,6 +903,36 @@ mod tests {
     }
 
     #[test]
+    fn anthropic_to_responses_synthesizes_empty_tool_ids() {
+        let input = json!({
+            "model": "gpt-4o",
+            "max_tokens": 1024,
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "tool_use", "id": "", "name": "get_weather", "input": {"location": "Tokyo"}}
+                    ]
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "tool_result", "tool_use_id": "", "content": "Sunny"}
+                    ]
+                }
+            ]
+        });
+
+        let result = anthropic_to_responses(input, None, false, false).unwrap();
+        let input_arr = result["input"].as_array().unwrap();
+
+        assert_eq!(input_arr[0]["type"], "function_call");
+        assert_eq!(input_arr[0]["call_id"], "tool_call_0");
+        assert_eq!(input_arr[1]["type"], "function_call_output");
+        assert_eq!(input_arr[1]["call_id"], "tool_call_0");
+    }
+
+    #[test]
     fn test_anthropic_to_responses_thinking_discarded() {
         let input = json!({
             "model": "gpt-4o",
@@ -960,6 +1026,31 @@ mod tests {
         assert_eq!(result["content"][0]["id"], "call_123");
         assert_eq!(result["content"][0]["name"], "get_weather");
         assert_eq!(result["content"][0]["input"]["location"], "Tokyo");
+        assert_eq!(result["stop_reason"], "tool_use");
+    }
+
+    #[test]
+    fn responses_to_anthropic_synthesizes_empty_function_call_id() {
+        let input = json!({
+            "id": "resp_empty_call",
+            "object": "response",
+            "status": "completed",
+            "model": "gpt-4o",
+            "output": [{
+                "type": "function_call",
+                "id": "",
+                "call_id": "",
+                "name": "get_weather",
+                "arguments": "{\"location\":\"Tokyo\"}",
+                "status": "completed"
+            }],
+            "usage": {"input_tokens": 10, "output_tokens": 15}
+        });
+
+        let result = responses_to_anthropic(input).unwrap();
+
+        assert_eq!(result["content"][0]["type"], "tool_use");
+        assert_eq!(result["content"][0]["id"], "tool_call_0");
         assert_eq!(result["stop_reason"], "tool_use");
     }
 

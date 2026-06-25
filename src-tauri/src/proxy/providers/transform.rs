@@ -6,8 +6,40 @@
 use super::transform_gemini::{rectify_tool_call_args, AnthropicToolSchemaHints};
 use crate::proxy::{error::ProxyError, json_canonical::canonical_json_string};
 use serde_json::{json, Value};
+use std::collections::VecDeque;
 
 const ANTHROPIC_BILLING_HEADER_PREFIX: &str = "x-anthropic-billing-header:";
+
+#[derive(Debug, Default)]
+struct ToolIdState {
+    next: usize,
+    pending: VecDeque<String>,
+}
+
+impl ToolIdState {
+    fn next_id(&mut self) -> String {
+        let id = format!("tool_call_{}", self.next);
+        self.next += 1;
+        id
+    }
+
+    fn tool_use_id(&mut self, raw: Option<&str>) -> String {
+        let id = non_empty_id(raw).unwrap_or_else(|| self.next_id());
+        self.pending.push_back(id.clone());
+        id
+    }
+
+    fn tool_result_id(&mut self, raw: Option<&str>) -> String {
+        non_empty_id(raw)
+            .unwrap_or_else(|| self.pending.pop_front().unwrap_or_else(|| self.next_id()))
+    }
+}
+
+fn non_empty_id(raw: Option<&str>) -> Option<String> {
+    raw.map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
 
 /// Strip only a leading Claude Code attribution line from system text.
 ///
@@ -161,10 +193,16 @@ pub fn anthropic_to_openai_with_reasoning_content(
 
     // 转换 messages
     if let Some(msgs) = body.get("messages").and_then(|m| m.as_array()) {
+        let mut tool_ids = ToolIdState::default();
         for msg in msgs {
             let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("user");
             let content = msg.get("content");
-            let converted = convert_message_to_openai(role, content, preserve_reasoning_content)?;
+            let converted = convert_message_to_openai(
+                role,
+                content,
+                preserve_reasoning_content,
+                &mut tool_ids,
+            )?;
             messages.extend(converted);
         }
     }
@@ -350,6 +388,7 @@ fn convert_message_to_openai(
     role: &str,
     content: Option<&Value>,
     preserve_reasoning_content: bool,
+    tool_ids: &mut ToolIdState,
 ) -> Result<Vec<Value>, ProxyError> {
     let mut result = Vec::new();
 
@@ -398,7 +437,7 @@ fn convert_message_to_openai(
                     }
                 }
                 "tool_use" => {
-                    let id = block.get("id").and_then(|i| i.as_str()).unwrap_or("");
+                    let id = tool_ids.tool_use_id(block.get("id").and_then(|i| i.as_str()));
                     let name = block.get("name").and_then(|n| n.as_str()).unwrap_or("");
                     let input = block.get("input").cloned().unwrap_or(json!({}));
                     tool_calls.push(json!({
@@ -412,10 +451,8 @@ fn convert_message_to_openai(
                 }
                 "tool_result" => {
                     // tool_result 变成单独的 tool role 消息
-                    let tool_use_id = block
-                        .get("tool_use_id")
-                        .and_then(|i| i.as_str())
-                        .unwrap_or("");
+                    let tool_use_id =
+                        tool_ids.tool_result_id(block.get("tool_use_id").and_then(|i| i.as_str()));
                     let content_val = block.get("content");
                     let content_str = match content_val {
                         Some(Value::String(s)) => s.clone(),
@@ -586,8 +623,9 @@ pub fn openai_to_anthropic_with_tool_schema_hints(
         if !tool_calls.is_empty() {
             has_tool_use = true;
         }
-        for tc in tool_calls {
-            let id = tc.get("id").and_then(|i| i.as_str()).unwrap_or("");
+        for (index, tc) in tool_calls.iter().enumerate() {
+            let id = non_empty_id(tc.get("id").and_then(|i| i.as_str()))
+                .unwrap_or_else(|| format!("tool_call_{index}"));
             let empty_obj = json!({});
             let func = tc.get("function").unwrap_or(&empty_obj);
             let name = func.get("name").and_then(|n| n.as_str()).unwrap_or("");
@@ -611,10 +649,8 @@ pub fn openai_to_anthropic_with_tool_schema_hints(
     // 兼容旧格式（function_call）
     if !has_tool_use {
         if let Some(function_call) = message.get("function_call") {
-            let id = function_call
-                .get("id")
-                .and_then(|i| i.as_str())
-                .unwrap_or("");
+            let id = non_empty_id(function_call.get("id").and_then(|i| i.as_str()))
+                .unwrap_or_else(|| "tool_call_0".to_string());
             let name = function_call
                 .get("name")
                 .and_then(|n| n.as_str())
@@ -1056,6 +1092,34 @@ mod tests {
     }
 
     #[test]
+    fn anthropic_to_openai_synthesizes_empty_tool_ids() {
+        let input = json!({
+            "model": "claude-3-opus",
+            "max_tokens": 1024,
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "tool_use", "id": "", "name": "get_weather", "input": {"location": "Tokyo"}}
+                    ]
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "tool_result", "tool_use_id": "", "content": "Sunny"}
+                    ]
+                }
+            ]
+        });
+
+        let result = anthropic_to_openai(input).unwrap();
+        let messages = result["messages"].as_array().unwrap();
+
+        assert_eq!(messages[0]["tool_calls"][0]["id"], "tool_call_0");
+        assert_eq!(messages[1]["tool_call_id"], "tool_call_0");
+    }
+
+    #[test]
     fn test_openai_to_anthropic_simple() {
         let input = json!({
             "id": "chatcmpl-123",
@@ -1078,6 +1142,36 @@ mod tests {
         assert_eq!(result["stop_reason"], "end_turn");
         assert_eq!(result["usage"]["input_tokens"], 10);
         assert_eq!(result["usage"]["output_tokens"], 5);
+    }
+
+    #[test]
+    fn openai_to_anthropic_synthesizes_empty_tool_call_ids() {
+        let input = json!({
+            "id": "chatcmpl-empty-tool-id",
+            "object": "chat.completion",
+            "model": "gpt-4",
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "tool_calls": [{
+                        "id": "",
+                        "type": "function",
+                        "function": {
+                            "name": "get_weather",
+                            "arguments": "{\"location\":\"Tokyo\"}"
+                        }
+                    }]
+                },
+                "finish_reason": "tool_calls"
+            }],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5}
+        });
+
+        let result = openai_to_anthropic(input).unwrap();
+
+        assert_eq!(result["content"][0]["type"], "tool_use");
+        assert_eq!(result["content"][0]["id"], "tool_call_0");
+        assert_eq!(result["stop_reason"], "tool_use");
     }
 
     #[test]

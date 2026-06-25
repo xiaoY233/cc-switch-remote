@@ -42,10 +42,20 @@ fn content_part_key(data: &Value) -> Option<String> {
 
 #[inline]
 fn tool_item_key_from_added(data: &Value, item: &Value) -> Option<String> {
-    if let Some(item_id) = item.get("id").and_then(|v| v.as_str()) {
+    if let Some(item_id) = item
+        .get("id")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         return Some(format!("tool:{item_id}"));
     }
-    if let Some(item_id) = data.get("item_id").and_then(|v| v.as_str()) {
+    if let Some(item_id) = data
+        .get("item_id")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         return Some(format!("tool:{item_id}"));
     }
     if let Some(output_index) = data.get("output_index").and_then(|v| v.as_u64()) {
@@ -56,13 +66,42 @@ fn tool_item_key_from_added(data: &Value, item: &Value) -> Option<String> {
 
 #[inline]
 fn tool_item_key_from_event(data: &Value) -> Option<String> {
-    if let Some(item_id) = data.get("item_id").and_then(|v| v.as_str()) {
+    if let Some(item_id) = data
+        .get("item_id")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         return Some(format!("tool:{item_id}"));
     }
     if let Some(output_index) = data.get("output_index").and_then(|v| v.as_u64()) {
         return Some(format!("tool:out:{output_index}"));
     }
     None
+}
+
+fn non_empty_str(value: Option<&Value>) -> Option<&str> {
+    value
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn resolve_tool_call_id(
+    raw: Option<&str>,
+    index: u32,
+    tool_call_id_by_index: &mut HashMap<u32, String>,
+) -> String {
+    if let Some(raw) = raw.map(str::trim).filter(|value| !value.is_empty()) {
+        tool_call_id_by_index.insert(index, raw.to_string());
+        return raw.to_string();
+    }
+    if let Some(existing) = tool_call_id_by_index.get(&index) {
+        return existing.clone();
+    }
+    let generated = format!("tool_call_{index}");
+    tool_call_id_by_index.insert(index, generated.clone());
+    generated
 }
 
 /// Resolve content index for a text/refusal content part event.
@@ -115,6 +154,7 @@ pub fn create_anthropic_sse_stream_from_responses<E: std::error::Error + Send + 
         let mut fallback_open_index: Option<u32> = None;
         let mut current_text_index: Option<u32> = None;
         let mut tool_index_by_item_id: HashMap<String, u32> = HashMap::new();
+        let mut tool_call_id_by_index: HashMap<u32, String> = HashMap::new();
         let mut tool_name_by_index: HashMap<u32, String> = HashMap::new();
         let mut tool_args_by_index: HashMap<u32, String> = HashMap::new();
         let mut tool_args_emitted_by_index: HashSet<u32> = HashSet::new();
@@ -397,7 +437,6 @@ pub fn create_anthropic_sse_stream_from_responses<E: std::error::Error + Send + 
                                             has_sent_message_start = true;
                                         }
 
-                                        let call_id = item.get("call_id").and_then(|i| i.as_str()).unwrap_or("");
                                         let name = item.get("name").and_then(|n| n.as_str()).unwrap_or("");
                                         let index = if let Some(k) = tool_item_key_from_added(&data, item) {
                                             if let Some(existing) = index_by_key.get(&k).copied() {
@@ -413,10 +452,15 @@ pub fn create_anthropic_sse_stream_from_responses<E: std::error::Error + Send + 
                                             next_content_index += 1;
                                             assigned
                                         };
-                                        if let Some(item_id) = item
-                                            .get("id")
-                                            .and_then(|v| v.as_str())
-                                            .or_else(|| data.get("item_id").and_then(|v| v.as_str()))
+                                        let call_id = resolve_tool_call_id(
+                                            non_empty_str(item.get("call_id"))
+                                                .or_else(|| non_empty_str(item.get("id")))
+                                                .or_else(|| non_empty_str(data.get("item_id"))),
+                                            index,
+                                            &mut tool_call_id_by_index,
+                                        );
+                                        if let Some(item_id) = non_empty_str(item.get("id"))
+                                            .or_else(|| non_empty_str(data.get("item_id")))
                                         {
                                             tool_index_by_item_id.insert(item_id.to_string(), index);
                                         }
@@ -453,7 +497,7 @@ pub fn create_anthropic_sse_stream_from_responses<E: std::error::Error + Send + 
                             // ================================================
                             "response.function_call_arguments.delta" => {
                                 if let Some(delta) = data.get("delta").and_then(|d| d.as_str()) {
-                                    let item_id = data.get("item_id").and_then(|v| v.as_str());
+                                    let item_id = non_empty_str(data.get("item_id"));
                                     let index = if let Some(id) = item_id {
                                         tool_index_by_item_id.get(id).copied()
                                     } else {
@@ -471,16 +515,17 @@ pub fn create_anthropic_sse_stream_from_responses<E: std::error::Error + Send + 
                                     });
 
                                     if !open_indices.contains(&index) {
+                                        let call_id = resolve_tool_call_id(
+                                            non_empty_str(data.get("call_id")).or(item_id),
+                                            index,
+                                            &mut tool_call_id_by_index,
+                                        );
                                         let start_event = json!({
                                             "type": "content_block_start",
                                             "index": index,
                                             "content_block": {
                                                 "type": "tool_use",
-                                                "id": data
-                                                    .get("call_id")
-                                                    .and_then(|v| v.as_str())
-                                                    .or(item_id)
-                                                    .unwrap_or(""),
+                                                "id": call_id,
                                                 "name": data
                                                     .get("name")
                                                     .and_then(|v| v.as_str())
@@ -522,7 +567,7 @@ pub fn create_anthropic_sse_stream_from_responses<E: std::error::Error + Send + 
                             // response.function_call_arguments.done → content_block_stop
                             // ================================================
                             "response.function_call_arguments.done" => {
-                                let item_id = data.get("item_id").and_then(|v| v.as_str());
+                                let item_id = non_empty_str(data.get("item_id"));
                                 let index = if let Some(id) = item_id {
                                     tool_index_by_item_id.get(id).copied()
                                 } else {
@@ -581,6 +626,7 @@ pub fn create_anthropic_sse_stream_from_responses<E: std::error::Error + Send + 
                                         tool_index_by_item_id.remove(item_id);
                                     }
                                     tool_name_by_index.remove(&index);
+                                    tool_call_id_by_index.remove(&index);
                                     tool_args_by_index.remove(&index);
                                     tool_args_emitted_by_index.remove(&index);
                                     closed_tool_indices.insert(index);
@@ -817,14 +863,18 @@ pub fn create_anthropic_sse_stream_from_responses<E: std::error::Error + Send + 
                                     continue;
                                 }
 
-                                let call_id = item
-                                    .get("call_id")
-                                    .or_else(|| item.get("id"))
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("");
+                                let call_id = resolve_tool_call_id(
+                                    non_empty_str(item.get("call_id"))
+                                        .or_else(|| non_empty_str(item.get("id")))
+                                        .or_else(|| non_empty_str(data.get("item_id"))),
+                                    index,
+                                    &mut tool_call_id_by_index,
+                                );
                                 let name = item.get("name").and_then(|n| n.as_str()).unwrap_or("");
 
-                                if let Some(item_id) = item.get("id").and_then(|v| v.as_str()) {
+                                if let Some(item_id) = non_empty_str(item.get("id"))
+                                    .or_else(|| non_empty_str(data.get("item_id")))
+                                {
                                     tool_index_by_item_id.insert(item_id.to_string(), index);
                                 }
                                 if !name.is_empty() {
@@ -886,10 +936,13 @@ pub fn create_anthropic_sse_stream_from_responses<E: std::error::Error + Send + 
                                     yield Ok(Bytes::from(sse));
                                 }
 
-                                if let Some(item_id) = item.get("id").and_then(|v| v.as_str()) {
+                                if let Some(item_id) = non_empty_str(item.get("id"))
+                                    .or_else(|| non_empty_str(data.get("item_id")))
+                                {
                                     tool_index_by_item_id.remove(item_id);
                                 }
                                 tool_name_by_index.remove(&index);
+                                tool_call_id_by_index.remove(&index);
                                 tool_args_by_index.remove(&index);
                                 tool_args_emitted_by_index.remove(&index);
                                 closed_tool_indices.insert(index);
@@ -959,6 +1012,33 @@ mod tests {
         let obj = response_object_from_event(&data);
         assert_eq!(obj["id"], "resp_1");
         assert_eq!(obj["model"], "gpt-4o");
+    }
+
+    #[tokio::test]
+    async fn streaming_conversion_synthesizes_empty_tool_call_id() {
+        let input = concat!(
+            "event: response.created\n",
+            "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_empty_tool\",\"model\":\"gpt-4o\"}}\n\n",
+            "event: response.output_item.added\n",
+            "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"\",\"type\":\"function_call\",\"call_id\":\"\",\"name\":\"Bash\"}}\n\n",
+            "event: response.function_call_arguments.delta\n",
+            "data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"delta\":\"{\\\"command\\\":\\\"pwd\\\"}\"}\n\n",
+            "event: response.function_call_arguments.done\n",
+            "data: {\"type\":\"response.function_call_arguments.done\",\"output_index\":0}\n\n",
+            "event: response.completed\n",
+            "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":12,\"output_tokens\":3}}}\n\n"
+        );
+
+        let upstream = stream::iter(vec![Ok::<_, std::io::Error>(Bytes::from(
+            input.as_bytes().to_vec(),
+        ))]);
+        let converted = create_anthropic_sse_stream_from_responses(upstream);
+        let output: Vec<Bytes> = converted.map(|b| b.unwrap()).collect().await;
+        let text = String::from_utf8(output.concat().to_vec()).unwrap();
+
+        assert!(text.contains("\"type\":\"tool_use\""));
+        assert!(text.contains("\"id\":\"tool_call_0\""));
+        assert!(!text.contains("\"id\":\"\""));
     }
 
     #[tokio::test]

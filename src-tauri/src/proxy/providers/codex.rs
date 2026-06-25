@@ -74,14 +74,25 @@ pub fn codex_provider_uses_chat_completions(provider: &Provider) -> bool {
 }
 
 pub fn should_convert_codex_responses_to_chat(provider: &Provider, endpoint: &str) -> bool {
-    let path = endpoint
-        .split_once('?')
-        .map_or(endpoint, |(path, _query)| path);
+    let path = codex_endpoint_path(endpoint);
 
     matches!(
         path,
         "/responses" | "/v1/responses" | "/responses/compact" | "/v1/responses/compact"
     ) && codex_provider_uses_chat_completions(provider)
+}
+
+pub fn is_codex_responses_endpoint(endpoint: &str) -> bool {
+    matches!(
+        codex_endpoint_path(endpoint),
+        "/responses" | "/v1/responses" | "/responses/compact" | "/v1/responses/compact"
+    )
+}
+
+fn codex_endpoint_path(endpoint: &str) -> &str {
+    endpoint
+        .split_once('?')
+        .map_or(endpoint, |(path, _query)| path)
 }
 
 /// Extract the real upstream model configured for a Codex provider.

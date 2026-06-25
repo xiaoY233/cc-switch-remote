@@ -1539,6 +1539,20 @@ impl RequestForwarder {
             .filter(|m| !m.is_empty())
             .map(str::to_string);
 
+        if matches!(app_type, AppType::Codex)
+            && super::providers::is_codex_responses_endpoint(endpoint)
+        {
+            let normalized =
+                super::providers::codex_chat_history::normalize_responses_request_tool_call_ids(
+                    &mut mapped_body,
+                );
+            if normalized > 0 {
+                log::debug!(
+                    "[Codex] Normalized {normalized} empty Responses tool call id(s) before forwarding"
+                );
+            }
+        }
+
         // 转换请求体（如果需要）
         let mut request_body = if codex_responses_to_chat {
             let mut mapped_body = mapped_body;
