@@ -94,8 +94,9 @@ const UnifiedSkillsPanel = React.forwardRef<
   const toggleAppMutation = useToggleSkillApp(target);
   const uninstallMutation = useUninstallSkill(target);
   const restoreBackupMutation = useRestoreSkillBackup(target);
+  // enabled: true: scan once when the panel mounts; target stays scoped.
   const { data: unmanagedSkills, refetch: scanUnmanaged } =
-    useScanUnmanagedSkills(target);
+    useScanUnmanagedSkills(target, { enabled: true });
   const importMutation = useImportSkillsFromApps(target);
   const installFromZipMutation = useInstallSkillsFromZip();
   const {

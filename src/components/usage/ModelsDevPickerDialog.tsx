@@ -27,6 +27,7 @@ import type { ManagementTarget } from "@/lib/api/remote";
 import { isTextEditableTarget } from "@/utils/domUtils";
 
 const MODELS_DEV_API_URL = "https://models.dev/api.json";
+// 全量约 5000 条：默认只展示最新发布的一批，搜索时才做全量匹配
 const DEFAULT_VISIBLE_ROWS = 50;
 const MAX_VISIBLE_ROWS = 200;
 
@@ -53,12 +54,15 @@ interface ModelsDevProvider {
 type ModelsDevResponse = Record<string, ModelsDevProvider>;
 
 interface ModelsDevEntry {
+  /** providerId/modelId，同一模型可能出现在多个供应商下 */
   key: string;
   providerId: string;
   providerName: string;
   modelId: string;
+  /** 实际入库的 ID，与后端 clean_model_id_for_pricing 的归一化规则一致 */
   normalizedId: string;
   modelName: string;
+  /** YYYY-MM-DD 或 YYYY-MM，缺失时为空串 */
   releaseDate: string;
   input: number;
   output: number;
@@ -66,6 +70,11 @@ interface ModelsDevEntry {
   cacheWrite: number;
 }
 
+/**
+ * 与后端 clean_model_id_for_pricing（usage_stats.rs）保持一致：
+ * 取最后一个 '/' 之后的段、去掉 ':' 后缀、'@' 换成 '-'、转小写、去掉 [1m] 标记。
+ * 成本归因查询用的就是这种归一化形式，原样入库的 ID 永远匹配不上。
+ */
 export function normalizeModelIdForPricing(modelId: string): string {
   const afterSlash = modelId.slice(modelId.lastIndexOf("/") + 1);
   const beforeColon = afterSlash.split(":")[0] ?? "";
@@ -76,8 +85,10 @@ export function normalizeModelIdForPricing(modelId: string): string {
   return normalized;
 }
 
+/** 转成后端可解析的非负十进制字符串（不能用 String()，小数可能变成科学计数法） */
 export function formatPrice(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return "0";
+  // toFixed 对 >=1e21 会退化成科学计数法；这种量级的"价格"只可能是脏数据，按 0 处理
   if (value >= 1e12) return "0";
   const trimmed = value.toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
   return trimmed || "0";
@@ -112,7 +123,7 @@ export function flattenModels(data: ModelsDevResponse): ModelsDevEntry[] {
       });
     }
   }
-
+  // 最新发布的排在前面
   entries.sort(
     (a, b) =>
       b.releaseDate.localeCompare(a.releaseDate) ||
@@ -124,6 +135,7 @@ export function flattenModels(data: ModelsDevResponse): ModelsDevEntry[] {
 interface ModelsDevPickerDialogProps {
   open: boolean;
   onClose: () => void;
+  /** 导入成功后调用（此时定价列表已刷新） */
   onImported: () => void;
   target?: ManagementTarget;
 }
@@ -141,6 +153,7 @@ export function ModelsDevPickerDialog({
   const [providerFilter, setProviderFilter] = useState("all");
   const [selected, setSelected] = useState<ModelsDevEntry | null>(null);
 
+  // 每次打开时重置选择与过滤条件
   useEffect(() => {
     if (open) {
       setSearch("");
@@ -192,12 +205,15 @@ export function ModelsDevPickerDialog({
     );
   }, [entries, search, providerFilter]);
 
+  // 默认只展示最新发布的一批，搜索/筛选时展示全量匹配（设上限防卡顿）
   const visible = useMemo(
     () =>
       filtered.slice(0, isFiltering ? MAX_VISIBLE_ROWS : DEFAULT_VISIBLE_ROWS),
     [filtered, isFiltering],
   );
 
+  // 单选：点击未选中的行替换选择，点击已选中的行取消选择。
+  // 限制单选是为了避免批量导入时每条都触发一次全量零成本回填扫描（见 update_model_pricing）。
   const toggleEntry = (entry: ModelsDevEntry) => {
     setSelected((prev) => (prev?.key === entry.key ? null : entry));
   };
@@ -252,6 +268,7 @@ export function ModelsDevPickerDialog({
         zIndex="top"
         className="max-w-3xl h-[80vh]"
         onEscapeKeyDown={(e) => {
+          // 在搜索框里按 ESC 不应关闭弹窗丢掉已选模型（与 FullScreenPanel 的约定一致）
           if (isTextEditableTarget(e.target)) {
             e.preventDefault();
           }

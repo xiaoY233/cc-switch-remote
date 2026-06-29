@@ -210,15 +210,23 @@ export function useToggleSkillApp(target: ManagementTarget = LOCAL_TARGET) {
 
 /**
  * 扫描未管理的 Skills
+ *
+ * - 传 { enabled: true }（Skill 面板挂载时）会在进入页面时自动静默扫描一次，
+ *   30s 内复用结果，避免来回切页时重复磁盘 IO。
+ * - 默认 enabled: false：仅订阅共享缓存（如顶栏「导入」按钮的绿点提示），
+ *   不主动触发扫描。两者共用同一 queryKey，面板扫描完成后绿点会自动亮起。
  */
 export function useScanUnmanagedSkills(
   target: ManagementTarget = LOCAL_TARGET,
+  options?: { enabled?: boolean },
 ) {
   const targetKey = getTargetKey(target);
   return useQuery({
     queryKey: ["skills", "unmanaged", targetKey],
     queryFn: () => skillsApi.scanUnmanaged(target),
-    enabled: false, // 手动触发
+    enabled: options?.enabled ?? false,
+    staleTime: 30 * 1000,
+    placeholderData: keepPreviousData,
   });
 }
 

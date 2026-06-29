@@ -2698,6 +2698,7 @@ mod tests {
             )?;
         }
 
+        // 定价缺失时不应回填
         assert_eq!(db.backfill_missing_usage_costs()?, 0);
 
         {
@@ -2709,6 +2710,7 @@ mod tests {
             )?;
         }
 
+        // 按归一化 ID 精准回填，应命中以原始别名落库的行
         assert_eq!(
             db.backfill_missing_usage_costs_for_model("kimi-k2-novel")?,
             1

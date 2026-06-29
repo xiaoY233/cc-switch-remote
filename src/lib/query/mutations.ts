@@ -15,6 +15,7 @@ import { extractErrorMessage } from "@/utils/errorUtils";
 import { generateUUID } from "@/utils/uuid";
 import { openclawKeys } from "@/hooks/useOpenClaw";
 import { invalidateHermesProviderCaches } from "@/hooks/useHermes";
+import { usageKeys } from "@/lib/query/usage";
 
 const targetKey = (target: ManagementTarget) =>
   target.type === "remote" ? `remote:${target.profile.id}` : "local";
@@ -170,10 +171,18 @@ export const useUpdateProviderMutation = (
       await providersApi.update(provider, appId, originalId, target);
       return provider;
     },
-    onSuccess: async () => {
+    onSuccess: async (provider, variables) => {
       await queryClient.invalidateQueries({
         queryKey: providerQueryKey(appId, target),
       });
+      await queryClient.invalidateQueries({
+        queryKey: usageKeys.script(provider.id, appId),
+      });
+      if (variables.originalId && variables.originalId !== provider.id) {
+        await queryClient.invalidateQueries({
+          queryKey: usageKeys.script(variables.originalId, appId),
+        });
+      }
       if (appId === "openclaw") {
         await queryClient.invalidateQueries({
           queryKey: [...openclawKeys.health, targetKey(target)],

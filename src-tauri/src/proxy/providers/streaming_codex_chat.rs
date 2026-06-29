@@ -698,6 +698,8 @@ impl ChatToResponsesState {
                 continue;
             }
 
+            // Skip tool calls with missing names (defensive: some models generate
+            // tool call deltas without providing a valid function name)
             let has_bad_name = self
                 .tools
                 .get(&key)

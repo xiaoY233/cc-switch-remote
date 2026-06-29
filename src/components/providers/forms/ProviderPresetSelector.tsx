@@ -88,6 +88,9 @@ export function sortPresetEntries(
   t: PresetTranslator,
 ): PresetEntry[] {
   if (sortMode === PresetSortMode.Original) {
+    // 置顶优先级：官方分类 > 尊享合作伙伴（Kimi）> 其余原顺序。
+    // 用分区拼接而非排序，确保每组内部各自的相对顺序都不变；
+    // 排他条件保证「既是官方又是 prime」的预设只归入官方组、不被重复。
     const official = entries.filter(
       (entry) => entry.preset.category === "official",
     );
@@ -170,6 +173,11 @@ export function ProviderPresetSelector({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [searchOpen]);
 
+  // 键盘快捷键: Ctrl/Cmd+F 打开搜索并聚焦输入框。
+  // 使用捕获阶段并阻止冒泡，避免背后 ProviderList 的同名快捷键被意外触发。
+  // 首次打开靠 Input 的 autoFocus 聚焦；若搜索已打开（例如点击 preset 后焦点
+  // 停在按钮上），setSearchOpen(true) 同值不会重渲染、autoFocus 不重触发，
+  // 这里用 rAF 命令式地把焦点移回搜索框（不 select，避免吞掉随后输入的首字符）。
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {

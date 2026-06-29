@@ -143,6 +143,12 @@ function renderRemoteModelFetchField(appId: AppId, providerId: string) {
       speedTestEndpoints: [],
       customUserAgent: "",
       onCustomUserAgentChange: vi.fn(),
+      takeoverEnabled: true,
+      onTakeoverEnabledChange: vi.fn(),
+      localProxyHeadersOverride: "",
+      onLocalProxyHeadersOverrideChange: vi.fn(),
+      localProxyBodyOverride: "",
+      onLocalProxyBodyOverrideChange: vi.fn(),
     };
     renderField(<CodexFormFields {...props} />);
     return;

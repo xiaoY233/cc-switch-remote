@@ -29,6 +29,7 @@ type RequestLogsKey = {
   preset: UsageRangeSelection["preset"];
   customStartDate?: number;
   customEndDate?: number;
+  liveEndTime?: boolean;
   appType?: string;
   providerName?: string;
   model?: string;
@@ -51,6 +52,7 @@ export const usageKeys = {
     customEndDate: number | undefined,
     filters?: UsageScopeFilters,
     target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+    liveEndTime?: boolean,
   ) =>
     [
       ...usageKeys.all(target),
@@ -58,6 +60,7 @@ export const usageKeys = {
       preset,
       customStartDate ?? 0,
       customEndDate ?? 0,
+      liveEndTime ?? false,
       filters?.appType ?? null,
       filters?.providerName ?? null,
       filters?.model ?? null,
@@ -66,8 +69,9 @@ export const usageKeys = {
     preset: UsageRangeSelection["preset"],
     customStartDate: number | undefined,
     customEndDate: number | undefined,
-    filters?: UsageScopeFilters,
+    filters?: Pick<UsageScopeFilters, "providerName" | "model">,
     target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+    liveEndTime?: boolean,
   ) =>
     [
       ...usageKeys.all(target),
@@ -75,6 +79,7 @@ export const usageKeys = {
       preset,
       customStartDate ?? 0,
       customEndDate ?? 0,
+      liveEndTime ?? false,
       filters?.providerName ?? null,
       filters?.model ?? null,
     ] as const,
@@ -84,6 +89,7 @@ export const usageKeys = {
     customEndDate: number | undefined,
     filters?: UsageScopeFilters,
     target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+    liveEndTime?: boolean,
   ) =>
     [
       ...usageKeys.all(target),
@@ -91,6 +97,7 @@ export const usageKeys = {
       preset,
       customStartDate ?? 0,
       customEndDate ?? 0,
+      liveEndTime ?? false,
       filters?.appType ?? null,
       filters?.providerName ?? null,
       filters?.model ?? null,
@@ -101,6 +108,7 @@ export const usageKeys = {
     customEndDate: number | undefined,
     filters?: UsageScopeFilters,
     target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+    liveEndTime?: boolean,
   ) =>
     [
       ...usageKeys.all(target),
@@ -108,6 +116,7 @@ export const usageKeys = {
       preset,
       customStartDate ?? 0,
       customEndDate ?? 0,
+      liveEndTime ?? false,
       filters?.appType ?? null,
       filters?.providerName ?? null,
       filters?.model ?? null,
@@ -118,6 +127,7 @@ export const usageKeys = {
     customEndDate: number | undefined,
     filters?: UsageScopeFilters,
     target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+    liveEndTime?: boolean,
   ) =>
     [
       ...usageKeys.all(target),
@@ -125,6 +135,7 @@ export const usageKeys = {
       preset,
       customStartDate ?? 0,
       customEndDate ?? 0,
+      liveEndTime ?? false,
       filters?.appType ?? null,
       filters?.providerName ?? null,
       filters?.model ?? null,
@@ -141,6 +152,7 @@ export const usageKeys = {
       key.preset,
       key.customStartDate ?? 0,
       key.customEndDate ?? 0,
+      key.liveEndTime ?? false,
       key.appType ?? "",
       key.providerName ?? "",
       key.model ?? "",
@@ -184,6 +196,7 @@ export function useUsageSummary(
       range.customEndDate,
       effective,
       target,
+      range.liveEndTime,
     ),
     queryFn: () => {
       const { startDate, endDate } = resolveUsageRange(range);
@@ -214,6 +227,7 @@ export function useUsageSummaryByApp(
       range.customEndDate,
       filters,
       target,
+      range.liveEndTime,
     ),
     queryFn: () => {
       const { startDate, endDate } = resolveUsageRange(range);
@@ -244,6 +258,7 @@ export function useUsageTrends(
       range.customEndDate,
       effective,
       target,
+      range.liveEndTime,
     ),
     queryFn: () => {
       const { startDate, endDate } = resolveUsageRange(range);
@@ -275,6 +290,7 @@ export function useProviderStats(
       range.customEndDate,
       effective,
       target,
+      range.liveEndTime,
     ),
     queryFn: () => {
       const { startDate, endDate } = resolveUsageRange(range);
@@ -306,6 +322,7 @@ export function useModelStats(
       range.customEndDate,
       effective,
       target,
+      range.liveEndTime,
     ),
     queryFn: () => {
       const { startDate, endDate } = resolveUsageRange(range);
@@ -335,6 +352,7 @@ export function useRequestLogs({
     preset: range.preset,
     customStartDate: range.customStartDate,
     customEndDate: range.customEndDate,
+    liveEndTime: range.liveEndTime,
     appType: filters.appType,
     providerName: filters.providerName,
     model: filters.model,

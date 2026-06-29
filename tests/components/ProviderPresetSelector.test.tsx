@@ -207,6 +207,7 @@ describe("ProviderPresetSelector pure helpers", () => {
 
     const original = sortPresetEntries(presetEntries, originalMode, t);
     expect(original).not.toBe(presetEntries);
+    // original 模式置顶官方分类（alpha），其余保持传入顺序。
     expect(getIds(original)).toEqual(["alpha", "gamma", "beta", "delta"]);
 
     expect(getIds(sortPresetEntries(presetEntries, nameAscMode, t))).toEqual([
@@ -229,6 +230,11 @@ describe("ProviderPresetSelector pure helpers", () => {
   });
 
   it("original 模式按「官方 → 尊享伙伴 → 其余」三段排序，各组内部保序且双重身份不重复", () => {
+    // 故意打乱传入顺序，验证：
+    // - official 组置顶（officialOnly、officialPrime 按出现顺序）；
+    // - 非官方且 primePartner 的预设居中（primeOnly）；
+    // - 其余保持传入顺序（restFirst、restLast）；
+    // - 既是 official 又是 primePartner 的预设只归入官方组、不在 prime 组重复。
     const mixed: TestPresetEntry[] = [
       {
         id: "restFirst",
@@ -486,12 +492,14 @@ describe("ProviderPresetSelector", () => {
     const user = userEvent.setup();
     renderSelector();
 
+    // 初始没有搜索输入框
     expect(
       screen.queryByRole("textbox", {
         name: /providerPreset\.(searchInput|searchPlaceholder)|搜索预设|search/i,
       }),
     ).not.toBeInTheDocument();
 
+    // 按 Ctrl+F 展开输入框
     await user.keyboard("{Control>}f{/Control}");
     expect(getSearchInput()).toBeInTheDocument();
   });
@@ -507,6 +515,7 @@ describe("ProviderPresetSelector", () => {
     await user.click(screen.getByRole("button", { name: "Beta Gateway" }));
 
     expect(onPresetChange).toHaveBeenCalledWith("beta");
+    // 搜索框仍展开、关键词保留
     expect(getSearchInput()).toBeInTheDocument();
     expect(getSearchInput()).toHaveValue("gateway");
   });
@@ -518,9 +527,12 @@ describe("ProviderPresetSelector", () => {
     await user.click(getSearchButton());
     await user.type(getSearchInput(), "gateway");
 
+    // 选中 preset 后焦点离开搜索框（搜索框仍展开、关键词保留）
     await user.click(screen.getByRole("button", { name: "Beta Gateway" }));
     expect(getSearchInput()).not.toHaveFocus();
 
+    // 再次 Ctrl+F：setSearchOpen(true) 同值不重渲染、autoFocus 不重触发，
+    // 需靠快捷键命中时的命令式聚焦把焦点移回搜索框，且不清空关键词
     await user.keyboard("{Control>}f{/Control}");
     await waitFor(() => expect(getSearchInput()).toHaveFocus());
     expect(getSearchInput()).toHaveValue("gateway");
@@ -548,6 +560,7 @@ describe("ProviderPresetSelector", () => {
     await user.type(getSearchInput(), "gateway");
     expect(getSearchInput()).toBeInTheDocument();
 
+    // 点击组件外的元素应收起搜索框
     await user.click(screen.getByTestId("outside"));
 
     expect(
@@ -555,6 +568,7 @@ describe("ProviderPresetSelector", () => {
         name: /providerPreset\.(searchInput|searchPlaceholder)|搜索预设|search/i,
       }),
     ).not.toBeInTheDocument();
+    // 收起后清空 query,所有预设恢复显示
     expect(
       screen.getByRole("button", { name: "preset.gamma" }),
     ).toBeInTheDocument();

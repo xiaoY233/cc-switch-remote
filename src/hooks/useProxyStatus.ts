@@ -27,6 +27,14 @@ export function useProxyStatus(
   const isLocalTarget = target.type === "local";
   const proxyStatusKey = ["proxyStatus", targetKey];
   const proxyTakeoverStatusKey = ["proxyTakeoverStatus", targetKey];
+  const invalidateRemoteAppRoutingConfigs = () => {
+    if (isLocalTarget) return;
+    for (const appType of ["claude", "codex", "gemini"]) {
+      queryClient.invalidateQueries({
+        queryKey: ["appProxyConfig", targetKey, appType],
+      });
+    }
+  };
 
   // 查询状态（自动轮询）
   const {
@@ -91,6 +99,7 @@ export function useProxyStatus(
         { closeButton: true },
       );
       queryClient.invalidateQueries({ queryKey: proxyStatusKey });
+      invalidateRemoteAppRoutingConfigs();
     },
     onError: (error: Error) => {
       const detail =
@@ -120,6 +129,7 @@ export function useProxyStatus(
         { closeButton: true },
       );
       queryClient.invalidateQueries({ queryKey: proxyStatusKey });
+      invalidateRemoteAppRoutingConfigs();
       if (isLocalTarget) {
         queryClient.invalidateQueries({ queryKey: proxyTakeoverStatusKey });
         // 彻底删除所有供应商健康状态缓存（后端已清空数据库记录）
