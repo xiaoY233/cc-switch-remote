@@ -5668,12 +5668,6 @@ command = "shared-command"
         db.update_proxy_config(proxy_config)
             .await
             .expect("set test proxy config");
-        state
-            .proxy_service
-            .start()
-            .await
-            .expect("start proxy server");
-
         let config_a = r#"model_provider = "provider-a"
 model = "model-a"
 
@@ -5747,7 +5741,6 @@ requires_openai_auth = true
 
         crate::services::provider::ProviderService::switch(&state, AppType::Codex, "b")
             .expect("provider switch to provider b");
-        state.proxy_service.stop().await.expect("stop proxy server");
 
         let catalog_path = crate::codex_config::get_codex_model_catalog_path();
         assert!(
@@ -5808,12 +5801,6 @@ requires_openai_auth = true
         db.update_proxy_config(proxy_config)
             .await
             .expect("set test proxy config");
-        state
-            .proxy_service
-            .start()
-            .await
-            .expect("start proxy server");
-
         let config_a = r#"model_provider = "provider-a"
 model = "model-a"
 
@@ -5889,7 +5876,6 @@ requires_openai_auth = true
 
         let err = crate::services::provider::ProviderService::switch(&state, AppType::Codex, "b")
             .expect_err("provider switch should fail when catalog cannot be written");
-        state.proxy_service.stop().await.expect("stop proxy server");
 
         let message = err.to_string();
         assert!(

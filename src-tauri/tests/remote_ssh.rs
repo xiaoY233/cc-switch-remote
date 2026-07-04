@@ -279,10 +279,14 @@ fn helper_install_args_install_cli_and_link_configured_helper_path() {
     assert!(remote_command.contains("Remote server failed to query GitHub helper release"));
     assert!(remote_command.contains("Remote server failed to download the compatible helper asset"));
     assert!(remote_command.contains("Remote-side helper install failed before verification"));
-    assert!(remote_command.contains("grep -q '\"openclaw\"'"));
-    assert!(remote_command.contains("grep -q '\"hermes-memory\"'"));
-    assert!(remote_command.contains("grep -q '\"settings\"'"));
-    assert!(remote_command.contains("grep -q '\"plugin\"'"));
+    for capability in REMOTE_HELPER_REQUIRED_CAPABILITIES {
+        assert!(remote_command.contains(&format!("grep -q '\"{capability}\"'")));
+    }
+    for optional_capability in ["openclaw", "hermes-memory", "settings", "plugin"] {
+        if !REMOTE_HELPER_REQUIRED_CAPABILITIES.contains(&optional_capability) {
+            assert!(!remote_command.contains(&format!("grep -q '\"{optional_capability}\"'")));
+        }
+    }
     assert!(remote_command.contains("cc-switch-remote helper is missing required capabilities"));
     assert!(remote_command.contains(&REMOTE_HELPER_REQUIRED_CAPABILITIES.join(", ")));
     assert!(remote_command.contains("cc-switch-remote-helper"));
