@@ -47,10 +47,23 @@ const remoteTarget: ManagementTarget = {
   },
 };
 
-const clickFetchModels = () => {
-  fireEvent.click(
+const clickFetchModels = async () => {
+  let button =
     screen.queryByTitle("providerForm.fetchModels") ??
-      screen.getByRole("button", { name: "providerForm.fetchModels" }),
+    screen.queryByRole("button", { name: "providerForm.fetchModels" });
+
+  if (!button) {
+    const advancedButton = screen.queryByRole("button", { name: "高级选项" });
+    if (advancedButton) {
+      fireEvent.click(advancedButton);
+      button = await screen.findByRole("button", {
+        name: "providerForm.fetchModels",
+      });
+    }
+  }
+
+  fireEvent.click(
+    button ?? screen.getByRole("button", { name: "providerForm.fetchModels" }),
   );
 };
 
@@ -85,7 +98,7 @@ describe("provider model fetch fields", () => {
     async (appId, providerId) => {
       renderRemoteModelFetchField(appId, providerId);
 
-      clickFetchModels();
+      await clickFetchModels();
 
       await waitFor(() =>
         expect(
@@ -143,8 +156,6 @@ function renderRemoteModelFetchField(appId: AppId, providerId: string) {
       speedTestEndpoints: [],
       customUserAgent: "",
       onCustomUserAgentChange: vi.fn(),
-      takeoverEnabled: true,
-      onTakeoverEnabledChange: vi.fn(),
       localProxyHeadersOverride: "",
       onLocalProxyHeadersOverrideChange: vi.fn(),
       localProxyBodyOverride: "",

@@ -347,7 +347,7 @@ export function HermesFormFields({
       <ApiKeySection
         value={apiKey}
         onChange={onApiKeyChange}
-        category={category}
+        category={category === "official" ? undefined : category}
         placeholder={
           apiKeyPlaceholder
             ? {
@@ -355,7 +355,7 @@ export function HermesFormFields({
                   defaultValue: "官方供应商无需 API Key",
                 }),
                 thirdParty: apiKeyPlaceholder,
-              }
+            }
             : undefined
         }
         shouldShowLink={shouldShowApiKeyLink}
