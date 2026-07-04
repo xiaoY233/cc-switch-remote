@@ -153,8 +153,18 @@ describe("remote API invoke mappings", () => {
       copilot_plan: "individual",
       quota_reset_date: "2026-01-01T00:00:00Z",
       quota_snapshots: {
-        chat: { entitlement: 0, remaining: 0, percent_remaining: 0, unlimited: true },
-        completions: { entitlement: 0, remaining: 0, percent_remaining: 0, unlimited: true },
+        chat: {
+          entitlement: 0,
+          remaining: 0,
+          percent_remaining: 0,
+          unlimited: true,
+        },
+        completions: {
+          entitlement: 0,
+          remaining: 0,
+          percent_remaining: 0,
+          unlimited: true,
+        },
         premium_interactions: {
           entitlement: 300,
           remaining: 200,

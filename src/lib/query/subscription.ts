@@ -62,7 +62,11 @@ export function useCodexOauthQuota(
   meta: ProviderMeta | undefined,
   options: UseCodexOauthQuotaOptions = {},
 ) {
-  const { enabled = true, autoQuery = false, target = { type: "local" } } = options;
+  const {
+    enabled = true,
+    autoQuery = false,
+    target = { type: "local" },
+  } = options;
   const accountId = resolveManagedAccountId(meta, PROVIDER_TYPES.CODEX_OAUTH);
   const targetKey =
     target.type === "remote" ? `remote:${target.profile.id}` : "local";

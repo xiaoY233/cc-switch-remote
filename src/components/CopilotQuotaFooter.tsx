@@ -50,7 +50,11 @@ const CopilotQuotaFooter: React.FC<CopilotQuotaFooterProps> = ({
     data: quota,
     isFetching: loading,
     refetch,
-  } = useCopilotQuota(accountId, { enabled: true, autoQuery: isCurrent, target });
+  } = useCopilotQuota(accountId, {
+    enabled: true,
+    autoQuery: isCurrent,
+    target,
+  });
 
   const [now, setNow] = React.useState(Date.now());
   React.useEffect(() => {
