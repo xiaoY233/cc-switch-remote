@@ -260,7 +260,10 @@ pub async fn install_update_and_restart(
             || {},
         )
         .await
-        .map_err(|e| format!("下载更新失败: {e}"))?;
+        .map_err(|e| {
+            log::error!("应用更新下载或签名校验失败: {e}");
+            format!("下载更新失败: {e}")
+        })?;
 
     log::info!("开始安装应用更新: {}", update.version);
 
@@ -286,9 +289,10 @@ pub async fn install_update_and_restart(
     #[cfg(not(target_os = "windows"))]
     {
         // macOS/Linux install() 会返回；先安装，避免安装失败时误停代理/撤回接管。
-        update
-            .install(bytes)
-            .map_err(|e| format!("安装更新失败: {e}"))?;
+        update.install(bytes).map_err(|e| {
+            log::error!("应用更新安装失败: {e}");
+            format!("安装更新失败: {e}")
+        })?;
 
         crate::save_window_state_before_exit(&app);
         crate::cleanup_before_exit(&app).await;

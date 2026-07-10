@@ -163,6 +163,9 @@ jobs:
             --tag "$TAG" \
             --pub-date "$PUB_DATE" \
             --output latest.json
+          node scripts/verify-tauri-updater-signatures.mjs \
+            --latest-json latest.json \
+            --tauri-config src-tauri/tauri.conf.json
           cat latest.json
 
       - name: Upload latest.json
