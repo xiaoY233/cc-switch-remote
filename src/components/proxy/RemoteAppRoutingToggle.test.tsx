@@ -51,10 +51,7 @@ describe("RemoteAppRoutingToggle", () => {
 
     render(<RemoteAppRoutingToggle activeApp="claude" target={remoteTarget} />);
 
-    expect(screen.getByRole("switch")).toHaveAttribute(
-      "aria-checked",
-      "false",
-    );
+    expect(screen.getByRole("switch")).toHaveAttribute("aria-checked", "false");
   });
 
   it("shows checked when app routing config is enabled and runtime is running", () => {
@@ -74,9 +71,6 @@ describe("RemoteAppRoutingToggle", () => {
 
     render(<RemoteAppRoutingToggle activeApp="claude" target={remoteTarget} />);
 
-    expect(screen.getByRole("switch")).toHaveAttribute(
-      "aria-checked",
-      "true",
-    );
+    expect(screen.getByRole("switch")).toHaveAttribute("aria-checked", "true");
   });
 });
