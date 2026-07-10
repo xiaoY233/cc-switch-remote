@@ -18,8 +18,14 @@ use indexmap::IndexMap;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+#[cfg(feature = "proxy-runtime")]
+use std::fs;
+#[cfg(feature = "proxy-runtime")]
+use std::process::{Command, Stdio};
 use std::str::FromStr;
 use std::sync::Arc;
+#[cfg(feature = "proxy-runtime")]
+use std::time::Duration;
 
 use crate::proxy::providers::codex_oauth_auth::{CodexOAuthError, CodexOAuthManager};
 use crate::proxy::providers::copilot_auth::{
@@ -630,6 +636,252 @@ fn routing_state() -> Result<&'static AppState, String> {
 }
 
 #[cfg(feature = "proxy-runtime")]
+const ROUTING_DAEMON_SERVICE_NAME: &str = "cc-switch-remote-routing.service";
+#[cfg(feature = "proxy-runtime")]
+const ROUTING_DAEMON_PID_FILE: &str = "routing-runtime.pid";
+#[cfg(feature = "proxy-runtime")]
+const ROUTING_DAEMON_LOG_FILE: &str = "routing-runtime.log";
+
+#[cfg(feature = "proxy-runtime")]
+fn routing_daemon_runtime_dir() -> std::path::PathBuf {
+    crate::config::get_app_config_dir().join("runtime")
+}
+
+#[cfg(feature = "proxy-runtime")]
+fn routing_daemon_pid_path() -> std::path::PathBuf {
+    routing_daemon_runtime_dir().join(ROUTING_DAEMON_PID_FILE)
+}
+
+#[cfg(feature = "proxy-runtime")]
+fn routing_daemon_log_path() -> std::path::PathBuf {
+    routing_daemon_runtime_dir().join(ROUTING_DAEMON_LOG_FILE)
+}
+
+#[cfg(feature = "proxy-runtime")]
+fn quote_systemd_exec_arg(value: &str) -> String {
+    format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+#[cfg(feature = "proxy-runtime")]
+fn routing_daemon_service_unit(helper_path: &str) -> String {
+    format!(
+        r#"[Unit]
+Description=CC Switch Remote Routing Runtime
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart={} --json routing-runtime daemon-run
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
+"#,
+        quote_systemd_exec_arg(helper_path)
+    )
+}
+
+#[cfg(feature = "proxy-runtime")]
+fn routing_status_probe_url(listen_address: &str, listen_port: u16) -> String {
+    let host = match listen_address {
+        "0.0.0.0" => "127.0.0.1".to_string(),
+        "::" => "[::1]".to_string(),
+        value if value.contains(':') && !value.starts_with('[') => format!("[{value}]"),
+        value => value.to_string(),
+    };
+    format!("http://{host}:{listen_port}/status")
+}
+
+#[cfg(feature = "proxy-runtime")]
+fn proxy_info_from_status(
+    status: &crate::proxy::types::ProxyStatus,
+) -> crate::proxy::types::ProxyServerInfo {
+    crate::proxy::types::ProxyServerInfo {
+        address: status.address.clone(),
+        port: status.port,
+        started_at: chrono::Utc::now().to_rfc3339(),
+    }
+}
+
+#[cfg(feature = "proxy-runtime")]
+async fn probe_routing_runtime_status(
+    state: &AppState,
+) -> Result<crate::proxy::types::ProxyStatus, String> {
+    let config = state
+        .db
+        .get_proxy_config()
+        .await
+        .map_err(|e| format!("获取代理配置失败: {e}"))?;
+
+    if config.listen_port == 0 {
+        return Ok(crate::proxy::types::ProxyStatus {
+            running: false,
+            address: config.listen_address,
+            port: config.listen_port,
+            ..Default::default()
+        });
+    }
+
+    let url = routing_status_probe_url(&config.listen_address, config.listen_port);
+    match reqwest::Client::builder()
+        .timeout(Duration::from_secs(2))
+        .build()
+        .map_err(|e| e.to_string())?
+        .get(url)
+        .send()
+        .await
+    {
+        Ok(response) if response.status().is_success() => response
+            .json::<crate::proxy::types::ProxyStatus>()
+            .await
+            .map_err(|e| format!("解析远程路由状态失败: {e}")),
+        _ => Ok(crate::proxy::types::ProxyStatus {
+            running: false,
+            address: config.listen_address,
+            port: config.listen_port,
+            ..Default::default()
+        }),
+    }
+}
+
+#[cfg(feature = "proxy-runtime")]
+async fn effective_routing_runtime_status(
+    state: &AppState,
+) -> Result<crate::proxy::types::ProxyStatus, String> {
+    let in_process = state.proxy_service.get_status().await?;
+    if in_process.running {
+        return Ok(in_process);
+    }
+    probe_routing_runtime_status(state).await
+}
+
+#[cfg(feature = "proxy-runtime")]
+fn systemd_user_service_path() -> std::path::PathBuf {
+    crate::config::get_home_dir()
+        .join(".config")
+        .join("systemd")
+        .join("user")
+        .join(ROUTING_DAEMON_SERVICE_NAME)
+}
+
+#[cfg(feature = "proxy-runtime")]
+fn run_systemctl_user(args: &[&str]) -> Result<(), String> {
+    let output = Command::new("systemctl")
+        .arg("--user")
+        .args(args)
+        .output()
+        .map_err(|e| format!("systemctl --user 执行失败: {e}"))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Err(if stderr.is_empty() { stdout } else { stderr })
+}
+
+#[cfg(feature = "proxy-runtime")]
+fn start_systemd_user_daemon() -> Result<(), String> {
+    let helper_path = std::env::current_exe()
+        .map_err(|e| format!("获取 Helper 路径失败: {e}"))?
+        .to_string_lossy()
+        .to_string();
+    let service_path = systemd_user_service_path();
+    let service_dir = service_path
+        .parent()
+        .ok_or_else(|| "无法解析 systemd user service 目录".to_string())?;
+    fs::create_dir_all(service_dir).map_err(|e| format!("创建 systemd user 目录失败: {e}"))?;
+    fs::write(&service_path, routing_daemon_service_unit(&helper_path))
+        .map_err(|e| format!("写入 systemd user service 失败: {e}"))?;
+
+    run_systemctl_user(&["daemon-reload"])?;
+    run_systemctl_user(&["enable", "--now", ROUTING_DAEMON_SERVICE_NAME])
+}
+
+#[cfg(feature = "proxy-runtime")]
+fn spawn_detached_routing_daemon() -> Result<(), String> {
+    fs::create_dir_all(routing_daemon_runtime_dir())
+        .map_err(|e| format!("创建远程路由运行目录失败: {e}"))?;
+    let helper_path = std::env::current_exe().map_err(|e| format!("获取 Helper 路径失败: {e}"))?;
+    let log_file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(routing_daemon_log_path())
+        .map_err(|e| format!("打开远程路由日志失败: {e}"))?;
+    let log_file_for_stderr = log_file
+        .try_clone()
+        .map_err(|e| format!("复制远程路由日志句柄失败: {e}"))?;
+
+    let mut command = Command::new("setsid");
+    command
+        .arg(&helper_path)
+        .args(["--json", "routing-runtime", "daemon-run"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(log_file))
+        .stderr(Stdio::from(log_file_for_stderr));
+
+    let child = match command.spawn() {
+        Ok(child) => child,
+        Err(_) => {
+            let log_file = fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(routing_daemon_log_path())
+                .map_err(|e| format!("打开远程路由日志失败: {e}"))?;
+            let log_file_for_stderr = log_file
+                .try_clone()
+                .map_err(|e| format!("复制远程路由日志句柄失败: {e}"))?;
+            Command::new(helper_path)
+                .args(["--json", "routing-runtime", "daemon-run"])
+                .stdin(Stdio::null())
+                .stdout(Stdio::from(log_file))
+                .stderr(Stdio::from(log_file_for_stderr))
+                .spawn()
+                .map_err(|e| format!("启动远程路由后台进程失败: {e}"))?
+        }
+    };
+
+    fs::write(routing_daemon_pid_path(), child.id().to_string())
+        .map_err(|e| format!("写入远程路由 PID 失败: {e}"))?;
+    Ok(())
+}
+
+#[cfg(feature = "proxy-runtime")]
+fn stop_pid_file_daemon() -> Result<bool, String> {
+    let pid_path = routing_daemon_pid_path();
+    let raw = match fs::read_to_string(&pid_path) {
+        Ok(value) => value,
+        Err(_) => return Ok(false),
+    };
+    let pid = raw
+        .trim()
+        .parse::<u32>()
+        .map_err(|e| format!("远程路由 PID 无效: {e}"))?;
+    let status = Command::new("kill")
+        .arg(pid.to_string())
+        .status()
+        .map_err(|e| format!("停止远程路由后台进程失败: {e}"))?;
+    let _ = fs::remove_file(pid_path);
+    Ok(status.success())
+}
+
+#[cfg(feature = "proxy-runtime")]
+async fn wait_for_routing_status(
+    state: &AppState,
+    running: bool,
+) -> Result<crate::proxy::types::ProxyStatus, String> {
+    let mut last = effective_routing_runtime_status(state).await?;
+    for _ in 0..20 {
+        if last.running == running {
+            return Ok(last);
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        last = effective_routing_runtime_status(state).await?;
+    }
+    Ok(last)
+}
+
+#[cfg(feature = "proxy-runtime")]
 async fn repair_enabled_routing_takeovers(state: &AppState) -> Result<(), String> {
     for app_type in ["claude", "codex", "gemini"] {
         let config = state
@@ -661,7 +913,7 @@ async fn disable_enabled_routing_takeovers(state: &AppState) -> Result<(), Strin
 #[cfg(feature = "proxy-runtime")]
 pub fn routing_runtime_status() -> Result<crate::proxy::types::ProxyStatus, String> {
     let state = routing_state()?;
-    routing_runtime()?.block_on(state.proxy_service.get_status())
+    routing_runtime()?.block_on(effective_routing_runtime_status(state))
 }
 
 #[cfg(not(feature = "proxy-runtime"))]
@@ -699,6 +951,108 @@ pub fn routing_runtime_stop() -> Result<bool, String> {
 #[cfg(not(feature = "proxy-runtime"))]
 pub fn routing_runtime_stop() -> Result<bool, String> {
     Err("This helper build does not include remote routing runtime support".to_string())
+}
+
+#[cfg(feature = "proxy-runtime")]
+pub fn routing_runtime_daemon_status() -> Result<crate::proxy::types::ProxyStatus, String> {
+    routing_runtime_status()
+}
+
+#[cfg(not(feature = "proxy-runtime"))]
+pub fn routing_runtime_daemon_status() -> Result<crate::proxy::types::ProxyStatus, String> {
+    Err("This helper build does not include remote routing daemon support".to_string())
+}
+
+#[cfg(feature = "proxy-runtime")]
+pub fn routing_runtime_daemon_start() -> Result<crate::proxy::types::ProxyServerInfo, String> {
+    let state = routing_state()?;
+    routing_runtime()?.block_on(async {
+        let current = effective_routing_runtime_status(state).await?;
+        if current.running {
+            repair_enabled_routing_takeovers(state).await?;
+            return Ok(proxy_info_from_status(&current));
+        }
+
+        let systemd_error = match start_systemd_user_daemon() {
+            Ok(()) => {
+                let status = wait_for_routing_status(state, true).await?;
+                if status.running {
+                    repair_enabled_routing_takeovers(state).await?;
+                    return Ok(proxy_info_from_status(&status));
+                }
+                let error = "systemd user service 启动后未就绪".to_string();
+                log::warn!("{error}，回退后台进程");
+                let _ = run_systemctl_user(&["disable", "--now", ROUTING_DAEMON_SERVICE_NAME]);
+                Some(error)
+            }
+            Err(error) => {
+                log::warn!("远程路由 systemd user 启动失败，回退后台进程: {error}");
+                Some(error)
+            }
+        };
+
+        spawn_detached_routing_daemon()?;
+        let status = wait_for_routing_status(state, true).await?;
+        if !status.running {
+            return Err(format!(
+                "远程路由 daemon 启动后未就绪，systemd 状态: {}",
+                systemd_error.unwrap_or_else(|| "未使用 systemd".to_string())
+            ));
+        }
+        repair_enabled_routing_takeovers(state).await?;
+        Ok(proxy_info_from_status(&status))
+    })
+}
+
+#[cfg(not(feature = "proxy-runtime"))]
+pub fn routing_runtime_daemon_start() -> Result<crate::proxy::types::ProxyServerInfo, String> {
+    Err("This helper build does not include remote routing daemon support".to_string())
+}
+
+#[cfg(feature = "proxy-runtime")]
+pub fn routing_runtime_daemon_stop() -> Result<bool, String> {
+    let state = routing_state()?;
+    routing_runtime()?.block_on(async {
+        disable_enabled_routing_takeovers(state).await?;
+        if state.proxy_service.is_running().await {
+            let _ = state.proxy_service.stop().await;
+        }
+        if let Err(error) = run_systemctl_user(&["disable", "--now", ROUTING_DAEMON_SERVICE_NAME]) {
+            log::warn!("停止远程路由 systemd user service 失败，尝试 PID 回退: {error}");
+        }
+        let _ = stop_pid_file_daemon();
+        let status = wait_for_routing_status(state, false).await?;
+        if status.running {
+            return Err("远程路由 daemon 仍在运行".to_string());
+        }
+        Ok(true)
+    })
+}
+
+#[cfg(not(feature = "proxy-runtime"))]
+pub fn routing_runtime_daemon_stop() -> Result<bool, String> {
+    Err("This helper build does not include remote routing daemon support".to_string())
+}
+
+#[cfg(feature = "proxy-runtime")]
+pub fn routing_runtime_daemon_run() -> Result<(), String> {
+    fs::create_dir_all(routing_daemon_runtime_dir())
+        .map_err(|e| format!("创建远程路由运行目录失败: {e}"))?;
+    fs::write(routing_daemon_pid_path(), std::process::id().to_string())
+        .map_err(|e| format!("写入远程路由 PID 失败: {e}"))?;
+    let state = routing_state()?;
+    routing_runtime()?.block_on(async {
+        let _info = state.proxy_service.start().await?;
+        repair_enabled_routing_takeovers(state).await?;
+        std::future::pending::<()>().await;
+        #[allow(unreachable_code)]
+        Ok(())
+    })
+}
+
+#[cfg(not(feature = "proxy-runtime"))]
+pub fn routing_runtime_daemon_run() -> Result<(), String> {
+    Err("This helper build does not include remote routing daemon support".to_string())
 }
 
 pub fn get_settings() -> crate::settings::AppSettings {
@@ -2399,4 +2753,35 @@ pub fn remove_skill_repo(owner: &str, name: &str) -> Result<bool, String> {
     db.delete_skill_repo(owner, name)
         .map_err(|e| e.to_string())?;
     Ok(true)
+}
+
+#[cfg(all(test, feature = "proxy-runtime"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn routing_daemon_service_unit_runs_current_helper_binary() {
+        let unit = routing_daemon_service_unit("/root/.local/bin/cc-switch-remote-helper");
+
+        assert!(unit.contains("ExecStart=\"/root/.local/bin/cc-switch-remote-helper\" --json routing-runtime daemon-run"));
+        assert!(unit.contains("Restart=on-failure"));
+        assert!(!unit.contains("npm"));
+        assert!(!unit.contains("cargo"));
+    }
+
+    #[test]
+    fn routing_status_probe_url_uses_connectable_loopback_host() {
+        assert_eq!(
+            routing_status_probe_url("0.0.0.0", 15721),
+            "http://127.0.0.1:15721/status"
+        );
+        assert_eq!(
+            routing_status_probe_url("::", 15721),
+            "http://[::1]:15721/status"
+        );
+        assert_eq!(
+            routing_status_probe_url("192.168.1.10", 15721),
+            "http://192.168.1.10:15721/status"
+        );
+    }
 }

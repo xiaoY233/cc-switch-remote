@@ -1,0 +1,82 @@
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { RemoteAppRoutingToggle } from "./RemoteAppRoutingToggle";
+import type { ManagementTarget } from "@/lib/api";
+
+const useProxyStatusMock = vi.fn();
+const useAppProxyConfigMock = vi.fn();
+const useUpdateAppProxyConfigMock = vi.fn();
+
+vi.mock("@/hooks/useProxyStatus", () => ({
+  useProxyStatus: (...args: unknown[]) => useProxyStatusMock(...args),
+}));
+
+vi.mock("@/lib/query/proxy", () => ({
+  useAppProxyConfig: (...args: unknown[]) => useAppProxyConfigMock(...args),
+  useUpdateAppProxyConfig: (...args: unknown[]) =>
+    useUpdateAppProxyConfigMock(...args),
+}));
+
+const remoteTarget: Extract<ManagementTarget, { type: "remote" }> = {
+  type: "remote",
+  profile: {
+    id: "remote-routing",
+    name: "Remote Routing",
+    host: "192.168.1.30",
+    port: 22,
+    username: "root",
+    authMethod: { type: "password" },
+    helperPath: "~/.local/bin/cc-switch-remote-helper",
+    createdAt: 1,
+    updatedAt: 1,
+  },
+  secret: { password: "secret" },
+};
+
+describe("RemoteAppRoutingToggle", () => {
+  it("does not show checked when app routing config is enabled but runtime is stopped", () => {
+    useProxyStatusMock.mockReturnValue({
+      isRunning: false,
+      startProxyServer: vi.fn(),
+      isStarting: false,
+    });
+    useAppProxyConfigMock.mockReturnValue({
+      data: { appType: "claude", enabled: true },
+      isLoading: false,
+    });
+    useUpdateAppProxyConfigMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: vi.fn(),
+    });
+
+    render(<RemoteAppRoutingToggle activeApp="claude" target={remoteTarget} />);
+
+    expect(screen.getByRole("switch")).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+  });
+
+  it("shows checked when app routing config is enabled and runtime is running", () => {
+    useProxyStatusMock.mockReturnValue({
+      isRunning: true,
+      startProxyServer: vi.fn(),
+      isStarting: false,
+    });
+    useAppProxyConfigMock.mockReturnValue({
+      data: { appType: "claude", enabled: true },
+      isLoading: false,
+    });
+    useUpdateAppProxyConfigMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: vi.fn(),
+    });
+
+    render(<RemoteAppRoutingToggle activeApp="claude" target={remoteTarget} />);
+
+    expect(screen.getByRole("switch")).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+  });
+});

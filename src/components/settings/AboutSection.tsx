@@ -373,7 +373,18 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
       }
     } catch (error) {
       console.error("[AboutSection] Check update failed", error);
-      toast.error(t("settings.checkUpdateFailed"));
+      toast.error(t("settings.checkUpdateFailed"), {
+        description: extractErrorMessage(error) || undefined,
+        closeButton: true,
+      });
+      try {
+        await settingsApi.checkUpdates();
+      } catch (fallbackError) {
+        console.error(
+          "[AboutSection] Failed to open fallback updater",
+          fallbackError,
+        );
+      }
     }
   }, [checkUpdate, hasUpdate, isPortable, resetDismiss, t]);
 

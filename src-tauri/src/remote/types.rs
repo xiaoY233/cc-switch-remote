@@ -82,6 +82,7 @@ pub enum RemoteCapability {
     UniversalProviders,
     RoutingConfig,
     RoutingRuntime,
+    RoutingDaemon,
     Openclaw,
     Mcp,
     Prompts,

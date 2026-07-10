@@ -28,6 +28,7 @@ export function RemoteAppRoutingToggle({
   const { data: config, isLoading } = useAppProxyConfig(activeApp, target);
   const updateConfig = useUpdateAppProxyConfig(target);
   const enabled = config?.enabled ?? false;
+  const effectivelyEnabled = enabled && isRunning;
   const label = appLabel(activeApp);
   const isPending = isLoading || updateConfig.isPending || isStarting;
 
@@ -77,14 +78,14 @@ export function RemoteAppRoutingToggle({
         <RadioTower
           className={cn(
             "h-4 w-4 transition-colors",
-            enabled
+            effectivelyEnabled
               ? "text-emerald-500 animate-pulse"
               : "text-muted-foreground",
           )}
         />
       )}
       <Switch
-        checked={enabled}
+        checked={effectivelyEnabled}
         onCheckedChange={handleToggle}
         disabled={isPending || !config}
       />

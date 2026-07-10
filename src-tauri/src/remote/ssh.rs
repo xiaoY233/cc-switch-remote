@@ -372,13 +372,42 @@ fn run_ssh_command_with_stdin(
         .map_err(|e| AppError::Message(format!("Remote helper returned invalid UTF-8: {e}")))
 }
 
-fn normalize_remote_stderr(profile: &RemoteHostProfile, stderr: &str) -> String {
+pub(crate) fn normalize_remote_stderr(profile: &RemoteHostProfile, stderr: &str) -> String {
     if stderr.contains("libgdk-3.so.0")
         || stderr.contains("libgtk-3.so.0")
         || stderr.contains("libwebkit2gtk")
         || stderr.contains("libayatana-appindicator")
     {
         "远程 Helper 不是纯 CLI 构建，依赖服务器上不存在的桌面 GTK/WebKit 库。请重新安装最新的远程 Helper。".to_string()
+    } else if is_changed_host_key_error(stderr) {
+        let host = extract_changed_host_key_host(stderr).unwrap_or(profile.host.as_str());
+        let location = extract_offending_known_hosts_entry(stderr)
+            .map(|entry| format!("冲突记录：{entry}。"))
+            .unwrap_or_default();
+        format!(
+            "远程主机密钥已变更，SSH 已拒绝连接以防止中间人攻击。若你确认这台服务器刚重装、重置或更换过系统，请在本机终端执行：ssh-keygen -R {host}，然后重新连接并确认新的主机指纹。{location}"
+        )
+    } else if is_ssh_auth_error(stderr) {
+        format!(
+            "SSH 认证失败：当前密钥或密码无法登录 {}@{}:{}。请检查远程账号、密钥文件、密码或服务器 authorized_keys。",
+            profile.username, profile.host, profile.port
+        )
+    } else if is_ssh_connection_refused(stderr) {
+        let endpoint = extract_ssh_connect_endpoint(stderr)
+            .unwrap_or_else(|| format!("{}:{}", profile.host, profile.port));
+        format!(
+            "SSH 连接被拒绝：{endpoint} 没有 SSH 服务监听，或连接被防火墙拒绝。请检查服务器 IP、端口和 sshd 状态。"
+        )
+    } else if is_ssh_timeout(stderr) {
+        let endpoint = extract_ssh_connect_endpoint(stderr)
+            .unwrap_or_else(|| format!("{}:{}", profile.host, profile.port));
+        format!(
+            "SSH 连接超时：无法连接到 {endpoint}。请检查网络、VPN、服务器状态、防火墙和 SSH 端口。"
+        )
+    } else if let Some(host) = extract_unresolved_ssh_host(stderr) {
+        format!(
+            "SSH 主机名无法解析：{host}。请检查远程服务器地址是否填写正确，或检查本机 DNS/网络。"
+        )
     } else if is_ssh_control_socket_error(stderr) {
         "SSH 连接复用控制 socket 异常，连接尚未到达远程 Helper。当前版本已默认禁用 SSH ControlMaster；请升级客户端后重试。若仍然出现，请检查本机 ~/.ssh/config 中该主机的 ControlMaster/ControlPath 配置。".to_string()
     } else if is_helper_missing_error(profile, stderr) {
@@ -391,6 +420,91 @@ fn normalize_remote_stderr(profile: &RemoteHostProfile, stderr: &str) -> String 
     }
 }
 
+fn is_changed_host_key_error(stderr: &str) -> bool {
+    stderr.contains("REMOTE HOST IDENTIFICATION HAS CHANGED")
+        || (stderr.contains("Host key for ")
+            && stderr.contains(" has changed")
+            && stderr.contains("Host key verification failed"))
+}
+
+fn extract_changed_host_key_host(stderr: &str) -> Option<&str> {
+    for line in stderr.lines() {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix("Host key for ") {
+            if let Some((host, _)) = rest.split_once(" has changed") {
+                return Some(host.trim());
+            }
+        }
+    }
+    None
+}
+
+fn extract_offending_known_hosts_entry(stderr: &str) -> Option<String> {
+    for line in stderr.lines() {
+        let line = line.trim();
+        if let Some((_, location)) = line.split_once(" in ") {
+            if line.starts_with("Offending ") && line.contains(" key in ") {
+                return Some(location.trim_end_matches('.').to_string());
+            }
+        }
+    }
+    None
+}
+
+fn is_ssh_auth_error(stderr: &str) -> bool {
+    stderr.contains("Permission denied")
+        || stderr.contains("Authentication failed")
+        || stderr.contains("Too many authentication failures")
+}
+
+fn is_ssh_connection_refused(stderr: &str) -> bool {
+    stderr.contains("Connection refused")
+}
+
+fn is_ssh_timeout(stderr: &str) -> bool {
+    stderr.contains("Operation timed out")
+        || stderr.contains("Connection timed out")
+        || stderr.contains("Connection timeout")
+}
+
+fn extract_ssh_connect_endpoint(stderr: &str) -> Option<String> {
+    for line in stderr.lines() {
+        let Some(rest) = line.split("connect to host ").nth(1) else {
+            continue;
+        };
+        let Some((host, rest)) = rest.split_once(" port ") else {
+            continue;
+        };
+        let port = rest
+            .split(|ch: char| ch == ':' || ch.is_whitespace())
+            .next()
+            .unwrap_or("")
+            .trim();
+        if !host.trim().is_empty() && !port.is_empty() {
+            return Some(format!("{}:{}", host.trim(), port));
+        }
+    }
+    None
+}
+
+fn extract_unresolved_ssh_host(stderr: &str) -> Option<&str> {
+    for line in stderr.lines() {
+        let line = line.trim();
+        let Some(rest) = line.strip_prefix("ssh: Could not resolve hostname ") else {
+            continue;
+        };
+        let host = rest
+            .split(|ch: char| ch == ':' || ch.is_whitespace())
+            .next()
+            .unwrap_or("")
+            .trim();
+        if !host.is_empty() {
+            return Some(host);
+        }
+    }
+    None
+}
+
 fn is_ssh_control_socket_error(stderr: &str) -> bool {
     stderr.contains("getsockname failed: Not a socket")
         || stderr.contains("Control socket connect")
@@ -401,9 +515,10 @@ fn is_helper_missing_error(profile: &RemoteHostProfile, stderr: &str) -> bool {
     let mentions_helper = stderr.contains("cc-switch-remote-helper")
         || stderr.contains("cc-switch-cli")
         || stderr.contains(profile.helper_path.as_str());
+    let stderr_lower = stderr.to_lowercase();
     mentions_helper
-        && (stderr.contains("No such file or directory")
-            || stderr.contains("not found")
+        && (stderr_lower.contains("no such file or directory")
+            || stderr_lower.contains("not found")
             || stderr.contains("没有那个文件或目录"))
 }
 
@@ -627,5 +742,42 @@ mod tests {
 
         assert!(message.contains("SSH 连接复用控制 socket 异常"));
         assert!(message.contains("ControlMaster"));
+    }
+
+    #[test]
+    fn normalizes_changed_host_key_error() {
+        let message = normalize_remote_stderr(
+            &valid_profile(),
+            r#"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+IT IS POSSIBLE THAT SOMEONE IS DOING SOMETHING NASTY!
+Offending ED25519 key in /Users/wangyu19/.ssh/known_hosts:33
+Host key for 192.168.123.111 has changed and you have requested strict checking.
+Host key verification failed."#,
+        );
+
+        assert!(message.contains("远程主机密钥已变更"));
+        assert!(message.contains("ssh-keygen -R 192.168.123.111"));
+        assert!(message.contains("/Users/wangyu19/.ssh/known_hosts:33"));
+        assert!(!message.contains("SOMETHING NASTY"));
+    }
+
+    #[test]
+    fn normalizes_common_ssh_transport_errors() {
+        let denied = normalize_remote_stderr(&valid_profile(), "Permission denied (publickey).");
+        assert!(denied.contains("SSH 认证失败"));
+
+        let refused = normalize_remote_stderr(
+            &valid_profile(),
+            "ssh: connect to host 192.168.123.111 port 22: Connection refused",
+        );
+        assert!(refused.contains("SSH 连接被拒绝"));
+
+        let timeout = normalize_remote_stderr(
+            &valid_profile(),
+            "ssh: connect to host 192.168.123.111 port 22: Operation timed out",
+        );
+        assert!(timeout.contains("SSH 连接超时"));
     }
 }

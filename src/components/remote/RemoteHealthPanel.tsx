@@ -28,6 +28,7 @@ import {
   formatRemoteHelperVersion,
   formatRemotePlatform,
 } from "@/lib/remoteHealth";
+import { extractErrorMessage } from "@/utils/errorUtils";
 
 export function RemoteHealthPanel({
   profile,
@@ -69,11 +70,12 @@ export function RemoteHealthPanel({
       const result = await remoteApi.checkHealth(profile, secret);
       setHealth(result);
     } catch (error) {
+      const message = extractErrorMessage(error);
       setHealth({
         reachable: false,
         helperInstalled: false,
         capabilities: [],
-        lastError: String(error),
+        lastError: message,
       });
     } finally {
       setChecking(false);
@@ -92,7 +94,7 @@ export function RemoteHealthPanel({
         }),
       );
     } catch (error) {
-      const message = String(error);
+      const message = extractErrorMessage(error);
       setHealth({
         reachable: false,
         helperInstalled: false,

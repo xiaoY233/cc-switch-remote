@@ -371,6 +371,42 @@ exit 127
 }
 
 #[test]
+#[cfg(unix)]
+#[serial]
+fn zsh_missing_helper_error_is_user_friendly() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let ssh_path = dir.path().join("ssh");
+    fs::write(
+        &ssh_path,
+        r#"#!/bin/sh
+set -eu
+printf '%s\n' 'zsh:1: no such file or directory: /root/.local/bin/cc-switch-remote-helper' >&2
+exit 127
+"#,
+    )
+    .expect("write fake ssh");
+    let mut permissions = fs::metadata(&ssh_path)
+        .expect("fake ssh metadata")
+        .permissions();
+    permissions.set_mode(0o700);
+    fs::set_permissions(&ssh_path, permissions).expect("chmod fake ssh");
+
+    let old_path = std::env::var_os("PATH").unwrap_or_default();
+    let new_path = format!("{}:{}", dir.path().display(), old_path.to_string_lossy());
+    std::env::set_var("PATH", new_path);
+
+    let error = run_helper_json::<serde_json::Value>(&profile(), &["status".to_string()], None)
+        .expect_err("missing helper should fail");
+
+    std::env::set_var("PATH", old_path);
+
+    let message = error.to_string();
+    assert!(message.contains("远程 Helper 未安装或路径不正确"));
+    assert!(message.contains("安装 Helper"));
+    assert!(!message.contains("zsh:1"));
+}
+
+#[test]
 fn helper_install_downloads_from_github_release_without_remote_compile() {
     let source = RemoteHelperInstallSource::default();
     assert_eq!(source.release_tag, "remote-helper-latest");

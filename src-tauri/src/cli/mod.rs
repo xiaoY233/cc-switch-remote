@@ -87,6 +87,21 @@ mod tests {
             .any(|capability| capability == "restore-preflight"));
     }
 
+    #[cfg(feature = "proxy-runtime")]
+    #[test]
+    fn status_advertises_routing_daemon_capability() {
+        let response = run_command(&["status".to_string()]);
+        let capabilities = response
+            .get("data")
+            .and_then(|data| data.get("capabilities"))
+            .and_then(Value::as_array)
+            .expect("status capabilities");
+
+        assert!(capabilities
+            .iter()
+            .any(|capability| capability == "routing-daemon"));
+    }
+
     #[test]
     fn status_advertises_provider_model_fetch_capability() {
         let response = run_command(&["status".to_string()]);
@@ -1819,6 +1834,52 @@ pub(crate) fn run_command(args: &[String]) -> Value {
                 .expect("serialize routing runtime stop error"),
             }
         }
+        [group, cmd] if group == "routing-runtime" && cmd == "daemon-status" => {
+            match commands::routing_runtime_daemon_status() {
+                Ok(value) => serde_json::to_value(types::ok(value))
+                    .expect("serialize routing daemon status"),
+                Err(message) => serde_json::to_value(types::err::<()>(
+                    "routing_daemon_status_failed",
+                    message,
+                ))
+                .expect("serialize routing daemon status error"),
+            }
+        }
+        [group, cmd] if group == "routing-runtime" && cmd == "daemon-start" => {
+            match commands::routing_runtime_daemon_start() {
+                Ok(value) => serde_json::to_value(types::ok(value))
+                    .expect("serialize routing daemon start"),
+                Err(message) => serde_json::to_value(types::err::<()>(
+                    "routing_daemon_start_failed",
+                    message,
+                ))
+                .expect("serialize routing daemon start error"),
+            }
+        }
+        [group, cmd] if group == "routing-runtime" && cmd == "daemon-stop" => {
+            match commands::routing_runtime_daemon_stop() {
+                Ok(value) => {
+                    serde_json::to_value(types::ok(value)).expect("serialize routing daemon stop")
+                }
+                Err(message) => serde_json::to_value(types::err::<()>(
+                    "routing_daemon_stop_failed",
+                    message,
+                ))
+                .expect("serialize routing daemon stop error"),
+            }
+        }
+        [group, cmd] if group == "routing-runtime" && cmd == "daemon-run" => {
+            match commands::routing_runtime_daemon_run() {
+                Ok(value) => {
+                    serde_json::to_value(types::ok(value)).expect("serialize routing daemon run")
+                }
+                Err(message) => serde_json::to_value(types::err::<()>(
+                    "routing_daemon_run_failed",
+                    message,
+                ))
+                .expect("serialize routing daemon run error"),
+            }
+        }
         [group, cmd] if group == "sessions" && cmd == "list" => match commands::list_sessions() {
             Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize sessions"),
             Err(message) => serde_json::to_value(types::err::<()>("sessions_list_failed", message))
@@ -2318,7 +2379,7 @@ pub(crate) fn run_command(args: &[String]) -> Value {
         }
         _ => serde_json::to_value(types::err::<()>(
             "unsupported_command",
-            "Supported commands: status, providers, universal-providers, routing-config, routing-runtime, sessions, hermes, openclaw, mcp, prompts, skills, import-export, cloud-sync, tools, settings, plugin, stream-check, usage, auth",
+            "Supported commands: status, providers, universal-providers, routing-config, routing-runtime, routing-runtime daemon-start/status/stop/run, sessions, hermes, openclaw, mcp, prompts, skills, import-export, cloud-sync, tools, settings, plugin, stream-check, usage, auth",
         ))
         .expect("serialize error response"),
     }

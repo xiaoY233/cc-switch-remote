@@ -1,4 +1,5 @@
 import { getVersion } from "@tauri-apps/api/app";
+import { getGlobalProxyUrl } from "@/lib/api/globalProxy";
 
 export type UpdateChannel = "stable" | "beta";
 
@@ -31,7 +32,17 @@ export async function checkForUpdate(
   const { check } = await import("@tauri-apps/plugin-updater");
 
   const currentVersion = await getCurrentVersion();
-  const update = await check({ timeout: opts.timeout ?? 30000 } as any);
+  let proxy: string | undefined;
+  try {
+    proxy = (await getGlobalProxyUrl())?.trim() || undefined;
+  } catch (error) {
+    console.warn("[Updater] Failed to read global proxy URL", error);
+  }
+
+  const update = await check({
+    timeout: opts.timeout ?? 30000,
+    ...(proxy ? { proxy } : {}),
+  } as any);
 
   if (!update) {
     return { status: "up-to-date" };

@@ -1,13 +1,44 @@
 #![allow(non_snake_case)]
 
 use tauri::{AppHandle, Emitter};
-use tauri_plugin_updater::UpdaterExt;
+use tauri_plugin_updater::{UpdaterBuilder, UpdaterExt};
+use url::Url;
 
 /// 应用更新下载进度（通过 `update-download-progress` 事件发给前端）。
 #[derive(Clone, serde::Serialize)]
 struct UpdateDownloadProgress {
     downloaded: u64,
     total: Option<u64>,
+}
+
+fn updater_builder_with_global_proxy(
+    builder: UpdaterBuilder,
+    state: &crate::store::AppState,
+) -> Result<UpdaterBuilder, String> {
+    let proxy_url = state
+        .db
+        .get_global_proxy_url()
+        .map_err(|e| format!("读取全局代理失败: {e}"))?;
+
+    let Some(proxy_url) = proxy_url else {
+        return Ok(builder);
+    };
+    let proxy_url = proxy_url.trim();
+    if proxy_url.is_empty() {
+        return Ok(builder);
+    }
+
+    let parsed = Url::parse(proxy_url).map_err(|e| {
+        format!(
+            "全局代理 URL 无效，无法用于应用更新（{}）: {e}",
+            crate::proxy::http_client::mask_url(proxy_url)
+        )
+    })?;
+    log::info!(
+        "应用更新将使用全局代理: {}",
+        crate::proxy::http_client::mask_url(proxy_url)
+    );
+    Ok(builder.proxy(parsed))
 }
 
 fn merge_settings_for_save(
@@ -195,9 +226,11 @@ pub async fn restart_app(app: AppHandle) -> Result<bool, String> {
 /// `process.relaunch()`，旧进程可能已经处在 bundle 被替换后的不稳定窗口期。
 /// 这里把退出清理、安装和重启串在同一个后端流程中，避免依赖旧前端继续执行。
 #[tauri::command]
-pub async fn install_update_and_restart(app: AppHandle) -> Result<bool, String> {
-    let updater = app
-        .updater_builder()
+pub async fn install_update_and_restart(
+    app: AppHandle,
+    state: tauri::State<'_, crate::store::AppState>,
+) -> Result<bool, String> {
+    let updater = updater_builder_with_global_proxy(app.updater_builder(), state.inner())?
         .build()
         .map_err(|e| format!("初始化更新器失败: {e}"))?;
 
@@ -272,9 +305,11 @@ pub async fn install_update_and_restart(app: AppHandle) -> Result<bool, String> 
 /// 已是最新版本，但数据库仍不兼容（通常由第三方客户端或更高版本创建），应提示用户
 /// 升级无法解决，而不是让其反复尝试。
 #[tauri::command]
-pub async fn check_app_update_available(app: AppHandle) -> Result<Option<String>, String> {
-    let updater = app
-        .updater_builder()
+pub async fn check_app_update_available(
+    app: AppHandle,
+    state: tauri::State<'_, crate::store::AppState>,
+) -> Result<Option<String>, String> {
+    let updater = updater_builder_with_global_proxy(app.updater_builder(), state.inner())?
         .build()
         .map_err(|e| format!("初始化更新器失败: {e}"))?;
     let update = updater

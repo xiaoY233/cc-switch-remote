@@ -1263,6 +1263,7 @@ fn parse_remote_capability(value: &str) -> Option<RemoteCapability> {
         "universal-providers" => Some(RemoteCapability::UniversalProviders),
         "routing-config" => Some(RemoteCapability::RoutingConfig),
         "routing-runtime" => Some(RemoteCapability::RoutingRuntime),
+        "routing-daemon" => Some(RemoteCapability::RoutingDaemon),
         "openclaw" => Some(RemoteCapability::Openclaw),
         "mcp" => Some(RemoteCapability::Mcp),
         "prompts" => Some(RemoteCapability::Prompts),
@@ -2691,6 +2692,47 @@ pub async fn remote_start_routing_runtime(
     profile: RemoteHostProfile,
     secret: Option<RemoteConnectionSecret>,
 ) -> Result<ProxyServerInfo, String> {
+    match run_remote_helper_json(
+        profile.clone(),
+        vec!["routing-runtime".to_string(), "daemon-start".to_string()],
+        secret.clone(),
+        "Remote routing daemon start",
+    )
+    .await
+    {
+        Ok(value) => Ok(value),
+        Err(error) if is_unsupported_remote_command(&error) => {
+            remote_start_routing_runtime_session(profile, secret).await
+        }
+        Err(error) => Err(error),
+    }
+}
+
+#[tauri::command]
+pub async fn remote_stop_routing_runtime(
+    profile: RemoteHostProfile,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<bool, String> {
+    match run_remote_helper_json(
+        profile.clone(),
+        vec!["routing-runtime".to_string(), "daemon-stop".to_string()],
+        secret.clone(),
+        "Remote routing daemon stop",
+    )
+    .await
+    {
+        Ok(value) => Ok(value),
+        Err(error) if is_unsupported_remote_command(&error) => {
+            remote_stop_routing_runtime_session(profile, secret).await
+        }
+        Err(error) => Err(error),
+    }
+}
+
+async fn remote_start_routing_runtime_session(
+    profile: RemoteHostProfile,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<ProxyServerInfo, String> {
     run_remote_helper_json(
         profile,
         vec!["routing-runtime".to_string(), "start".to_string()],
@@ -2700,8 +2742,7 @@ pub async fn remote_start_routing_runtime(
     .await
 }
 
-#[tauri::command]
-pub async fn remote_stop_routing_runtime(
+async fn remote_stop_routing_runtime_session(
     profile: RemoteHostProfile,
     secret: Option<RemoteConnectionSecret>,
 ) -> Result<bool, String> {
@@ -3700,6 +3741,10 @@ mod tests {
         assert_eq!(
             parse_remote_capability("routing-runtime"),
             Some(RemoteCapability::RoutingRuntime)
+        );
+        assert_eq!(
+            parse_remote_capability("routing-daemon"),
+            Some(RemoteCapability::RoutingDaemon)
         );
         assert_eq!(
             parse_remote_capability("stream-check"),

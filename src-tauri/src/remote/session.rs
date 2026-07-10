@@ -1,5 +1,7 @@
 use crate::error::AppError;
-use crate::remote::ssh::{build_ssh_serve_args, configure_password_auth_for_tokio};
+use crate::remote::ssh::{
+    build_ssh_serve_args, configure_password_auth_for_tokio, normalize_remote_stderr,
+};
 use crate::remote::types::{
     RemoteCommandError, RemoteConnectionSecret, RemoteHostProfile, RemoteSessionState,
     RemoteSessionStatus,
@@ -14,8 +16,8 @@ use std::pin::Pin;
 use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::{Child, ChildStdin, ChildStdout, Command};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command};
 use tokio::sync::Mutex;
 
 // Tool installs and upgrades can legitimately take several minutes on remote
@@ -57,6 +59,7 @@ pub enum RemoteSessionError {
     InvalidJson(String),
     MissingData,
     CommandFailed(RemoteCommandError),
+    Transport(String),
     Io(String),
     Timeout,
     Closed,
@@ -70,6 +73,7 @@ impl std::fmt::Display for RemoteSessionError {
             }
             Self::MissingData => write!(f, "Remote session returned ok without data"),
             Self::CommandFailed(error) => write!(f, "{}: {}", error.code, error.message),
+            Self::Transport(message) => write!(f, "{message}"),
             Self::Io(message) => write!(f, "Remote session I/O failed: {message}"),
             Self::Timeout => write!(f, "Remote session command timed out"),
             Self::Closed => write!(
@@ -285,6 +289,7 @@ fn should_drop_executor_after_error(error: &RemoteSessionError) -> bool {
     matches!(
         error,
         RemoteSessionError::InvalidJson(_)
+            | RemoteSessionError::Transport(_)
             | RemoteSessionError::Io(_)
             | RemoteSessionError::Timeout
             | RemoteSessionError::Closed
@@ -292,9 +297,11 @@ fn should_drop_executor_after_error(error: &RemoteSessionError) -> bool {
 }
 
 struct RemoteSessionProcess {
+    profile: RemoteHostProfile,
     child: Child,
     stdin: ChildStdin,
     stdout: BufReader<ChildStdout>,
+    stderr: BufReader<ChildStderr>,
     _askpass: Option<PasswordAuthGuard>,
 }
 
@@ -320,13 +327,42 @@ impl RemoteSessionProcess {
         let stdout = child.stdout.take().ok_or_else(|| {
             AppError::Message("Remote helper session stdout unavailable".to_string())
         })?;
+        let stderr = child.stderr.take().ok_or_else(|| {
+            AppError::Message("Remote helper session stderr unavailable".to_string())
+        })?;
 
         Ok(Self {
+            profile: profile.clone(),
             child,
             stdin,
             stdout: BufReader::new(stdout),
+            stderr: BufReader::new(stderr),
             _askpass: askpass,
         })
+    }
+
+    async fn read_transport_error(&mut self, fallback: impl Into<String>) -> RemoteSessionError {
+        let mut stderr = String::new();
+        if tokio::time::timeout(
+            Duration::from_millis(500),
+            self.stderr.read_to_string(&mut stderr),
+        )
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .unwrap_or(0)
+            > 0
+        {
+            let stderr = stderr.trim();
+            if !stderr.is_empty() {
+                return RemoteSessionError::Transport(normalize_remote_stderr(
+                    &self.profile,
+                    stderr,
+                ));
+            }
+        }
+
+        RemoteSessionError::Io(fallback.into())
     }
 
     async fn execute_value(
@@ -336,14 +372,12 @@ impl RemoteSessionProcess {
     ) -> Result<Value, RemoteSessionError> {
         let mut request = build_session_request_line(request_id, command)?;
         request.push('\n');
-        self.stdin
-            .write_all(request.as_bytes())
-            .await
-            .map_err(|error| RemoteSessionError::Io(error.to_string()))?;
-        self.stdin
-            .flush()
-            .await
-            .map_err(|error| RemoteSessionError::Io(error.to_string()))?;
+        if let Err(error) = self.stdin.write_all(request.as_bytes()).await {
+            return Err(self.read_transport_error(error.to_string()).await);
+        }
+        if let Err(error) = self.stdin.flush().await {
+            return Err(self.read_transport_error(error.to_string()).await);
+        }
 
         let mut line = String::new();
         let read = self
@@ -352,7 +386,9 @@ impl RemoteSessionProcess {
             .await
             .map_err(|error| RemoteSessionError::Io(error.to_string()))?;
         if read == 0 {
-            return Err(RemoteSessionError::Closed);
+            return Err(self
+                .read_transport_error("Remote helper session closed before returning a response")
+                .await);
         }
 
         let response = parse_session_response_line(line.trim())?;
@@ -452,6 +488,13 @@ mod tests {
             created_at: 1,
             updated_at: 1,
         }
+    }
+
+    #[test]
+    fn transport_error_display_uses_user_facing_message_without_io_prefix() {
+        let error = RemoteSessionError::Transport("远程主机密钥已变更".to_string());
+
+        assert_eq!(error.to_string(), "远程主机密钥已变更");
     }
 
     #[tokio::test]

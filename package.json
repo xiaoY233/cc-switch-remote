@@ -1,6 +1,6 @@
 {
   "name": "cc-switch-remote",
-  "version": "3.16.12",
+  "version": "3.16.13",
   "description": "Remote-first CC Switch fork for Claude Code, Codex & Gemini CLI",
   "packageManager": "pnpm@10.12.3",
   "type": "module",
