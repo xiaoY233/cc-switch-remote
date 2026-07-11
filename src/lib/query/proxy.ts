@@ -250,6 +250,23 @@ export function useAppProxyConfig(
 }
 
 /**
+ * 获取指定应用启用远程路由的前置条件
+ */
+export function useRoutingAppPreflight(
+  appType: string,
+  target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+  enabled = true,
+) {
+  const targetKey = getManagementTargetKey(target);
+  return useQuery({
+    queryKey: ["routingAppPreflight", targetKey, appType],
+    queryFn: () => proxyApi.preflightRoutingApp(appType, target),
+    enabled: enabled && !!appType,
+    staleTime: target.type === "remote" ? 10_000 : Infinity,
+  });
+}
+
+/**
  * 更新指定应用的代理配置
  */
 export function useUpdateAppProxyConfig(
@@ -266,6 +283,9 @@ export function useUpdateAppProxyConfig(
       toast.success(t("proxy.settings.toast.saved"), { closeButton: true });
       queryClient.invalidateQueries({
         queryKey: ["appProxyConfig", targetKey, variables.appType],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["routingAppPreflight", targetKey, variables.appType],
       });
       queryClient.invalidateQueries({
         queryKey: ["proxyStatus", targetKey],

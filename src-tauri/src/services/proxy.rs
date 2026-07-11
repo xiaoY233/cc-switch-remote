@@ -638,6 +638,53 @@ impl ProxyService {
             .await
     }
 
+    pub fn preflight_takeover_for_app(
+        &self,
+        app_type: &str,
+    ) -> Result<crate::proxy::types::AppRoutingPreflight, String> {
+        let app = AppType::from_str(app_type).map_err(|e| format!("无效的应用类型: {e}"))?;
+        let app_type_str = app.as_str();
+        let unsupported = |reason: String| crate::proxy::types::AppRoutingPreflight {
+            app_type: app_type_str.to_string(),
+            can_enable: false,
+            reason: Some(reason),
+        };
+        let app_label = match app {
+            AppType::Claude => "Claude",
+            AppType::Codex => "Codex",
+            AppType::Gemini => "Gemini",
+            _ => app_type_str,
+        };
+
+        if !matches!(app, AppType::Claude | AppType::Codex | AppType::Gemini) {
+            return Ok(unsupported("该应用不支持远程路由".to_string()));
+        }
+
+        let has_current_provider = self.get_current_provider_for_app(&app)?.is_some();
+        if !has_current_provider {
+            return Ok(unsupported(format!("请先为 {} 选择当前供应商", app_label)));
+        }
+
+        let live_result = match app {
+            AppType::Claude => self.read_claude_live().map(|_| ()),
+            AppType::Codex => self.read_codex_live().map(|_| ()),
+            AppType::Gemini => self.read_gemini_live().map(|_| ()),
+            _ => Ok(()),
+        };
+        if let Err(error) = live_result {
+            return Ok(unsupported(format!(
+                "{} Live 配置不可用：{}",
+                app_label, error
+            )));
+        }
+
+        Ok(crate::proxy::types::AppRoutingPreflight {
+            app_type: app_type_str.to_string(),
+            can_enable: true,
+            reason: None,
+        })
+    }
+
     pub async fn set_takeover_for_app_with_external_runtime(
         &self,
         app_type: &str,
@@ -3521,6 +3568,29 @@ wire_api = "responses"
                 .expect("get Codex proxy config")
                 .enabled,
             "takeover should still mark Codex routing enabled"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn routing_preflight_rejects_missing_current_provider() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+        let db = Arc::new(Database::memory().expect("init db"));
+        let service = ProxyService::new(db);
+
+        let preflight = service
+            .preflight_takeover_for_app("claude")
+            .expect("preflight Claude routing");
+
+        assert!(!preflight.can_enable);
+        assert!(
+            preflight
+                .reason
+                .as_deref()
+                .unwrap_or_default()
+                .contains("当前供应商"),
+            "reason should explain missing current provider: {preflight:?}"
         );
     }
 

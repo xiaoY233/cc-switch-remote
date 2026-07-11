@@ -1514,6 +1514,7 @@ pub fn run() {
             commands::remote_get_routing_global_config,
             commands::remote_update_routing_global_config,
             commands::remote_get_routing_app_config,
+            commands::remote_preflight_routing_app,
             commands::remote_get_routing_failover_queue,
             commands::remote_get_available_providers_for_failover,
             commands::remote_add_to_failover_queue,

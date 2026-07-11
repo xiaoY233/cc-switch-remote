@@ -138,3 +138,9 @@ export interface AppProxyConfig {
   circuitErrorRateThreshold: number;
   circuitMinRequests: number;
 }
+
+export interface AppRoutingPreflight {
+  appType: string;
+  canEnable: boolean;
+  reason?: string | null;
+}

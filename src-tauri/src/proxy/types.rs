@@ -194,6 +194,18 @@ pub struct AppProxyConfig {
     pub circuit_min_requests: u32,
 }
 
+/// 应用远程路由启用前置条件
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppRoutingPreflight {
+    /// 应用类型 (claude/codex/gemini)
+    pub app_type: String,
+    /// 是否可以启用应用路由
+    pub can_enable: bool,
+    /// 不可启用时的用户可读原因
+    pub reason: Option<String>,
+}
+
 /// 整流器配置
 ///
 /// 存储在 settings 表中
