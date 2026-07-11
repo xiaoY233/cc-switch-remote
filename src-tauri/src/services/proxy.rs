@@ -634,13 +634,23 @@ impl ProxyService {
     /// - 开启：自动启动代理服务，仅接管当前 app 的 Live 配置
     /// - 关闭：仅恢复当前 app 的 Live 配置；若无其它接管，则自动停止代理服务
     pub async fn set_takeover_for_app(&self, app_type: &str, enabled: bool) -> Result<(), String> {
+        self.set_takeover_for_app_with_external_runtime(app_type, enabled, false)
+            .await
+    }
+
+    pub async fn set_takeover_for_app_with_external_runtime(
+        &self,
+        app_type: &str,
+        enabled: bool,
+        external_runtime_running: bool,
+    ) -> Result<(), String> {
         let app = AppType::from_str(app_type).map_err(|e| format!("无效的应用类型: {e}"))?;
         let app_type_str = app.as_str();
         let _guard = self.switch_locks.lock_for_app(app_type_str).await;
 
         if enabled {
-            // 1) 代理服务未运行则自动启动
-            if !self.is_running().await {
+            // 1) 代理服务未运行则自动启动；远程 helper 可复用已在 daemon 中运行的 runtime。
+            if !external_runtime_running && !self.is_running().await {
                 self.start().await?;
             }
 
@@ -3426,6 +3436,92 @@ wire_api = "responses"
 
         crate::settings::update_settings(crate::settings::AppSettings::default())
             .expect("reset settings");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn codex_takeover_reuses_external_runtime_without_binding_port() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+        let occupied =
+            std::net::TcpListener::bind(("127.0.0.1", 0)).expect("bind occupied proxy port");
+        let occupied_port = occupied.local_addr().expect("occupied addr").port();
+
+        let db = Arc::new(Database::memory().expect("init db"));
+        let service = ProxyService::new(db.clone());
+        let mut proxy_config = db.get_proxy_config().await.expect("get proxy config");
+        proxy_config.listen_address = "127.0.0.1".to_string();
+        proxy_config.listen_port = occupied_port;
+        db.update_proxy_config(proxy_config)
+            .await
+            .expect("set occupied proxy config");
+
+        let oauth_auth = json!({
+            "auth_mode": "chatgpt",
+            "tokens": {
+                "id_token": "oauth-id",
+                "access_token": "oauth-access"
+            }
+        });
+        let deepseek_live_config = r#"model_provider = "deepseek"
+model = "deepseek-chat"
+
+[model_providers.deepseek]
+name = "DeepSeek"
+base_url = "https://api.deepseek.com/v1"
+wire_api = "responses"
+experimental_bearer_token = "deepseek-key"
+"#;
+        crate::codex_config::write_codex_live_atomic(&oauth_auth, Some(deepseek_live_config))
+            .expect("seed Codex live config");
+
+        let provider = Provider::with_id(
+            "deepseek".to_string(),
+            "DeepSeek".to_string(),
+            json!({
+                "auth": {
+                    "OPENAI_API_KEY": "deepseek-key"
+                },
+                "config": r#"model_provider = "deepseek"
+model = "deepseek-chat"
+
+[model_providers.deepseek]
+name = "DeepSeek"
+base_url = "https://api.deepseek.com/v1"
+wire_api = "responses"
+"#
+            }),
+            None,
+        );
+        db.save_provider("codex", &provider)
+            .expect("save Codex provider");
+        db.set_current_provider("codex", "deepseek")
+            .expect("set current provider");
+        crate::settings::set_current_provider(&AppType::Codex, Some("deepseek"))
+            .expect("set local current provider");
+
+        service
+            .set_takeover_for_app_with_external_runtime("codex", true, true)
+            .await
+            .expect("reuse external runtime for Codex takeover");
+
+        assert!(
+            !service.is_running().await,
+            "external runtime takeover must not start an in-process proxy"
+        );
+        let live_config = std::fs::read_to_string(crate::codex_config::get_codex_config_path())
+            .expect("read Codex config");
+        assert!(
+            live_config.contains(&format!("http://127.0.0.1:{occupied_port}/v1")),
+            "Codex live config should point at the already-running external runtime"
+        );
+        assert!(
+            db.get_proxy_config_for_app("codex")
+                .await
+                .expect("get Codex proxy config")
+                .enabled,
+            "takeover should still mark Codex routing enabled"
+        );
     }
 
     #[tokio::test]

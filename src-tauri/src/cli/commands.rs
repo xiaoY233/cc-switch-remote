@@ -2166,9 +2166,24 @@ pub fn update_routing_app_config(config_json: &str) -> Result<(), String> {
                 .map_err(|e| e.to_string())?;
 
             if enabled_changed || desired_enabled {
+                let runtime_status = if desired_enabled {
+                    Some(effective_routing_runtime_status(state).await?)
+                } else {
+                    None
+                };
+                let external_runtime_running = runtime_status
+                    .as_ref()
+                    .map(|status| status.running)
+                    .unwrap_or(false)
+                    && !state.proxy_service.is_running().await;
+
                 if let Err(error) = state
                     .proxy_service
-                    .set_takeover_for_app(&app_type, desired_enabled)
+                    .set_takeover_for_app_with_external_runtime(
+                        &app_type,
+                        desired_enabled,
+                        external_runtime_running,
+                    )
                     .await
                 {
                     let _ = db.update_proxy_config_for_app(previous).await;
