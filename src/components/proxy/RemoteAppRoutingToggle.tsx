@@ -2,7 +2,11 @@ import { Loader2, RadioTower } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Switch } from "@/components/ui/switch";
 import { useProxyStatus } from "@/hooks/useProxyStatus";
-import { useAppProxyConfig, useUpdateAppProxyConfig } from "@/lib/query/proxy";
+import {
+  useAppProxyConfig,
+  useRoutingAppPreflight,
+  useUpdateAppProxyConfig,
+} from "@/lib/query/proxy";
 import type { AppId, ManagementTarget } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -26,14 +30,20 @@ export function RemoteAppRoutingToggle({
   const { t } = useTranslation();
   const { isRunning, startProxyServer, isStarting } = useProxyStatus(target);
   const { data: config, isLoading } = useAppProxyConfig(activeApp, target);
+  const { data: preflight, isLoading: isPreflightLoading } =
+    useRoutingAppPreflight(activeApp, target);
   const updateConfig = useUpdateAppProxyConfig(target);
   const enabled = config?.enabled ?? false;
   const effectivelyEnabled = enabled && isRunning;
   const label = appLabel(activeApp);
-  const isPending = isLoading || updateConfig.isPending || isStarting;
+  const canEnable = preflight?.canEnable ?? false;
+  const disabledReason = preflight?.reason ?? "";
+  const isPending =
+    isLoading || isPreflightLoading || updateConfig.isPending || isStarting;
 
   const handleToggle = async (checked: boolean) => {
     if (!config) return;
+    if (checked && !canEnable) return;
     if (checked && !isRunning) {
       await startProxyServer();
     }
@@ -51,6 +61,8 @@ export function RemoteAppRoutingToggle({
       app: label,
       defaultValue: `${label} 请求将通过远程路由转发`,
     });
+  } else if (!canEnable) {
+    tooltipText = disabledReason || `当前不能启用 ${label} 远程路由`;
   } else if (!isRunning) {
     tooltipText = t("remote.routing.app.tooltip.inactiveWithStart", {
       app: label,
@@ -87,7 +99,7 @@ export function RemoteAppRoutingToggle({
       <Switch
         checked={effectivelyEnabled}
         onCheckedChange={handleToggle}
-        disabled={isPending || !config}
+        disabled={isPending || !config || (!enabled && !canEnable)}
       />
     </div>
   );

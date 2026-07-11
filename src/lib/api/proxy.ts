@@ -6,6 +6,7 @@ import type {
   ProxyTakeoverStatus,
   GlobalProxyConfig,
   AppProxyConfig,
+  AppRoutingPreflight,
 } from "@/types/proxy";
 import { LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
 import { remoteApi, type ManagementTarget } from "./remote";
@@ -129,6 +130,20 @@ export const proxyApi = {
       );
     }
     return invoke("get_proxy_config_for_app", { appType });
+  },
+
+  async preflightRoutingApp(
+    appType: string,
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+  ): Promise<AppRoutingPreflight> {
+    if (target.type === "remote") {
+      return remoteApi.preflightRoutingApp(
+        target.profile,
+        appType,
+        target.secret,
+      );
+    }
+    return { appType, canEnable: true, reason: null };
   },
 
   // 更新指定应用的代理配置

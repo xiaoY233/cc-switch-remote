@@ -44,6 +44,7 @@ import type {
 } from "@/types";
 import type {
   AppProxyConfig,
+  AppRoutingPreflight,
   CircuitBreakerConfig,
   CircuitBreakerStats,
   FailoverQueueItem,
@@ -1488,6 +1489,18 @@ export const remoteApi = {
     secret?: RemoteConnectionSecret,
   ): Promise<AppProxyConfig> {
     return invoke<AppProxyConfig>("remote_get_routing_app_config", {
+      profile,
+      appType,
+      secret,
+    });
+  },
+
+  preflightRoutingApp(
+    profile: RemoteHostProfile,
+    appType: string,
+    secret?: RemoteConnectionSecret,
+  ): Promise<AppRoutingPreflight> {
+    return invoke<AppRoutingPreflight>("remote_preflight_routing_app", {
       profile,
       appType,
       secret,

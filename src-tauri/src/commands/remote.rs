@@ -3,8 +3,8 @@ use crate::database::FailoverQueueItem;
 use crate::prompt::Prompt;
 use crate::provider::{Provider, UniversalProvider};
 use crate::proxy::types::{
-    AppProxyConfig, GlobalProxyConfig, OptimizerConfig, ProviderHealth, ProxyServerInfo,
-    ProxyStatus, RectifierConfig,
+    AppProxyConfig, AppRoutingPreflight, GlobalProxyConfig, OptimizerConfig, ProviderHealth,
+    ProxyServerInfo, ProxyStatus, RectifierConfig,
 };
 use crate::proxy::{CircuitBreakerConfig, CircuitBreakerStats};
 use crate::remote::{
@@ -2327,6 +2327,25 @@ pub async fn remote_get_routing_app_config(
         vec!["routing-config".to_string(), "app".to_string(), appType],
         secret,
         "Remote routing app config get",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_preflight_routing_app(
+    profile: RemoteHostProfile,
+    #[allow(non_snake_case)] appType: String,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<AppRoutingPreflight, String> {
+    run_remote_helper_json(
+        profile,
+        vec![
+            "routing-config".to_string(),
+            "app-preflight".to_string(),
+            appType,
+        ],
+        secret,
+        "Remote routing app preflight",
     )
     .await
 }

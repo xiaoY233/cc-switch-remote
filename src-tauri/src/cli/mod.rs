@@ -49,6 +49,39 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "proxy-runtime")]
+    #[test]
+    fn routing_app_preflight_command_returns_stable_payload() {
+        let response = run_command(&[
+            "routing-config".to_string(),
+            "app-preflight".to_string(),
+            "claude".to_string(),
+        ]);
+
+        if response.get("ok").and_then(Value::as_bool) == Some(true) {
+            assert_eq!(
+                response
+                    .get("data")
+                    .and_then(|data| data.get("appType"))
+                    .and_then(Value::as_str),
+                Some("claude")
+            );
+            assert!(response
+                .get("data")
+                .and_then(|data| data.get("canEnable"))
+                .and_then(Value::as_bool)
+                .is_some());
+        } else {
+            assert_eq!(
+                response
+                    .get("error")
+                    .and_then(|error| error.get("code"))
+                    .and_then(Value::as_str),
+                Some("routing_app_preflight_failed")
+            );
+        }
+    }
+
     #[test]
     fn status_advertises_usage_capability() {
         let response = run_command(&["status".to_string()]);
@@ -1531,6 +1564,17 @@ pub(crate) fn run_command(args: &[String]) -> Value {
                     serde_json::to_value(types::err::<()>("routing_app_get_failed", message))
                         .expect("serialize routing app config error")
                 }
+            }
+        }
+        [group, cmd, app_type] if group == "routing-config" && cmd == "app-preflight" => {
+            match commands::preflight_routing_app(app_type) {
+                Ok(value) => serde_json::to_value(types::ok(value))
+                    .expect("serialize routing app preflight"),
+                Err(message) => serde_json::to_value(types::err::<()>(
+                    "routing_app_preflight_failed",
+                    message,
+                ))
+                .expect("serialize routing app preflight error"),
             }
         }
         [group, cmd, app_type] if group == "routing-config" && cmd == "default-cost-multiplier" => {

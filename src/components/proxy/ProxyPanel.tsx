@@ -26,6 +26,7 @@ import {
   useGlobalProxyConfig,
   useUpdateGlobalProxyConfig,
   useAppProxyConfig,
+  useRoutingAppPreflight,
   useUpdateAppProxyConfig,
 } from "@/lib/query/proxy";
 import type { ProxyStatus } from "@/types/proxy";
@@ -83,11 +84,27 @@ export function ProxyPanel({
   const { data: claudeAppConfig } = useAppProxyConfig("claude", target);
   const { data: codexAppConfig } = useAppProxyConfig("codex", target);
   const { data: geminiAppConfig } = useAppProxyConfig("gemini", target);
+  const { data: claudePreflight, isLoading: isClaudePreflightLoading } =
+    useRoutingAppPreflight("claude", target, !isLocalTarget);
+  const { data: codexPreflight, isLoading: isCodexPreflightLoading } =
+    useRoutingAppPreflight("codex", target, !isLocalTarget);
+  const { data: geminiPreflight, isLoading: isGeminiPreflightLoading } =
+    useRoutingAppPreflight("gemini", target, !isLocalTarget);
 
   const appConfigs = {
     claude: claudeAppConfig,
     codex: codexAppConfig,
     gemini: geminiAppConfig,
+  };
+  const appPreflights = {
+    claude: claudePreflight,
+    codex: codexPreflight,
+    gemini: geminiPreflight,
+  };
+  const appPreflightLoading = {
+    claude: isClaudePreflightLoading,
+    codex: isCodexPreflightLoading,
+    gemini: isGeminiPreflightLoading,
   };
 
   const handleTakeoverChange = async (appType: string, enabled: boolean) => {
@@ -125,6 +142,17 @@ export function ProxyPanel({
   ) => {
     const config = appConfigs[appType];
     if (!config) return;
+    const preflight = appPreflights[appType];
+    if (enabled && preflight && !preflight.canEnable) {
+      toast.error(
+        preflight.reason ||
+          t("remote.routing.appUnavailable", {
+            app: appType,
+            defaultValue: `${appType} 当前不能启用远程路由`,
+          }),
+      );
+      return;
+    }
     try {
       await updateAppConfig.mutateAsync({ ...config, enabled });
       toast.success(
@@ -339,10 +367,27 @@ export function ProxyPanel({
                           appType as keyof typeof takeoverStatus
                         ] ?? false)
                       : (appConfigs[appType]?.enabled ?? false);
+                    const preflight = appPreflights[appType];
+                    const canEnableRemote = preflight?.canEnable ?? false;
+                    const remoteDisabled =
+                      !isLocalTarget &&
+                      (updateAppConfig.isPending ||
+                        appPreflightLoading[appType] ||
+                        !appConfigs[appType] ||
+                        (!isEnabled && !canEnableRemote));
+                    const disabledReason =
+                      !isLocalTarget && !isEnabled && !canEnableRemote
+                        ? preflight?.reason ||
+                          t("remote.routing.appUnavailable", {
+                            app: appType,
+                            defaultValue: `${appType} 当前不能启用远程路由`,
+                          })
+                        : undefined;
                     return (
                       <div
                         key={appType}
                         className="flex items-center justify-between rounded-md border border-primary/20 bg-background/60 px-3 py-2"
+                        title={disabledReason}
                       >
                         <span className="text-sm font-medium capitalize">
                           {appType}
@@ -360,8 +405,7 @@ export function ProxyPanel({
                           disabled={
                             isLocalTarget
                               ? setTakeoverForApp.isPending
-                              : updateAppConfig.isPending ||
-                                !appConfigs[appType]
+                              : remoteDisabled
                           }
                         />
                       </div>

@@ -1973,6 +1973,27 @@ pub fn get_routing_app_config(
         .map_err(|e| e.to_string())
 }
 
+#[cfg(feature = "proxy-runtime")]
+pub fn preflight_routing_app(
+    app_type: &str,
+) -> Result<crate::proxy::types::AppRoutingPreflight, String> {
+    let state = routing_state()?;
+    state.proxy_service.preflight_takeover_for_app(app_type)
+}
+
+#[cfg(not(feature = "proxy-runtime"))]
+pub fn preflight_routing_app(
+    app_type: &str,
+) -> Result<crate::proxy::types::AppRoutingPreflight, String> {
+    Ok(crate::proxy::types::AppRoutingPreflight {
+        app_type: app_type.to_string(),
+        can_enable: false,
+        reason: Some(
+            "This helper build does not include remote routing runtime support".to_string(),
+        ),
+    })
+}
+
 pub fn get_default_cost_multiplier(app_type: &str) -> Result<String, String> {
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
     let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
@@ -2144,6 +2165,15 @@ pub fn update_routing_app_config(config_json: &str) -> Result<(), String> {
             let app_type = config.app_type.clone();
             let desired_enabled = config.enabled;
             let enabled_changed = previous.enabled != config.enabled;
+
+            if desired_enabled {
+                let preflight = state.proxy_service.preflight_takeover_for_app(&app_type)?;
+                if !preflight.can_enable {
+                    return Err(preflight
+                        .reason
+                        .unwrap_or_else(|| "当前应用不满足远程路由启用条件".to_string()));
+                }
+            }
 
             if !desired_enabled {
                 if let Err(error) = state

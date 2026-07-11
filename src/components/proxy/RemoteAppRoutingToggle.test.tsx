@@ -1,10 +1,11 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RemoteAppRoutingToggle } from "./RemoteAppRoutingToggle";
 import type { ManagementTarget } from "@/lib/api";
 
 const useProxyStatusMock = vi.fn();
 const useAppProxyConfigMock = vi.fn();
+const useRoutingAppPreflightMock = vi.fn();
 const useUpdateAppProxyConfigMock = vi.fn();
 
 vi.mock("@/hooks/useProxyStatus", () => ({
@@ -13,6 +14,8 @@ vi.mock("@/hooks/useProxyStatus", () => ({
 
 vi.mock("@/lib/query/proxy", () => ({
   useAppProxyConfig: (...args: unknown[]) => useAppProxyConfigMock(...args),
+  useRoutingAppPreflight: (...args: unknown[]) =>
+    useRoutingAppPreflightMock(...args),
   useUpdateAppProxyConfig: (...args: unknown[]) =>
     useUpdateAppProxyConfigMock(...args),
 }));
@@ -34,6 +37,13 @@ const remoteTarget: Extract<ManagementTarget, { type: "remote" }> = {
 };
 
 describe("RemoteAppRoutingToggle", () => {
+  beforeEach(() => {
+    useRoutingAppPreflightMock.mockReturnValue({
+      data: { appType: "claude", canEnable: true, reason: null },
+      isLoading: false,
+    });
+  });
+
   it("does not show checked when app routing config is enabled but runtime is stopped", () => {
     useProxyStatusMock.mockReturnValue({
       isRunning: false,
@@ -72,5 +82,33 @@ describe("RemoteAppRoutingToggle", () => {
     render(<RemoteAppRoutingToggle activeApp="claude" target={remoteTarget} />);
 
     expect(screen.getByRole("switch")).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("disables enabling when remote routing preflight fails", () => {
+    useProxyStatusMock.mockReturnValue({
+      isRunning: true,
+      startProxyServer: vi.fn(),
+      isStarting: false,
+    });
+    useAppProxyConfigMock.mockReturnValue({
+      data: { appType: "gemini", enabled: false },
+      isLoading: false,
+    });
+    useRoutingAppPreflightMock.mockReturnValue({
+      data: {
+        appType: "gemini",
+        canEnable: false,
+        reason: "Gemini Live 配置不可用：Gemini .env 文件不存在",
+      },
+      isLoading: false,
+    });
+    useUpdateAppProxyConfigMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: vi.fn(),
+    });
+
+    render(<RemoteAppRoutingToggle activeApp="gemini" target={remoteTarget} />);
+
+    expect(screen.getByRole("switch")).toBeDisabled();
   });
 });

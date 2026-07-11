@@ -8,6 +8,11 @@ const mocks = vi.hoisted(() => ({
   startProxyServer: vi.fn(),
   updateAppConfig: vi.fn(),
   proxyRunning: false,
+  preflight: {
+    appType: "codex",
+    canEnable: true,
+    reason: null as string | null,
+  },
   appConfig: {
     appType: "codex",
     enabled: false,
@@ -35,6 +40,10 @@ vi.mock("@/hooks/useProxyStatus", () => ({
 vi.mock("@/lib/query/proxy", () => ({
   useAppProxyConfig: () => ({
     data: mocks.appConfig,
+    isLoading: false,
+  }),
+  useRoutingAppPreflight: () => ({
+    data: mocks.preflight,
     isLoading: false,
   }),
   useUpdateAppProxyConfig: () => ({
@@ -75,6 +84,11 @@ describe("RemoteAppRoutingToggle", () => {
     });
     mocks.updateAppConfig.mockResolvedValue(undefined);
     mocks.proxyRunning = false;
+    mocks.preflight = {
+      appType: "codex",
+      canEnable: true,
+      reason: null,
+    };
     mocks.appConfig = { ...mocks.appConfig, enabled: false };
   });
 
@@ -116,5 +130,24 @@ describe("RemoteAppRoutingToggle", () => {
       }),
     );
     expect(mocks.startProxyServer).not.toHaveBeenCalled();
+  });
+
+  it("does not start runtime or enable routing when preflight blocks the app", async () => {
+    const user = userEvent.setup();
+    mocks.preflight = {
+      appType: "codex",
+      canEnable: false,
+      reason: "请先为 Codex 选择当前供应商",
+    };
+
+    render(<RemoteAppRoutingToggle activeApp="codex" target={target} />);
+
+    const toggle = screen.getByRole("switch");
+    expect(toggle).toBeDisabled();
+
+    await user.click(toggle);
+
+    expect(mocks.startProxyServer).not.toHaveBeenCalled();
+    expect(mocks.updateAppConfig).not.toHaveBeenCalled();
   });
 });
