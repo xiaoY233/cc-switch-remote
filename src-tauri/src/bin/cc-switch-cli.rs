@@ -18,6 +18,9 @@ mod cli;
 #[path = "../codex_config.rs"]
 #[cfg(not(feature = "desktop"))]
 mod codex_config;
+#[path = "../codex_state_db.rs"]
+#[cfg(not(feature = "desktop"))]
+mod codex_state_db;
 #[path = "../config.rs"]
 #[cfg(not(feature = "desktop"))]
 mod config;
@@ -39,6 +42,9 @@ pub mod hermes_config;
 #[path = "../mcp/mod.rs"]
 #[cfg(not(feature = "desktop"))]
 mod mcp;
+#[path = "../model_capabilities.rs"]
+#[cfg(not(feature = "desktop"))]
+mod model_capabilities;
 #[path = "../openclaw_config.rs"]
 #[cfg(not(feature = "desktop"))]
 mod openclaw_config;

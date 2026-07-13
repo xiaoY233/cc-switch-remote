@@ -10,14 +10,16 @@ import {
   getStreamCheckConfig,
   saveStreamCheckConfig,
   type StreamCheckConfig,
-} from "@/lib/api/model-test";
+} from "@/lib/api/connectivity-check";
 import type { ManagementTarget } from "@/lib/api/remote";
 
-interface ModelTestConfigPanelProps {
+interface ConnectivityCheckConfigPanelProps {
   target?: ManagementTarget;
 }
 
-export function ModelTestConfigPanel({ target }: ModelTestConfigPanelProps) {
+export function ConnectivityCheckConfigPanel({
+  target,
+}: ConnectivityCheckConfigPanelProps) {
   const { t } = useTranslation();
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);

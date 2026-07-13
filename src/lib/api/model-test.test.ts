@@ -45,7 +45,7 @@ describe("stream check config API", () => {
 
   it("loads and saves config through remote API when target is remote", async () => {
     const { getStreamCheckConfig, saveStreamCheckConfig } = await import(
-      "./model-test"
+      "./connectivity-check"
     );
     const config = {
       timeoutSecs: 12,

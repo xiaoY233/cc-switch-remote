@@ -33,6 +33,7 @@ interface AddProviderDialogProps {
       providerKey?: string;
       suggestedDefaults?: OpenClawSuggestedDefaults;
       ensureClaudeDesktopOfficialSeed?: boolean;
+      ensureCodexOfficialSeed?: boolean;
     },
   ) => Promise<void> | void;
 }
@@ -63,6 +64,20 @@ export function AddProviderDialog({
     async (provider: UniversalProvider) => {
       try {
         await universalProvidersApi.upsert(provider, target);
+      } catch (error) {
+        console.error(
+          "[AddProviderDialog] Failed to save universal provider",
+          error,
+        );
+        toast.error(
+          t("universalProvider.addFailed", {
+            defaultValue: "统一供应商添加失败",
+          }),
+        );
+        return;
+      }
+
+      try {
         await universalProvidersApi.sync(provider.id, target);
         toast.success(
           t("universalProvider.addedAndSynced", {
@@ -74,15 +89,19 @@ export function AddProviderDialog({
         onOpenChange(false);
       } catch (error) {
         console.error(
-          "[AddProviderDialog] Failed to save universal provider",
+          "[AddProviderDialog] Provider saved but sync failed",
           error,
         );
-        toast.error(
-          t("universalProvider.addFailed", {
-            defaultValue: "统一供应商添加失败",
+        toast.warning(
+          t("universalProvider.addedButSyncFailed", {
+            defaultValue: "统一供应商已添加，但同步失败",
           }),
         );
       }
+
+      setUniversalFormOpen(false);
+      setSelectedUniversalPreset(null);
+      onOpenChange(false);
     },
     [t, onOpenChange, target],
   );
@@ -104,6 +123,7 @@ export function AddProviderDialog({
         providerKey?: string;
         suggestedDefaults?: OpenClawSuggestedDefaults;
         ensureClaudeDesktopOfficialSeed?: boolean;
+        ensureCodexOfficialSeed?: boolean;
       } = {
         name: values.name.trim(),
         notes: values.notes?.trim() || undefined,
@@ -121,6 +141,14 @@ export function AddProviderDialog({
         );
         const preset = claudeDesktopProviderPresets[presetIndex];
         providerData.ensureClaudeDesktopOfficialSeed =
+          values.presetCategory === "official" &&
+          preset?.category === "official";
+      }
+
+      if (appId === "codex" && values.presetId) {
+        const presetIndex = parseInt(values.presetId.replace("codex-", ""));
+        const preset = codexProviderPresets[presetIndex];
+        providerData.ensureCodexOfficialSeed =
           values.presetCategory === "official" &&
           preset?.category === "official";
       }

@@ -188,6 +188,153 @@ pub fn ensure_claude_desktop_official_provider(state: State<'_, AppState>) -> Re
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub fn ensure_codex_official_provider(state: State<'_, AppState>) -> Result<bool, String> {
+    state
+        .db
+        .ensure_official_seed_by_id(crate::database::CODEX_OFFICIAL_PROVIDER_ID, AppType::Codex)
+        .map_err(|e| e.to_string())
+}
+
+fn claude_provider_models_are_claude_safe(provider: &Provider) -> bool {
+    let Some(env) = provider
+        .settings_config
+        .get("env")
+        .and_then(|value| value.as_object())
+    else {
+        return true;
+    };
+
+    [
+        "ANTHROPIC_MODEL",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL",
+        "ANTHROPIC_DEFAULT_OPUS_MODEL",
+    ]
+    .into_iter()
+    .filter_map(|key| env.get(key).and_then(|value| value.as_str()))
+    .map(str::trim)
+    .filter(|value| !value.is_empty())
+    .all(crate::claude_desktop_config::is_claude_safe_model_id)
+}
+
+pub(crate) fn suggested_claude_desktop_routes(
+    provider: &Provider,
+) -> Option<std::collections::HashMap<String, crate::provider::ClaudeDesktopModelRoute>> {
+    let env = provider
+        .settings_config
+        .get("env")
+        .and_then(|value| value.as_object())?;
+    let mut routes = std::collections::HashMap::new();
+    let supports_1m_default = !matches!(
+        provider
+            .meta
+            .as_ref()
+            .and_then(|meta| meta.provider_type.as_deref()),
+        Some("github_copilot") | Some("codex_oauth")
+    );
+
+    fn add_route(
+        routes: &mut std::collections::HashMap<String, crate::provider::ClaudeDesktopModelRoute>,
+        env: &serde_json::Map<String, serde_json::Value>,
+        route_key: &str,
+        env_key: &str,
+        supports_1m_default: bool,
+    ) {
+        let Some(raw_model) = env
+            .get(env_key)
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            return;
+        };
+
+        // Claude 端 env 值可能带 [1M] 后缀；Claude Desktop schema 不接受后缀，
+        // 改用 supports1m 字段表达 1M 能力。在 import 边界做单向翻译。
+        let marker = crate::claude_desktop_config::ONE_M_CONTEXT_MARKER.as_bytes();
+        let raw_bytes = raw_model.as_bytes();
+        let has_1m_marker = raw_bytes.len() >= marker.len()
+            && raw_bytes[raw_bytes.len() - marker.len()..].eq_ignore_ascii_case(marker);
+        let stripped_model: &str = if has_1m_marker {
+            raw_model[..raw_model.len() - marker.len()].trim_end()
+        } else {
+            raw_model
+        };
+        if stripped_model.is_empty() {
+            return;
+        }
+        let effective_supports_1m = supports_1m_default || has_1m_marker;
+        let explicit_label_override = env
+            .get(&format!("{env_key}_NAME"))
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        let label_override = explicit_label_override.clone().or_else(|| {
+            (!crate::claude_desktop_config::is_claude_safe_model_id(stripped_model))
+                .then(|| stripped_model.to_string())
+        });
+
+        // 何时覆盖既有 label_override：原本为空 / 这次来的是 explicit _NAME /
+        // 既有值只是 stripped_model 派生的占位（被 explicit 或更具体的值挤掉）。
+        let should_overwrite = |existing: Option<&str>| {
+            existing.is_none()
+                || explicit_label_override.is_some()
+                || existing == Some(stripped_model)
+        };
+
+        let merge_into = |existing: &mut crate::provider::ClaudeDesktopModelRoute| {
+            let merged = existing.supports_1m.unwrap_or(false) || effective_supports_1m;
+            existing.supports_1m = Some(merged);
+            if should_overwrite(existing.label_override.as_deref()) {
+                existing.label_override = label_override.clone();
+            }
+        };
+
+        if let Some(existing) = routes
+            .values_mut()
+            .find(|existing| existing.model == stripped_model)
+        {
+            merge_into(existing);
+            return;
+        }
+
+        routes
+            .entry(route_key.to_string())
+            .and_modify(merge_into)
+            .or_insert_with(|| crate::provider::ClaudeDesktopModelRoute {
+                model: stripped_model.to_string(),
+                label_override,
+                supports_1m: Some(effective_supports_1m),
+            });
+    }
+
+    for spec in crate::claude_desktop_config::DEFAULT_PROXY_ROUTES {
+        add_route(
+            &mut routes,
+            env,
+            spec.route_id,
+            spec.env_key,
+            supports_1m_default,
+        );
+    }
+
+    // 三个 default env_key 全空时用 ANTHROPIC_MODEL 派生兜底路由。
+    if routes.is_empty() {
+        let primary_route = crate::claude_desktop_config::DEFAULT_PROXY_ROUTES[0].route_id;
+        add_route(
+            &mut routes,
+            env,
+            primary_route,
+            "ANTHROPIC_MODEL",
+            supports_1m_default,
+        );
+    }
+
+    (!routes.is_empty()).then_some(routes)
+}
+
 #[allow(non_snake_case)]
 #[tauri::command]
 pub async fn queryProviderUsage(
@@ -199,32 +346,30 @@ pub async fn queryProviderUsage(
 ) -> Result<crate::provider::UsageResult, String> {
     let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
     // inner 可能以两种形式失败：
-    //   1) 返回 Ok(UsageResult { success: false, .. }) —— 业务失败（401、脚本报错等）
-    //   2) 返回 Err(String) —— RPC/DB/Copilot fetch_usage 等 transport 层失败
-    // 两种都要把"失败"写进 UsageCache 并刷新托盘，让 format_script_summary 的
-    // success 守卫生效、suffix 自然消失，避免旧 success 快照长期滞留。
-    // 同时保持原始 Err 返回给前端 React Query 的 onError 回调，不吞错误。
+    //   1) 返回 Ok(UsageResult { success: false, .. }) —— 确定性失败（401、脚本
+    //      报错、未知供应商等）。写进 UsageCache 并刷新托盘，让
+    //      format_script_summary 的 success 守卫生效、suffix 自然消失。
+    //   2) 返回 Err(String) —— 瞬时传输失败（网络/超时）及 DB/Copilot fetch 等。
+    //      不写失败快照、不 emit：保留上一份托盘快照，与前端 react-query reject
+    //      保留上次 data 的语义一致；否则失败快照会经 useUsageCacheBridge 盲写
+    //      回 query 缓存，抹掉 reject 本该保留的旧值。
     let inner =
         query_provider_usage_inner(&state, &copilot_state, app_type.clone(), &providerId).await;
-    let snapshot = match &inner {
-        Ok(r) => r.clone(),
-        Err(err_msg) => crate::provider::UsageResult {
-            success: false,
-            data: None,
-            error: Some(err_msg.clone()),
-        },
-    };
-    let payload = serde_json::json!({
-        "kind": "script",
-        "appType": app_type.as_str(),
-        "providerId": &providerId,
-        "data": &snapshot,
-    });
-    if let Err(e) = app_handle.emit("usage-cache-updated", payload) {
-        log::error!("emit usage-cache-updated (script) 失败: {e}");
+    if let Ok(snapshot) = &inner {
+        let payload = serde_json::json!({
+            "kind": "script",
+            "appType": app_type.as_str(),
+            "providerId": &providerId,
+            "data": snapshot,
+        });
+        if let Err(e) = app_handle.emit("usage-cache-updated", payload) {
+            log::error!("emit usage-cache-updated (script) 失败: {e}");
+        }
+        state
+            .usage_cache
+            .put_script(app_type, providerId, snapshot.clone());
+        crate::tray::schedule_tray_refresh(&app_handle);
     }
-    state.usage_cache.put_script(app_type, providerId, snapshot);
-    crate::tray::schedule_tray_refresh(&app_handle);
     inner
 }
 
@@ -336,12 +481,20 @@ async fn query_provider_usage_inner(
         // 其他供应商为 None，service 层沿用 api_key。
         let access_key_id = usage_script.and_then(|s| s.access_key_id.clone());
         let secret_access_key = usage_script.and_then(|s| s.secret_access_key.clone());
+        // 智谱团队版：显式 provider 标识 + 组织/项目 ID（与个人版智谱 base_url 相同，
+        // 靠 coding_plan_provider == "zhipu_team" 在 service 层路由）。
+        let coding_plan_provider = usage_script.and_then(|s| s.coding_plan_provider.clone());
+        let team_organization_id = usage_script.and_then(|s| s.team_organization_id.clone());
+        let team_project_id = usage_script.and_then(|s| s.team_project_id.clone());
 
         let quota = crate::services::coding_plan::get_coding_plan_quota(
             &base_url,
             &api_key,
             access_key_id.as_deref(),
             secret_access_key.as_deref(),
+            coding_plan_provider.as_deref(),
+            team_organization_id.as_deref(),
+            team_project_id.as_deref(),
         )
         .await
         .map_err(|e| format!("Failed to query coding plan: {e}"))?;
@@ -899,6 +1052,8 @@ mod native_query_credentials_tests {
             coding_plan_provider: coding_plan_provider.map(str::to_string),
             access_key_id: None,
             secret_access_key: None,
+            team_organization_id: None,
+            team_project_id: None,
         }
     }
 

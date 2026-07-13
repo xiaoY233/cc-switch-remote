@@ -183,6 +183,9 @@ describe("subscriptionApi remote usage helpers", () => {
       "api-key",
       "ak",
       "sk",
+      undefined,
+      undefined,
+      undefined,
       remoteTarget,
     );
 

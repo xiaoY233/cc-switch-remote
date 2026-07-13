@@ -1,26 +1,22 @@
 <div align="center">
 
-# CC Switch Remote
+# CC Switch
 
-### リモートサーバー管理を強化した CC Switch fork
+### Claude Code、Claude Desktop、Codex、Gemini CLI、OpenCode、OpenClaw、Hermes Agent のオールインワン管理ツール
 
-[![Version](https://img.shields.io/github/v/release/xiaoY233/cc-switch-remote?color=blue&label=version)](https://github.com/xiaoY233/cc-switch-remote/releases)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/xiaoY233/cc-switch-remote/releases)
+[![Version](https://img.shields.io/github/v/release/farion1231/cc-switch?color=blue&label=version)](https://github.com/farion1231/cc-switch/releases)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/farion1231/cc-switch/releases)
 [![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-orange.svg)](https://tauri.app/)
-[![Downloads](https://img.shields.io/github/downloads/xiaoY233/cc-switch-remote/total)](https://github.com/xiaoY233/cc-switch-remote/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/farion1231/cc-switch/total)](https://github.com/farion1231/cc-switch/releases/latest)
 
-CC Switch Remote は上流のローカル管理機能を維持しながら、独立したリモートサーバー管理を追加します。`main` は製品ブランチ、`upstream-main` は `farion1231/cc-switch/main` を追跡する上流同期用ブランチです。
+<a href="https://trendshift.io/repositories/15372" target="_blank"><img src="https://trendshift.io/api/badge/repositories/15372" alt="farion1231%2Fcc-switch | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+<a href="https://www.star-history.com/#farion1231/cc-switch&Date"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=farion1231/cc-switch&theme=dark" /><img alt="Star History Rank" src="https://api.star-history.com/badge?repo=farion1231/cc-switch" width="196" height="55" /></picture></a>
+
+### 🌐 唯一の公式サイト：**[ccswitch.io](https://ccswitch.io)**
 
 [English](README.md) | [中文](README_ZH.md) | 日本語 | [Deutsch](README_DE.md) | [Changelog](CHANGELOG.md)
 
 </div>
-
-## Remote Fork Strategy
-
-- `main` は CC Switch Remote の製品ブランチで、アプリケーションリリースに使用します。
-- `upstream-main` は上流 CC Switch `main` のミラーで、上流機能の同期基準としてのみ使用します。
-- デスクトップアプリとリモート Helper は別々の workflow でリリースします。アプリは tag ベース、Helper は `Remote Helper Artifacts` workflow から `remote-helper-latest` に公開します。
-- リモート Helper の asset は `cc-switch-remote-helper-*` プレフィックスを使い、デスクトップ GTK/WebKit に依存しない純粋な CLI バイナリです。
 
 ## ❤️スポンサー
 
@@ -29,11 +25,11 @@ CC Switch Remote は上流のローカル管理機能を維持しながら、独
 <details open>
 <summary>クリックで折りたたむ</summary>
 
-[![MiniMax](assets/partners/banners/minimax-en.jpeg)](https://platform.minimax.io/subscribe/coding-plan?code=ClLhgxr2je&source=link)
+[![Kimi K2.7 Code](assets/partners/banners/kimi-banner-en.png)](https://platform.kimi.ai?aff=cc-switch)
 
-MiniMax-M2.7 は、自律的進化と実世界の生産性向上のために設計された次世代大規模言語モデルです。従来のモデルとは異なり、M2.7 はエージェントチーム、動的ツール使用、強化学習ループを通じて自身の改善に積極的に参加します。ソフトウェアエンジニアリングにおいて優れた性能を発揮し（SWE-Pro で 56.22%、VIBE-Pro で 55.6%、Terminal Bench 2 で 57.0%）、複雑なオフィスワークフローにも秀でており、GDPval-AA で 1495 ELO のリーディングスコアを達成しています。Word・Excel・PowerPoint の高忠実度編集と、40 以上の複雑なスキルにわたる 97% の遵守率により、M2.7 は AI ネイティブなワークフローと組織構築の新基準を打ち立てます。
+Kimi K2.7 Code は Moonshot AI が開発した、コーディングに特化したオープンソースのエージェントモデルです。コーディング能力とエージェント性能が全面的に強化され、実世界の長程コーディングタスクで大幅な向上を実現し、複雑なソフトウェアエンジニアリングのワークフロー全体でエンドツーエンドのタスク成功率を高めます。さらに K2.7 Code は推論効率を改善し、K2.6 と比べて推論トークンの消費を約 30% 削減します。**[ここをクリックして Kimi を体験する](https://platform.kimi.ai?aff=cc-switch)**
 
-[こちら](https://platform.minimax.io/subscribe/coding-plan?code=ClLhgxr2je&source=link)から MiniMax Token Plan の限定 12% オフを入手！
+コーディング作業がメインですか？コーディングのために作られたサブスクリプション、**[Kimi For Coding プラン](https://www.kimi.com/code/?aff=cc-switch)** をぜひお試しください！
 
 ---
 
@@ -67,13 +63,20 @@ Claude Code / Codex / Gemini 公式チャンネルが最安で元価格の 38% /
 </tr>
 
 <tr>
-<td width="180"><a href="https://www.byteplus.com/en/product/modelark?utm_campaign=hw&utm_content=ccswitch&utm_medium=devrel_tool_web&utm_source=OWO&utm_term=ccswitch"><img src="assets/partners/logos/byteplus.png" alt="BytePlus" width="150"></a></td>
-<td>Dola seed のご支援に感謝します！Dola Seed 2.0 は ByteDance がグローバル市場向けに独自開発したフルモーダル汎用大規模モデルです。統一されたマルチモーダルアーキテクチャを基盤に、テキスト・画像・音声・動画の統合的な理解と生成をサポートします。エージェント連携をネイティブに実現し、強力な推論、長時間タスクの実行、ツール統合、コーディング能力を備えています。スマートコックピット、パーソナルアシスタント、教育、カスタマーサポート、マーケティング、リテールなど幅広いシナリオに適用可能で、マルチモーダル認識、エンドツーエンドの複雑なタスク遂行、安定したインタラクション、データセキュリティに優れ、ModelArk プラットフォームを通じて手軽に利用・デプロイできます。<a href="https://www.byteplus.com/en/product/modelark?utm_campaign=hw&utm_content=ccswitch&utm_medium=devrel_tool_web&utm_source=OWO&utm_term=ccswitch">このリンク</a>からご登録いただくと、モデルごとに 500,000 トークンの無料推論クォータを進呈します。</td>
+<td width="180"><a href="https://teamorouter.com/?utm_source=cc_switch&utm_medium=referral&utm_campaign=ai_directory"><img src="assets/partners/logos/TeamoRouter-banner.png" alt="TeamoRouter" width="150"></a></td>
+<td>このプロジェクトをご支援いただいている TeamoRouter に感謝します！TeamoRouter は、開発者、AI チーム、企業向けに構築されたエンタープライズグレードの Agentic LLM ゲートウェイです。サブスクリプション不要で、単一の統合 API を通じて Claude Code、Codex、Gemini CLI、OpenAI Codex、その他の人気 AI エージェントにアクセスでき、API 料金は最大 90% オフで利用できます。
+一般的な API リレーサービスとは異なり、TeamoRouter は OpenAI、Anthropic、Vertex、Azure、AWS Bedrock など、数百の公式モデルプロバイダーと信頼できるインフラパートナーを集約しています。各プロバイダーは、Agent プロトコルとの 100% 互換性、キャッシュ性能、リクエストの追跡可能性について検証されており、リバースエンジニアリングされたものや品質が薄められたエンドポイントではなく、安定した品質を提供します。プラットフォームは公式に近い TTFT、99.6% の SLA、最大 5,000 QPM のエンタープライズ規模のスループット、そして業界トップクラスのキャッシュヒット率を提供し、長時間稼働するエージェントワークフローのトークンコストを大幅に削減します。
+TeamoRouter は、集中請求、チーム管理、BYOK、スマートルーティング、利用状況分析、動的なプロバイダー最適化、専任サポートなどのエンタープライズ機能も提供しています。さらにシンプルな体験を求める場合は、Teamo Desktop を使うことで、Claude Code、Codex、Gemini CLI、その他の人気 AI エージェントをワンクリックで利用できます。API キー管理や手動のゲートウェイ設定は不要です。新規ユーザーとして<a href="https://teamorouter.com/?utm_source=cc_switch&utm_medium=referral&utm_campaign=ai_directory">こちらのリンク</a>から登録すると、初回チャージが 10% オフになります。</td>
 </tr>
 
 <tr>
-<td width="180"><a href="https://cloud.siliconflow.cn/i/drGuwc9k"><img src="assets/partners/logos/silicon_en.jpg" alt="SiliconFlow" width="150"></a></td>
-<td>SiliconFlow のご支援に感謝します！SiliconFlow は高性能 AI インフラストラクチャおよびモデル API プラットフォームで、言語・音声・画像・動画モデルへの高速かつ信頼性の高いアクセスをワンストップで提供します。従量課金制、豊富なマルチモーダルモデル対応、高速推論、エンタープライズグレードの安定性を備え、開発者やチームがより効率的に AI アプリケーションを構築・拡張できるようサポートします。<a href="https://cloud.siliconflow.cn/i/drGuwc9k">このリンク</a>から登録し、本人確認を完了すると、プラットフォーム内の全モデルで利用可能な ¥16 のボーナスクレジットが付与されます。SiliconFlow は OpenClaw にも対応しており、SiliconFlow の API キーを接続することで主要な AI モデルを無料で呼び出すことができます。</td>
+<td width="180"><a href="https://www.byteplus.com/en/product/modelark?utm_campaign=hw&utm_content=ccswitch&utm_medium=devrel_tool_web&utm_source=OWO&utm_term=ccswitch"><img src="assets/partners/logos/byteplus.png" alt="BytePlus" width="150"></a></td>
+<td>Dola seed のご支援に感謝します！Dola Seed 2.0 は ByteDance がグローバル市場向けに独自開発したフルモーダル汎用大規模モデルです。統一されたマルチモーダルアーキテクチャを基盤に、テキスト・画像・音声・動画の統合的な理解と生成をサポートします。エージェント連携をネイティブに実現し、強力な推論、長時間タスクの実行、ツール統合、コーディング能力を備えています。スマートコックピット、パーソナルアシスタント、教育、カスタマーサポート、マーケティング、リテールなど幅広いシナリオに適用可能で、マルチモーダル認識、エンドツーエンドの複雑なタスク遂行、安定したインタラクション、データセキュリティに優れ、ModelArk プラットフォームを通じて手軽に利用・デプロイできます。<a href="https://www.byteplus.com/en/product/modelark?utm_campaign=hw&utm_content=ccswitch&utm_medium=devrel_tool_web&utm_source=OWO&utm_term=ccswitch">このリンク</a>からご登録いただくと、モデルごとに 500,000 トークンの無料推論クォータを進呈します。<a href="https://www.volcengine.com/activity/ai618?utm_campaign=hw&utm_content=hw&utm_medium=devrel_tool_web&utm_source=OWO&utm_term=ccswitch"> >>中国大陆地区的开发者请点击这里</a></td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://cloud.siliconflow.cn/i/YflgU2Ve"><img src="assets/partners/logos/silicon_en.jpg" alt="SiliconFlow" width="150"></a></td>
+<td>SiliconFlow のご支援に感謝します！SiliconFlow は高性能 AI インフラストラクチャおよびモデル API プラットフォームで、言語・音声・画像・動画モデルへの高速かつ信頼性の高いアクセスをワンストップで提供します。従量課金制、豊富なマルチモーダルモデル対応、高速推論、エンタープライズグレードの安定性を備え、開発者やチームがより効率的に AI アプリケーションを構築・拡張できるようサポートします。<a href="https://cloud.siliconflow.cn/i/YflgU2Ve">このリンク</a>から登録し、本人確認を完了すると、プラットフォーム内の全モデルで利用可能な ¥16 のボーナスクレジットが付与されます。SiliconFlow は OpenClaw にも対応しており、SiliconFlow の API キーを接続することで主要な AI モデルを無料で呼び出すことができます。</td>
 </tr>
 
 <tr>
@@ -110,10 +113,6 @@ Claude Code / Codex / Gemini 公式チャンネルが最安で元価格の 38% /
 <td width="180"><a href="https://www.micuapi.ai/register?aff=aOYQ"><img src="assets/partners/logos/mikubanner.svg" alt="Micu" width="150"></a></td>
 <td>Micu API のご支援に感謝します！Micu API は、最高のコストパフォーマンスと高い安定性を追求するグローバル大規模言語モデル中継サービスプロバイダーです。法人企業がバックアップしており、サービス停止のリスクを排除、迅速な正規請求書発行に対応！「試行コストゼロ」をモットーに、最低 1 元からチャージ可能で手数料無料、いつでも返金可能！CC Switch ユーザー向けの限定特典：<a href="https://www.micuapi.ai/register?aff=aOYQ">こちらのリンク</a>から登録し、チャージ時にプロモコード「ccswitch」を入力すると <strong>10% 割引</strong> が適用されます！</td>
 </tr>
-<tr>
-<td width="180"><a href="https://lemondata.cc/r/FFX1ZDUP"><img src="assets/partners/logos/lemondata.png" alt="LemonData" width="150"></a></td>
-<td>LemonData のご支援に感謝します！LemonData は高性能 AI API アグリゲーションプラットフォームで、GPT、Claude、Gemini、DeepSeek など 300 以上のモデルに 1 つの API キーでアクセス可能。全モデルが公式価格の 30〜70% オフで自動フェイルオーバー、スマートルーティング、無制限同時接続に対応。新規ユーザーは登録だけで即座に $1 の無料クレジットを獲得 — <a href="https://lemondata.cc/r/FFX1ZDUP">こちらのリンク</a>から登録してボーナスを獲得し、すぐに開発を始めましょう！</td>
-</tr>
 
 <tr>
 <td width="180"><a href="https://etok.ai"><img src="assets/partners/logos/etok.png" alt="ETok" width="150"></a></td>
@@ -123,6 +122,11 @@ Claude Code / Codex / Gemini 公式チャンネルが最安で元価格の 38% /
 <tr>
 <td width="180"><a href="https://console.claudeapi.com/register?aff=pCLD"><img src="assets/partners/logos/claudeapi.png" alt="ClaudeAPI" width="150"></a></td>
 <td>本プロジェクトは <a href="https://console.claudeapi.com/register?aff=pCLD">Claude API</a> がスポンサーです。Claude API 直結 — わずか 3 分で Claude Code や Agent アプリに接続可能。新規ユーザーにはテストクレジットを提供しています。Anthropic 公式キーおよび AWS Bedrock 公式チャネルに基づいており、リバースエンジニアリングや性能劣化はありません。Opus / Sonnet / Haiku の全モデルラインナップをサポートし、Tool Use や 1M コンテキストなどの公式機能をすべて保持しています。Claude Code ヘビーユーザー、Agent エンジニア、企業技術チームに最適です。請求書発行およびチーム対応が可能です。<a href="https://console.claudeapi.com/register?aff=pCLD">こちら</a>から登録してください！</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://code0.ai/agent/register/B2XHxGjGmRvqgznY"><img src="assets/partners/logos/code0.png" alt="code0.ai" width="150"></a></td>
+<td>本プロジェクトをご支援いただいている <a href="https://code0.ai/agent/register/B2XHxGjGmRvqgznY">code0.ai</a> に感謝します！code0.ai は開発者向けの AI コーディングサービスプラットフォームで、Claude Code、Codex、Gemini などの主要な AI コーディング機能に対応しています。個人開発者やチームが、コーディング、デバッグ、リファクタリング、自動化ワークフローで AI Agent をより安定かつ効率的に活用できるよう支援します。ccswitch ユーザーは <a href="https://code0.ai/agent/register/B2XHxGjGmRvqgznY">code0.ai 公式サイト</a> からカスタマーサポートに連絡することで、テストクレジットを受け取り、信頼性の高い AI コーディングサービスを体験できます。</td>
 </tr>
 
 <tr>
@@ -150,19 +154,49 @@ Claude Code / Codex / Gemini 公式チャンネルが最安で元価格の 38% /
 <td>Atlas Cloud は、1 つの API で動画・画像生成や LLM（大規模言語モデル）を利用できる全モーダル対応の AI 推論プラットフォームです。複数のベンダーを個別に管理する手間を省き、一度の接続で 300 以上の厳選されたマルチモーダルモデルにアクセスできます。より低コストで API を利用できる、開発者向けの新しい<a href="https://www.atlascloud.ai/coding-plan?utm_source=github&utm_campaign=cc-switch">「コーディングプラン」</a>プロモーションをぜひチェックしてください！</td>
 </tr>
 
+<tr>
+<td width="180"><a href="https://www.ccsub.net/register?ref=Y6Z8DXEA"><img src="assets/partners/logos/ccsub.svg" alt="CCSub" width="150"></a></td>
+<td>CCSub のご支援に感謝します！CCSub は安定した低価格の AI API リレープラットフォームで、Claude Code 公式サブスクリプションの強力な代替です。1 つの API キーで Claude Opus 4.8、Sonnet 4.6、Haiku 4.5、GPT-5、Gemini、DeepSeek の全モデルを公式直接利用の約 1/3 のコストでご利用いただけます。VPN 不要で世界中から直接接続可能。Claude Code、Codex、Cursor、Cline、Continue、Windsurf など主要な AI コーディングツールすべてに対応しています。<a href="https://www.ccsub.net/register?ref=Y6Z8DXEA">こちらのリンク</a>から登録すると $5 の無料クレジットがもらえます。</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://unity2.ai/register?source=ccs"><img src="assets/partners/logos/unity2.jpg" alt="Unity2.ai" width="150"></a></td>
+<td>Unity2.ai のご支援に感謝します！Unity2.ai は個人開発者・チーム・企業向けの高性能 AI モデル API リレープラットフォームです。中国の大手企業に長年利用されており、1 日 300 億トークン以上を処理し、5000 RPM クラスの高並列に対応しています。残高課金、初回チャージボーナス、組み合わせサブスクリプション、企業向け請求書発行、専任サポートを提供。<a href="https://unity2.ai/register?source=ccs">こちらのリンク</a>から登録すると $2 のクレジット、公式グループへの参加でさらに $10、最大 $12 の無料クレジットがもらえます！</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://api.fenno.ai/register?redirect=/purchase?tab=subscription%26group=16&aff=P9MR3D3PLCNL"><img src="assets/partners/logos/fenno-banner.png" alt="Fenno.ai" width="150"></a></td>
+<td>Fenno.ai のご支援に感謝します！Fenno.ai は安定かつ高効率な API 中継サービスプロバイダーで、現在は主に Codex の中継を提供しています。OpenAI および Anthropic プロトコルに対応し、Codex・Claude Code・OpenCode などの主要なコーディングツールから柔軟に利用できます。1 日あたり数千億トークンというエンタープライズ級の呼び出し需要を安定して支え、国内外の法人による B2B 決済・請求書発行に対応しています。Fenno.ai は CC Switch 利用者限定の特典を用意しています：<a href="https://api.fenno.ai/register?redirect=/purchase?tab=subscription%26group=16&aff=P9MR3D3PLCNL">こちらのリンク</a>から 9.9 元（150 ドル相当）のお得な Coding Plan を購入でき、友達紹介で最大 20% の特典がもらえます。紹介すればするほどお得です！</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://zetaapi.ai/go/ccs"><img src="assets/partners/logos/zetaapi-banner.png" alt="ZetaAPI" width="150"></a></td>
+<td>本プロジェクトをご支援いただいている ZetaAPI に感謝します！ZetaAPI は、モデル品質の忠実性、水増しなし、性能劣化なし、公式価格の 35% から利用できる低価格を主な特徴としています。プラットフォームはトラフィックの混在、低品質モデルへの密かな切り替え、虚偽のモデルルーティングを行わず、Claude Code、Codex、Gemini、ChatGPT などの主要 AI モデルに対応しており、モデル品質を維持しながら API 利用コストを大幅に削減できます。同時に、ZetaAPI はエンタープライズ級の SLA 安定性保証、標準 API 互換、1つの Key による複数モデル接続、迅速な導入、従量課金などの機能を提供し、AI プロダクト、コード生成、企業内ツール、カスタマーサポート、コンテンツ生成、自動化ワークフローなどの用途に適しています。万が一、モデル品質が表記内容と一致しないことが確認された場合、ZetaAPI は 10 倍補償保証を提供し、ユーザーがより安定して、透明性高く、安心して利用できる環境を実現します。<a href="https://zetaapi.ai/go/ccs">こちらのリンク</a>から登録し、初回チャージ時にプロモコード CC-SWITCH を使用すると、CC Switch ユーザー限定の初回チャージ 10% オフ特典をご利用いただけます！</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://nekocode.ai?aff=CCSWITCH"><img src="assets/partners/logos/nekocode-banner.png" alt="NekoCode" width="150"></a></td>
+<td>本プロジェクトをご支援いただいている <a href="https://nekocode.ai?aff=CCSWITCH">NekoCode</a> に感謝します！NekoCode は、Claude や Codex などの AI モデルに対応した、安定性・効率性・信頼性に優れた API 中継サービスを提供しています。料金体系は明瞭で、柔軟な従量課金にも対応しています。CC Switch ユーザー限定の 10%オフ特典：<a href="https://nekocode.ai?aff=CCSWITCH">こちらのリンク</a> から登録し、チャージ時にクーポンコード <code>cc-switch</code> を入力すると、チャージが 10%オフになります！</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://www.newapi.ai/"><img src="assets/partners/logos/newapi-banner.png" alt="new-api" width="150"></a></td>
+<td>オープンソースの AI インフラプロジェクト <a href="https://www.newapi.ai/">new-api</a> による本プロジェクトへの多大なご支援に感謝します！new-api は QuantumNous（锟腾科技）が開発したオープンソースの AI インフラプロジェクトであり、活発さと利用規模の面でリードする LLM 統合アクセス・配信プロジェクトの一つで、開発者・チーム・企業がより低コストで管理・拡張可能な AI サービスプラットフォームを構築できるよう支援することに注力しています。同じくオープンソースエコシステムに根ざすプロジェクトとして、new-api はスポンサーシップを通じて、より多くの優れたオープンソースプロジェクトの継続的な発展を支援したいと考えています。🌟 new-api への Star で応援をお願いします：<a href="https://github.com/QuantumNous/new-api">https://github.com/QuantumNous/new-api</a>。公式サイト：<a href="https://www.newapi.ai/">https://www.newapi.ai/</a>。</td>
+</tr>
+
 </table>
 
 </details>
 
 ## CC Switch を選ぶ理由
 
-最新の AI コーディングは Claude Code、Codex、Gemini CLI、OpenCode、OpenClaw などの CLI ツールに依存していますが、各ツールの設定形式はバラバラです。API プロバイダを切り替えるたびに JSON、TOML、`.env` ファイルを手動で編集する必要があり、複数ツール間で MCP や Skills を統一的に管理する手段もありません。
+最新の AI コーディングは Claude Code、Claude Desktop、Codex、Gemini CLI、OpenCode、OpenClaw、Hermes などのツールに依存していますが、各ツールの設定形式はバラバラです。API プロバイダを切り替えるたびに JSON、TOML、`.env` ファイルを手動で編集する必要があり、複数ツール間で MCP や Skills を統一的に管理する手段もありません。
 
-**CC Switch** は、5 つの CLI ツールを 1 つのデスクトップアプリで一元管理できます。設定ファイルを手作業で編集する代わりに、ワンクリックでプロバイダをインポートし、瞬時に切り替えられるビジュアルインターフェースを提供します。50 以上の組み込みプリセット、統一 MCP・Skills 管理、システムトレイからの即時切り替え機能を搭載。すべてはアトミック書き込みによる信頼性の高い SQLite データベースに支えられており、設定の破損を防ぎます。
+**CC Switch** は、対応する AI ツールを 1 つのデスクトップアプリで一元管理できます。設定ファイルを手作業で編集する代わりに、ワンクリックでプロバイダをインポートし、瞬時に切り替えられるビジュアルインターフェースを提供します。50 以上の組み込みプリセット、統一 MCP・Skills 管理、システムトレイからの即時切り替え機能を搭載。すべてはアトミック書き込みによる信頼性の高い SQLite データベースに支えられており、設定の破損を防ぎます。
 
-- **1 つのアプリで 5 つの CLI ツール** -- Claude Code、Codex、Gemini CLI、OpenCode、OpenClaw を単一インターフェースで管理
+- **1 つのアプリで 7 つのツール** -- Claude Code、Claude Desktop、Codex、Gemini CLI、OpenCode、OpenClaw、Hermes を単一インターフェースで管理
 - **手動編集は不要** -- AWS Bedrock、NVIDIA NIM、コミュニティリレーなど 50 以上のプロバイダプリセットを内蔵。選んで切り替えるだけ
-- **統一 MCP・Skills 管理** -- 1 つのパネルで 4 つのアプリの MCP サーバーと Skills を双方向同期で管理
+- **統一 MCP・Skills 管理** -- 1 つのパネルで Claude、Codex、Gemini、OpenCode、Hermes の MCP サーバーと Skills を双方向同期で管理
 - **システムトレイでクイック切り替え** -- トレイメニューから即座にプロバイダを切り替え。アプリを開く必要なし
 - **クラウド同期** -- Dropbox、OneDrive、iCloud、または WebDAV サーバー経由でデバイス間のプロバイダデータを同期
 - **クロスプラットフォーム** -- Tauri 2 で構築された Windows、macOS、Linux 対応のネイティブデスクトップアプリ
@@ -176,12 +210,12 @@ Claude Code / Codex / Gemini 公式チャンネルが最安で元価格の 38% /
 
 ## 特長
 
-[完全な更新履歴](CHANGELOG.md) | [リリースノート](docs/release-notes/v3.15.0-ja.md)
+[完全な更新履歴](CHANGELOG.md) | [リリースノート](docs/release-notes/v3.16.1-ja.md)
 
 ### プロバイダ管理
 
-- **5 つの CLI ツール、50 以上のプリセット** -- Claude Code、Codex、Gemini CLI、OpenCode、OpenClaw。キーをコピーしてワンクリックでインポート
-- **ユニバーサルプロバイダ** -- 1 つの設定を複数アプリに同期（OpenCode、OpenClaw）
+- **7 つの対応ツール、50 以上のプリセット** -- Claude Code、Claude Desktop、Codex、Gemini CLI、OpenCode、OpenClaw、Hermes。キーをコピーしてワンクリックでインポート
+- **ユニバーサルプロバイダ** -- 1 つの設定を Claude Code、Codex、Gemini CLI に同期
 - ワンクリック切り替え、システムトレイクイックアクセス、ドラッグ＆ドロップ並び替え、インポート/エクスポート
 
 ### プロキシ & フェイルオーバー
@@ -191,7 +225,7 @@ Claude Code / Codex / Gemini 公式チャンネルが最安で元価格の 38% /
 
 ### MCP、Prompts & Skills
 
-- **統一 MCP パネル** -- 4 つのアプリの MCP サーバーを管理、双方向同期、Deep Link インポート対応
+- **統一 MCP パネル** -- Claude、Codex、Gemini、OpenCode、Hermes の MCP サーバーを管理、双方向同期、Deep Link インポート対応
 - **Prompts** -- Markdown エディタ、クロスアプリ同期（CLAUDE.md / AGENTS.md / GEMINI.md）、バックフィル保護
 - **Skills** -- GitHub リポジトリまたは ZIP ファイルからワンクリックインストール、カスタムリポジトリ管理、シンボリックリンクとファイルコピーに対応
 
@@ -201,21 +235,21 @@ Claude Code / Codex / Gemini 公式チャンネルが最安で元価格の 38% /
 
 ### Session Manager & ワークスペース
 
-- すべてのアプリの会話履歴を閲覧・検索・復元
+- 対応するセッションソースの会話履歴を閲覧・検索・復元
 - **ワークスペースエディタ**（OpenClaw）-- エージェントファイル（AGENTS.md、SOUL.md など）を Markdown プレビュー付きで編集
 
 ### システム & プラットフォーム
 
 - **クラウド同期** -- カスタム設定ディレクトリ（Dropbox、OneDrive、iCloud、NAS）および WebDAV サーバー同期
 - **Deep Link** (`ccswitch://`) -- URL 経由でプロバイダ、MCP サーバー、Prompts、Skills をワンクリックインポート
-- ダーク / ライト / システムテーマ、自動起動、自動アップデーター、アトミック書き込み、自動バックアップ、多言語対応（中/英/日）
+- ダーク / ライト / システムテーマ、自動起動、自動アップデーター、アトミック書き込み、自動バックアップ、多言語対応（簡体中文/繁體中文/英/日）
 
 ## よくある質問
 
 <details>
-<summary><strong>CC Switch はどの AI CLI ツールに対応していますか？</strong></summary>
+<summary><strong>CC Switch はどの AI ツールに対応していますか？</strong></summary>
 
-CC Switch は **Claude Code**、**Codex**、**Gemini CLI**、**OpenCode**、**OpenClaw** の 5 つのツールに対応しています。各ツールに専用のプロバイダプリセットと設定管理が用意されています。
+CC Switch は **Claude Code**、**Claude Desktop**、**Codex**、**Gemini CLI**、**OpenCode**、**OpenClaw**、**Hermes** の 7 つのツールに対応しています。各ツールに専用のプロバイダプリセットと設定管理が用意されています。
 
 </details>
 
@@ -229,7 +263,7 @@ CC Switch は **Claude Code**、**Codex**、**Gemini CLI**、**OpenCode**、**Op
 <details>
 <summary><strong>プロバイダを切り替えた後、プラグイン設定が消えてしまいました。どうすればよいですか？</strong></summary>
 
-CC Switch には「共有設定スニペット」機能があり、APIキーやエンドポイント以外の共通データをプロバイダ間で引き継ぐことができます。「プロバイダ編集」→「共有設定パネル」→「現在のプロバイダから抽出」をクリックして、すべての共通データを保存してください。新しいプロバイダを作成する際に「共有設定を書き込む」にチェック（デフォルトで有効）を入れれば、プラグインなどのデータが新しいプロバイダ設定に含まれます。すべての設定項目は、アプリ初回起動時にインポートされたデフォルトプロバイダに保存されており、失われることはありません。
+CC Switch には「共有設定スニペット」機能があり、APIキーやエンドポイント以外の共通データをプロバイダ間で引き継ぐことができます。「プロバイダ編集」→「共有設定パネル」→「現在のプロバイダから抽出」をクリックして、すべての共通データを保存してください。新しいプロバイダを作成する際に「共有設定を適用」にチェック（デフォルトで有効）を入れれば、プラグインなどのデータが新しいプロバイダ設定に含まれます。すべての設定項目は、アプリ初回起動時にインポートされたデフォルトプロバイダに保存されており、失われることはありません。
 
 </details>
 
@@ -265,6 +299,19 @@ CC Switch は「最小限の介入」という設計原則に従っています�
 
 </details>
 
+<details>
+<summary><strong>Linux（Wayland + NVIDIA）：Web コンテンツがクリックできない・リサイズで黒画面になる</strong></summary>
+
+AppImage は過去のネイティブ Wayland クラッシュを避けるため `GDK_BACKEND=x11`（XWayland）を強制します。新しい Wayland + NVIDIA 環境ではこれが原因で Web コンテンツ領域がクリックできなくなり（タイトルバーのボタンは動作します）、リサイズ時に黒画面になることがあります。内蔵のエスケープハッチでネイティブ Wayland に戻せます：
+
+```bash
+CC_SWITCH_GDK_BACKEND=wayland ./CC-Switch-*.AppImage
+```
+
+デスクトップアイコンから起動する場合は、`.desktop` の `Exec=` 行に追記するか（例：`env CC_SWITCH_GDK_BACKEND=wayland /path/to/AppImage`）、セッション環境で設定してください。この変数は汎用です：タイル型 Wayland コンポジタ（sway/Hyprland）でクリックが効かない場合は、逆に `CC_SWITCH_GDK_BACKEND=x11` を試してください。未設定の場合は既定の動作のままです。
+
+</details>
+
 ## ドキュメント
 
 各機能の詳しい使い方については、**[ユーザーマニュアル](docs/user-manual/ja/README.md)** をご覧ください。プロバイダ管理、MCP/Prompts/Skills、プロキシとフェイルオーバーなど、すべての機能を網羅しています。
@@ -284,8 +331,8 @@ CC Switch は「最小限の介入」という設計原則に従っています�
 
 - **MCP**: 「MCP」ボタンをクリック → テンプレートまたはカスタム設定でサーバーを追加 → アプリごとの同期をトグルで切り替え
 - **Prompts**: 「Prompts」をクリック → Markdown エディタでプリセットを作成 → 有効化してライブファイルに同期
-- **Skills**: 「Skills」をクリック → GitHub リポジトリを閲覧 → ワンクリックですべてのアプリにインストール
-- **Sessions**: 「Sessions」をクリック → すべてのアプリの会話履歴を閲覧・検索・復元
+- **Skills**: 「Skills」をクリック → GitHub リポジトリを閲覧 → 対応アプリへワンクリックでインストール
+- **Sessions**: 「Sessions」をクリック → 対応するセッションソースの会話履歴を閲覧・検索・復元
 
 > **補足**: 初回起動時に、既存の CLI ツール設定を手動でインポートしてデフォルトプロバイダとして使用できます。
 
@@ -299,26 +346,43 @@ CC Switch は「最小限の介入」という設計原則に従っています�
 
 ### Windows ユーザー
 
-[Releases](../../releases) ページから最新版の `CC-Switch-Remote-v{version}-Windows.msi` インストーラー、またはポータブル版 `CC-Switch-Remote-v{version}-Windows-Portable.zip` をダウンロード。
+[Releases](../../releases) ページから最新版の `CC-Switch-v{version}-Windows.msi` インストーラー、またはポータブル版 `CC-Switch-v{version}-Windows-Portable.zip` をダウンロード。
 
 ### macOS ユーザー
 
-[Releases](../../releases) から `CC-Switch-Remote-v{version}-macOS.dmg`（推奨）または `.zip` をダウンロード。
+**方法 1: Homebrew でインストール（推奨）**
+
+```bash
+brew install --cask cc-switch
+```
+
+アップデート:
+
+```bash
+brew upgrade --cask cc-switch
+```
+
+**方法 2: 手動ダウンロード**
+
+[Releases](../../releases) から `CC-Switch-v{version}-macOS.zip` をダウンロードして展開。
 
 > **注意**: 開発者アカウント未登録のため、初回起動時に「開発元を確認できません」と表示される場合があります。一度閉じてから「システム設定」→「プライバシーとセキュリティ」→「このまま開く」をクリックしてください。以降は通常通り起動できます。
-> Homebrew パッケージは現在、上流 CC Switch を指しており、この remote fork ではありません。
 
 ### Arch Linux ユーザー
 
-現在の AUR パッケージは上流 CC Switch を指しており、この remote fork ではありません。
+**paru でインストール（推奨）**
+
+```bash
+paru -S cc-switch-bin
+```
 
 ### Linux ユーザー
 
 [Releases](../../releases) から最新版の Linux ビルドをダウンロード：
 
-- `CC-Switch-Remote-v{version}-Linux-x86_64.deb` / `CC-Switch-Remote-v{version}-Linux-arm64.deb`（Debian/Ubuntu）
-- `CC-Switch-Remote-v{version}-Linux-x86_64.rpm` / `CC-Switch-Remote-v{version}-Linux-arm64.rpm`（Fedora/RHEL/openSUSE）
-- `CC-Switch-Remote-v{version}-Linux-x86_64.AppImage` / `CC-Switch-Remote-v{version}-Linux-arm64.AppImage`（汎用）
+- `CC-Switch-v{version}-Linux.deb`（Debian/Ubuntu）
+- `CC-Switch-v{version}-Linux.rpm`（Fedora/RHEL/openSUSE）
+- `CC-Switch-v{version}-Linux.AppImage`（汎用）
 
 > **Flatpak**：公式リリースには含まれていません。`.deb` から自分でビルドできます — 手順は [`flatpak/README.md`](flatpak/README.md) を参照してください。
 
@@ -481,7 +545,7 @@ pnpm test:unit --coverage
 │   ├── lib/
 │   │   ├── api/                # Tauri API ラッパー（型安全）
 │   │   └── query/              # TanStack Query 設定
-│   ├── locales/                # 翻訳 (zh/en/ja)
+│   ├── locales/                # 翻訳 (zh/zh-TW/en/ja)
 │   ├── config/                 # プリセット (providers/mcp)
 │   └── types/                  # TypeScript 型定義
 ├── src-tauri/                  # バックエンド (Rust)
@@ -513,7 +577,7 @@ PR を送る前に以下をご確認ください：
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=xiaoY233/cc-switch-remote&type=Date)](https://www.star-history.com/#xiaoY233/cc-switch-remote&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=farion1231/cc-switch&type=Date)](https://www.star-history.com/#farion1231/cc-switch&Date)
 
 ## ライセンス
 

@@ -1902,6 +1902,9 @@ pub struct RemoteCodingPlanQuotaOptions {
     pub api_key: String,
     pub access_key_id: Option<String>,
     pub secret_access_key: Option<String>,
+    pub coding_plan_provider: Option<String>,
+    pub team_organization_id: Option<String>,
+    pub team_project_id: Option<String>,
 }
 
 #[tauri::command(rename_all = "camelCase")]

@@ -38,7 +38,7 @@ import { AdvancedSettingsAccordion } from "@/components/settings/AdvancedSetting
 import { RemoteDirectorySettings } from "@/components/settings/RemoteDirectorySettings";
 import { WebdavSyncSection } from "@/components/settings/WebdavSyncSection";
 import { LogConfigPanel } from "@/components/settings/LogConfigPanel";
-import { ModelTestConfigPanel } from "@/components/usage/ModelTestConfigPanel";
+import { ConnectivityCheckConfigPanel } from "@/components/usage/ConnectivityCheckConfigPanel";
 import { UsageDashboard } from "@/components/usage/UsageDashboard";
 import { AutoFailoverConfigPanel } from "@/components/proxy/AutoFailoverConfigPanel";
 import { FailoverQueueManager } from "@/components/proxy/FailoverQueueManager";
@@ -831,7 +831,7 @@ export function RemoteSettingsPage({
                             })}
                       </div>
                     ) : (
-                      <ModelTestConfigPanel target={target} />
+                      <ConnectivityCheckConfigPanel target={target} />
                     ),
                   logConfig:
                     !helperReady || !settingsCapability ? (

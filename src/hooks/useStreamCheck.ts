@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import {
   streamCheckProvider,
   type StreamCheckResult,
-} from "@/lib/api/model-test";
+} from "@/lib/api/connectivity-check";
 import type { AppId, ManagementTarget } from "@/lib/api";
 import { LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
 

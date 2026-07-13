@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { UsageHero } from "./UsageHero";
 import { UsageTrendChart } from "./UsageTrendChart";
@@ -49,8 +49,17 @@ import type { ManagementTarget } from "@/lib/api/remote";
 
 const APP_FILTER_OPTIONS: AppTypeFilter[] = ["all", ...KNOWN_APP_TYPES];
 
-// 0 表示关闭自动刷新（refetchInterval=false）
+const DEFAULT_REFRESH_INTERVAL_MS = 30000;
 const REFRESH_INTERVAL_OPTIONS_MS = [0, 5000, 10000, 30000, 60000] as const;
+type RefreshIntervalOption = (typeof REFRESH_INTERVAL_OPTIONS_MS)[number];
+
+const isRefreshIntervalOption = (
+  value: number | undefined,
+): value is RefreshIntervalOption =>
+  REFRESH_INTERVAL_OPTIONS_MS.includes(value as RefreshIntervalOption);
+
+const normalizeRefreshInterval = (value: number | undefined) =>
+  isRefreshIntervalOption(value) ? value : DEFAULT_REFRESH_INTERVAL_MS;
 
 // 与 AppSwitcher 的 appIconName 保持一致（codex 复用 openai 图标）
 const APP_FILTER_ICON: Record<AppType, string> = {
@@ -69,11 +78,15 @@ const decodeOptionValue = (value: string) =>
 
 interface UsageDashboardProps {
   target?: ManagementTarget;
+  refreshIntervalMs?: number;
+  onRefreshIntervalChange?: (next: number) => Promise<boolean> | boolean | void;
 }
 
 export function UsageDashboard({
   target = LOCAL_MANAGEMENT_TARGET,
-}: UsageDashboardProps) {
+  refreshIntervalMs: savedRefreshIntervalMs,
+  onRefreshIntervalChange,
+}: UsageDashboardProps = {}) {
   const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
   const [range, setRange] = useState<UsageRangeSelection>({ preset: "today" });
@@ -82,7 +95,13 @@ export function UsageDashboard({
     undefined,
   );
   const [model, setModel] = useState<string | undefined>(undefined);
-  const [refreshIntervalMs, setRefreshIntervalMs] = useState(30000);
+  const [refreshIntervalMs, setRefreshIntervalMs] = useState(() =>
+    normalizeRefreshInterval(savedRefreshIntervalMs),
+  );
+
+  useEffect(() => {
+    setRefreshIntervalMs(normalizeRefreshInterval(savedRefreshIntervalMs));
+  }, [savedRefreshIntervalMs]);
 
   // 切应用时清掉下游筛选，避免留下一个在新范围内查无数据的"幽灵"组合；
   // 切 Provider 同理清掉模型（模型选项随 Provider 级联）。
@@ -104,9 +123,23 @@ export function UsageDashboard({
   // usage 查询，实现实时刷新（仅在 Dashboard 挂载时生效，离开页面自动取消监听）
   useUsageEventBridge(target);
 
-  const changeRefreshInterval = (next: number) => {
-    setRefreshIntervalMs(next);
+  const changeRefreshInterval = async (next: number) => {
+    const normalized = normalizeRefreshInterval(next);
+    const previous = refreshIntervalMs;
+    setRefreshIntervalMs(normalized);
     queryClient.invalidateQueries({ queryKey: usageKeys.all(target) });
+    try {
+      const saved = await onRefreshIntervalChange?.(normalized);
+      if (saved === false) {
+        setRefreshIntervalMs(previous);
+      }
+    } catch (error) {
+      console.error(
+        "[UsageDashboard] Failed to persist refresh interval",
+        error,
+      );
+      setRefreshIntervalMs(previous);
+    }
   };
 
   const language = i18n.resolvedLanguage || i18n.language || "en";

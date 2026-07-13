@@ -18,6 +18,7 @@ export const settingsSchema = z.object({
   enableFailoverToggle: z.boolean().optional(),
   enableRemoteRoutingToggle: z.boolean().optional(),
   enableRemoteFailoverToggle: z.boolean().optional(),
+  usageDashboardRefreshIntervalMs: z.number().optional(),
   preserveCodexOfficialAuthOnSwitch: z.boolean().optional(),
   unifyCodexSessionHistory: z.boolean().optional(),
   language: z.enum(["en", "zh", "zh-TW", "ja"]).optional(),

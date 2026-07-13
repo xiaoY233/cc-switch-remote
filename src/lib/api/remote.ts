@@ -20,7 +20,7 @@ import type {
 } from "@/types";
 import type { AppId } from "./types";
 import type { ProviderSortUpdate, SwitchResult } from "./providers";
-import type { StreamCheckConfig, StreamCheckResult } from "./model-test";
+import type { StreamCheckConfig, StreamCheckResult } from "./connectivity-check";
 import type { BackupEntry, LogConfig } from "./settings";
 import type { SubscriptionQuota } from "@/types/subscription";
 import type { Prompt } from "./prompts";
@@ -165,6 +165,9 @@ export interface RemoteCodingPlanQuotaOptions {
   apiKey: string;
   accessKeyId?: string;
   secretAccessKey?: string;
+  codingPlanProvider?: string;
+  teamOrganizationId?: string;
+  teamProjectId?: string;
 }
 
 export interface RemoteToolVersion {

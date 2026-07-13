@@ -144,6 +144,9 @@ pub struct RemoteCodingPlanQuotaOptions {
     pub api_key: String,
     pub access_key_id: Option<String>,
     pub secret_access_key: Option<String>,
+    pub coding_plan_provider: Option<String>,
+    pub team_organization_id: Option<String>,
+    pub team_project_id: Option<String>,
 }
 
 fn auth_runtime() -> Result<&'static tokio::runtime::Runtime, String> {
@@ -252,6 +255,9 @@ pub fn get_coding_plan_quota(
         &options.api_key,
         options.access_key_id.as_deref(),
         options.secret_access_key.as_deref(),
+        options.coding_plan_provider.as_deref(),
+        options.team_organization_id.as_deref(),
+        options.team_project_id.as_deref(),
     ))
 }
 
@@ -321,13 +327,13 @@ pub fn get_codex_oauth_quota(
             }
         };
 
-        Ok(crate::services::subscription::query_codex_quota(
+        crate::services::subscription::query_codex_quota(
             &token,
             Some(&id),
             AUTH_PROVIDER_CODEX_OAUTH,
             "Codex OAuth access token expired or rejected. Please re-login via cc-switch.",
         )
-        .await)
+        .await
     })
 }
 

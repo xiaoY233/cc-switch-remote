@@ -32,7 +32,7 @@ import { BackupListSection } from "@/components/settings/BackupListSection";
 import { WebdavSyncSection } from "@/components/settings/WebdavSyncSection";
 import { AboutSection } from "@/components/settings/AboutSection";
 import { ProxyTabContent } from "@/components/settings/ProxyTabContent";
-import { ModelTestConfigPanel } from "@/components/usage/ModelTestConfigPanel";
+import { ConnectivityCheckConfigPanel } from "@/components/usage/ConnectivityCheckConfigPanel";
 import { UsageDashboard } from "@/components/usage/UsageDashboard";
 import { LogConfigPanel } from "@/components/settings/LogConfigPanel";
 import { AuthCenterPanel } from "@/components/settings/AuthCenterPanel";
@@ -375,7 +375,7 @@ export function SettingsPage({
                             onAutoSave={handleAutoSave}
                           />
                         ),
-                        test: <ModelTestConfigPanel />,
+                        test: <ConnectivityCheckConfigPanel target={target} />,
                         logConfig: <LogConfigPanel />,
                       }}
                     />
@@ -388,7 +388,12 @@ export function SettingsPage({
               </TabsContent>
 
               <TabsContent value="usage" className="mt-0">
-                <UsageDashboard />
+                <UsageDashboard
+                  refreshIntervalMs={settings?.usageDashboardRefreshIntervalMs}
+                  onRefreshIntervalChange={(usageDashboardRefreshIntervalMs) =>
+                    handleAutoSave({ usageDashboardRefreshIntervalMs })
+                  }
+                />
               </TabsContent>
             </div>
 

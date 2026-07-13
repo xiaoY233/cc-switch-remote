@@ -1,8 +1,7 @@
 {
-  "name": "cc-switch-remote",
-  "version": "3.16.15",
-  "description": "Remote-first CC Switch fork for Claude Code, Codex & Gemini CLI",
-  "packageManager": "pnpm@10.12.3",
+  "name": "cc-switch",
+  "version": "3.17.0",
+  "description": "All-in-One Assistant for Claude Code, Codex & Gemini CLI",
   "type": "module",
   "scripts": {
     "dev": "pnpm tauri dev",
@@ -14,7 +13,6 @@
     "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx,css,json}\"",
     "format:check": "prettier --check \"src/**/*.{js,jsx,ts,tsx,css,json}\"",
     "test:unit": "vitest run",
-    "test:scripts": "node --test scripts/*.test.mjs",
     "test:unit:watch": "vitest watch"
   },
   "keywords": [],

@@ -197,5 +197,5 @@ pub async fn toggle_mcp_app(
 /// 从所有应用导入 MCP 服务器（复用已有的导入逻辑）
 #[tauri::command]
 pub async fn import_mcp_from_apps(state: State<'_, AppState>) -> Result<usize, String> {
-    McpService::import_from_supported_apps(&state).map_err(|e| e.to_string())
+    McpService::import_from_all_apps(&state).map_err(|e| e.to_string())
 }

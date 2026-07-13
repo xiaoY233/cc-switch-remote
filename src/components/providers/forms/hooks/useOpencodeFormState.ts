@@ -3,6 +3,8 @@ import type { OpenCodeModel, OpenCodeProviderConfig } from "@/types";
 import {
   OPENCODE_DEFAULT_NPM,
   OPENCODE_DEFAULT_CONFIG,
+  OPENCODE_EXTRA_OPTION_DRAFT_PREFIX,
+  OPENCODE_HEADER_DRAFT_PREFIX,
   isKnownOpencodeOptionKey,
   parseOpencodeConfig,
   toOpencodeExtraOptions,
@@ -25,11 +27,13 @@ export interface OpencodeFormState {
   opencodeNpm: string;
   opencodeApiKey: string;
   opencodeBaseUrl: string;
+  opencodeHeaders: Record<string, string>;
   opencodeModels: Record<string, OpenCodeModel>;
   opencodeExtraOptions: Record<string, string>;
   handleOpencodeNpmChange: (npm: string) => void;
   handleOpencodeApiKeyChange: (apiKey: string) => void;
   handleOpencodeBaseUrlChange: (baseUrl: string) => void;
+  handleOpencodeHeadersChange: (headers: Record<string, string>) => void;
   handleOpencodeModelsChange: (models: Record<string, OpenCodeModel>) => void;
   handleOpencodeExtraOptionsChange: (options: Record<string, string>) => void;
   resetOpencodeState: (config?: OpenCodeProviderConfig) => void;
@@ -68,6 +72,16 @@ export function useOpencodeFormState({
     if (appId !== "opencode") return "";
     const value = initialOpencodeOptions.baseURL;
     return typeof value === "string" ? value : "";
+  });
+
+  const [opencodeHeaders, setOpencodeHeaders] = useState<
+    Record<string, string>
+  >(() => {
+    if (appId !== "opencode") return {};
+    const headers = initialOpencodeOptions.headers;
+    return headers && typeof headers === "object"
+      ? (headers as Record<string, string>)
+      : {};
   });
 
   const [opencodeModels, setOpencodeModels] = useState<
@@ -129,6 +143,30 @@ export function useOpencodeFormState({
     [updateOpencodeSettings],
   );
 
+  const handleOpencodeHeadersChange = useCallback(
+    (headers: Record<string, string>) => {
+      setOpencodeHeaders(headers);
+      updateOpencodeSettings((config) => {
+        if (!config.options) config.options = {};
+
+        const nextHeaders: Record<string, string> = {};
+        for (const [key, value] of Object.entries(headers)) {
+          const trimmedKey = key.trim();
+          if (trimmedKey && !key.startsWith(OPENCODE_HEADER_DRAFT_PREFIX)) {
+            nextHeaders[trimmedKey] = value;
+          }
+        }
+
+        if (Object.keys(nextHeaders).length > 0) {
+          config.options.headers = nextHeaders;
+        } else {
+          delete config.options.headers;
+        }
+      });
+    },
+    [updateOpencodeSettings],
+  );
+
   const handleOpencodeModelsChange = useCallback(
     (models: Record<string, OpenCodeModel>) => {
       setOpencodeModels(models);
@@ -153,7 +191,7 @@ export function useOpencodeFormState({
 
         for (const [k, v] of Object.entries(options)) {
           const trimmedKey = k.trim();
-          if (trimmedKey && !trimmedKey.startsWith("option-")) {
+          if (trimmedKey && !k.startsWith(OPENCODE_EXTRA_OPTION_DRAFT_PREFIX)) {
             try {
               config.options[trimmedKey] = JSON.parse(v);
             } catch {
@@ -171,6 +209,7 @@ export function useOpencodeFormState({
     setOpencodeNpm(config?.npm || OPENCODE_DEFAULT_NPM);
     setOpencodeBaseUrl(config?.options?.baseURL || "");
     setOpencodeApiKey(getDisplaySecretValue(config?.options?.apiKey));
+    setOpencodeHeaders(config?.options?.headers || {});
     setOpencodeModels(config?.models || {});
     setOpencodeExtraOptions(toOpencodeExtraOptions(config?.options || {}));
   }, []);
@@ -181,11 +220,13 @@ export function useOpencodeFormState({
     opencodeNpm,
     opencodeApiKey,
     opencodeBaseUrl,
+    opencodeHeaders,
     opencodeModels,
     opencodeExtraOptions,
     handleOpencodeNpmChange,
     handleOpencodeApiKeyChange,
     handleOpencodeBaseUrlChange,
+    handleOpencodeHeadersChange,
     handleOpencodeModelsChange,
     handleOpencodeExtraOptionsChange,
     resetOpencodeState,
