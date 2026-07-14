@@ -398,8 +398,14 @@ describe("ProviderList Component", () => {
       remoteTarget,
     );
     expect(useFailoverQueueMock).toHaveBeenCalledWith("claude", remoteTarget);
-    expect(useCurrentOmoProviderIdMock).toHaveBeenCalledWith(false);
-    expect(useCurrentOmoSlimProviderIdMock).toHaveBeenCalledWith(false);
+    expect(useCurrentOmoProviderIdMock).toHaveBeenCalledWith(
+      false,
+      remoteTarget,
+    );
+    expect(useCurrentOmoSlimProviderIdMock).toHaveBeenCalledWith(
+      false,
+      remoteTarget,
+    );
   });
 
   it("wires remote provider cards to remote failover queue state and mutations", () => {

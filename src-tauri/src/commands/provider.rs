@@ -196,6 +196,7 @@ pub fn ensure_codex_official_provider(state: State<'_, AppState>) -> Result<bool
         .map_err(|e| e.to_string())
 }
 
+#[allow(dead_code)]
 fn claude_provider_models_are_claude_safe(provider: &Provider) -> bool {
     let Some(env) = provider
         .settings_config
@@ -218,6 +219,7 @@ fn claude_provider_models_are_claude_safe(provider: &Provider) -> bool {
     .all(crate::claude_desktop_config::is_claude_safe_model_id)
 }
 
+#[allow(dead_code)]
 pub(crate) fn suggested_claude_desktop_routes(
     provider: &Provider,
 ) -> Option<std::collections::HashMap<String, crate::provider::ClaudeDesktopModelRoute>> {
