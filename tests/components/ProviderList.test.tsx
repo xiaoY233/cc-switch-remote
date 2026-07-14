@@ -138,10 +138,23 @@ vi.mock("@/lib/query/omo", () => ({
 }));
 
 vi.mock("@/hooks/useOpenClaw", () => ({
+  openclawKeys: {
+    liveProviderIds: (targetKey = "local") =>
+      ["openclaw", "liveProviderIds", targetKey],
+  },
   useOpenClawLiveProviderIds: (...args: unknown[]) =>
     useOpenClawLiveProviderIdsMock(...args),
   useOpenClawDefaultModel: (...args: unknown[]) =>
     useOpenClawDefaultModelMock(...args),
+}));
+
+vi.mock("@/hooks/useHermes", () => ({
+  hermesKeys: {
+    liveProviderIds: (targetKey = "local") =>
+      ["hermes", "liveProviderIds", targetKey],
+  },
+  useHermesLiveProviderIds: () => ({ data: undefined }),
+  useHermesModelConfig: () => ({ data: undefined }),
 }));
 
 vi.mock("@/lib/api/providers", () => ({
@@ -186,9 +199,10 @@ function renderWithQueryClient(ui: ReactElement) {
     defaultOptions: { queries: { retry: false } },
   });
 
-  return render(
+  const view = render(
     <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
   );
+  return { ...view, queryClient };
 }
 
 beforeEach(() => {
@@ -365,7 +379,7 @@ describe("ProviderList Component", () => {
     });
     importCurrentProviderMock.mockResolvedValueOnce(true);
 
-    renderWithQueryClient(
+    const { queryClient } = renderWithQueryClient(
       <ProviderList
         providers={{}}
         currentProviderId=""
@@ -379,6 +393,7 @@ describe("ProviderList Component", () => {
         onCreate={vi.fn()}
       />,
     );
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
 
     fireEvent.click(screen.getByText("provider.importCurrent"));
 
@@ -387,6 +402,11 @@ describe("ProviderList Component", () => {
         "claude",
         remoteTarget,
       );
+    });
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ["providers", "claude", "remote:remote-1"],
+      });
     });
     expect(useDragSortMock).toHaveBeenCalledWith(
       {},

@@ -5,6 +5,7 @@ use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
 const APP_CONFIG_DIR_NAME: &str = ".cc-switch-remote";
+const DEV_APP_CONFIG_DIR_NAME: &str = ".cc-switch-remote-dev";
 const LEGACY_APP_CONFIG_DIR_NAME: &str = ".cc-switch";
 
 use crate::error::AppError;
@@ -183,6 +184,18 @@ pub fn get_claude_settings_path() -> PathBuf {
 }
 
 fn default_app_config_dir() -> PathBuf {
+    #[cfg(debug_assertions)]
+    {
+        if std::env::var("CC_SWITCH_TEST_HOME").is_err()
+            && std::env::var("CC_SWITCH_USE_PROD_DATA_IN_DEV")
+                .ok()
+                .as_deref()
+                != Some("1")
+        {
+            return get_home_dir().join(DEV_APP_CONFIG_DIR_NAME);
+        }
+    }
+
     get_home_dir().join(APP_CONFIG_DIR_NAME)
 }
 
@@ -414,6 +427,72 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<(), AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
+
+    struct EnvGuard {
+        key: &'static str,
+        value: Option<std::ffi::OsString>,
+    }
+
+    impl EnvGuard {
+        fn capture(key: &'static str) -> Self {
+            Self {
+                key,
+                value: std::env::var_os(key),
+            }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            match &self.value {
+                Some(value) => std::env::set_var(self.key, value),
+                None => std::env::remove_var(self.key),
+            }
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn debug_build_uses_isolated_dev_config_dir_by_default() {
+        let _test_home_guard = EnvGuard::capture("CC_SWITCH_TEST_HOME");
+        let _prod_guard = EnvGuard::capture("CC_SWITCH_USE_PROD_DATA_IN_DEV");
+
+        std::env::remove_var("CC_SWITCH_TEST_HOME");
+        std::env::remove_var("CC_SWITCH_USE_PROD_DATA_IN_DEV");
+
+        let dir = default_app_config_dir();
+
+        #[cfg(debug_assertions)]
+        assert_eq!(dir, get_home_dir().join(DEV_APP_CONFIG_DIR_NAME));
+
+        #[cfg(not(debug_assertions))]
+        assert_eq!(dir, get_home_dir().join(APP_CONFIG_DIR_NAME));
+    }
+
+    #[test]
+    #[serial]
+    fn test_home_and_explicit_prod_mode_keep_standard_config_dir() {
+        let _home_guard = EnvGuard::capture("HOME");
+        let _test_home_guard = EnvGuard::capture("CC_SWITCH_TEST_HOME");
+        let _prod_guard = EnvGuard::capture("CC_SWITCH_USE_PROD_DATA_IN_DEV");
+        let home = tempfile::tempdir().expect("temp home");
+
+        std::env::set_var("HOME", home.path());
+        std::env::set_var("CC_SWITCH_TEST_HOME", home.path());
+        std::env::remove_var("CC_SWITCH_USE_PROD_DATA_IN_DEV");
+        assert_eq!(
+            default_app_config_dir(),
+            home.path().join(APP_CONFIG_DIR_NAME)
+        );
+
+        std::env::remove_var("CC_SWITCH_TEST_HOME");
+        std::env::set_var("CC_SWITCH_USE_PROD_DATA_IN_DEV", "1");
+        assert_eq!(
+            default_app_config_dir(),
+            home.path().join(APP_CONFIG_DIR_NAME)
+        );
+    }
 
     #[test]
     fn derive_mcp_path_from_override_uses_config_dir_for_custom_path() {

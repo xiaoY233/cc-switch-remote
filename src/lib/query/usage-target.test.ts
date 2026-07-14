@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ManagementTarget, RemoteHostProfile } from "@/lib/api/remote";
 import { LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
-import { usageKeys } from "./usage";
+import { usageKeys, usageScriptResultKey } from "./usage";
 
 const profile: RemoteHostProfile = {
   id: "remote-usage",
@@ -44,6 +44,24 @@ describe("usage query keys", () => {
       "remote",
       "remote-usage",
       "summary",
+    ]);
+  });
+
+  it("separates local and remote provider usage result caches by target", () => {
+    expect(usageScriptResultKey("provider-1", "codex")).toEqual([
+      "usage",
+      "local",
+      "provider-1",
+      "codex",
+      "local",
+    ]);
+
+    expect(usageScriptResultKey("provider-1", "codex", remoteTarget)).toEqual([
+      "usage",
+      "local",
+      "provider-1",
+      "codex",
+      "remote:remote-usage",
     ]);
   });
 });

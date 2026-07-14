@@ -37,7 +37,10 @@ export interface WebDavSyncResult {
 }
 
 export const settingsApi = {
-  async get(): Promise<Settings> {
+  async get(target?: ManagementTarget): Promise<Settings> {
+    if (target?.type === "remote") {
+      return await remoteApi.getSettings(target.profile, target.secret);
+    }
     return await invoke("get_settings");
   },
 
@@ -122,10 +125,20 @@ export const settingsApi = {
     return await invoke("set_app_config_dir_override", { path });
   },
 
-  async applyClaudePluginConfig(options: {
-    official: boolean;
-  }): Promise<boolean> {
+  async applyClaudePluginConfig(
+    options: {
+      official: boolean;
+    },
+    target?: ManagementTarget,
+  ): Promise<boolean> {
     const { official } = options;
+    if (target?.type === "remote") {
+      return await remoteApi.applyClaudePluginConfig(
+        target.profile,
+        official,
+        target.secret,
+      );
+    }
     return await invoke("apply_claude_plugin_config", { official });
   },
 

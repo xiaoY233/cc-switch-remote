@@ -172,6 +172,16 @@ export const usageKeys = {
     [...usageKeys.all(), providerId, appType] as const,
 };
 
+export function usageScriptResultKey(
+  providerId: string,
+  appType: string,
+  target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+) {
+  const key =
+    target.type === "remote" ? `remote:${target.profile.id}` : "local";
+  return [...usageKeys.script(providerId, appType), key] as const;
+}
+
 /** 把 UI 侧的 "all" 哨兵归一成 undefined（后端语义：不过滤）。 */
 function normalizeScopeFilters(filters?: UsageScopeFilters): UsageScopeFilters {
   return {

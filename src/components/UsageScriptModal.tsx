@@ -14,7 +14,7 @@ import { copilotGetUsageForTarget } from "@/lib/api/copilot";
 import { LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
 import { useSettingsQuery } from "@/lib/query";
 import { subscriptionKeys } from "@/lib/query/subscription";
-import { usageKeys } from "@/lib/query/usage";
+import { usageScriptResultKey } from "@/lib/query/usage";
 import { resolveManagedAccountId } from "@/lib/authBinding";
 import { extractErrorMessage } from "@/utils/errorUtils";
 import { useDarkMode } from "@/hooks/useDarkMode";
@@ -218,6 +218,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { data: settingsData } = useSettingsQuery();
+  const usageResultQueryKey = usageScriptResultKey(provider.id, appId, target);
   const [showUsageConfirm, setShowUsageConfirm] = useState(false);
   const isDarkMode = useDarkMode();
 
@@ -556,12 +557,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
             duration: 3000,
             closeButton: true,
           });
-          const key =
-            target.type === "remote" ? `remote:${target.profile.id}` : "local";
-          queryClient.setQueryData(
-            [...usageKeys.script(provider.id, appId), key],
-            result,
-          );
+          queryClient.setQueryData(usageResultQueryKey, result);
         } else {
           toast.error(
             `${t("usageScript.testFailed")}: ${result.error || t("endpointTest.noResult")}`,
@@ -611,15 +607,10 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
             used: tier.utilization,
             unit: "%",
           }));
-          const key =
-            target.type === "remote" ? `remote:${target.profile.id}` : "local";
-          queryClient.setQueryData(
-            [...usageKeys.script(provider.id, appId), key],
-            {
-              success: true,
-              data: usageData,
-            },
-          );
+          queryClient.setQueryData(usageResultQueryKey, {
+            success: true,
+            data: usageData,
+          });
         } else {
           toast.error(
             `${t("usageScript.testFailed")}: ${quota.error || t("endpointTest.noResult")}`,
@@ -644,7 +635,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
           closeButton: true,
         });
         // 更新缓存
-        queryClient.setQueryData(["usage", provider.id, appId], {
+        queryClient.setQueryData(usageResultQueryKey, {
           success: true,
           data: [
             {
@@ -687,7 +678,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
         });
 
         // 🔧 测试成功后，更新主界面列表的用量查询缓存
-        queryClient.setQueryData(["usage", provider.id, appId], result);
+        queryClient.setQueryData(usageResultQueryKey, result);
       } else {
         toast.error(
           `${t("usageScript.testFailed")}: ${result.error || t("endpointTest.noResult")}`,

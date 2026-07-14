@@ -455,8 +455,53 @@ describe("useProviderActions", () => {
     });
 
     expect(switchProviderMutateAsync).toHaveBeenCalledWith(provider.id);
-    expect(settingsApiGetMock).toHaveBeenCalledTimes(1);
-    expect(settingsApiApplyMock).toHaveBeenCalledWith({ official: true });
+    expect(settingsApiGetMock).toHaveBeenCalledWith({ type: "local" });
+    expect(settingsApiApplyMock).toHaveBeenCalledWith(
+      { official: true },
+      { type: "local" },
+    );
+  });
+
+  it("syncs Claude plugin config through the remote target after remote Claude switch", async () => {
+    switchProviderMutateAsync.mockResolvedValueOnce(undefined);
+    settingsApiGetMock.mockResolvedValueOnce({
+      enableClaudePluginIntegration: true,
+    });
+    settingsApiApplyMock.mockResolvedValueOnce(true);
+    const { wrapper } = createWrapper();
+    const provider = createProvider({ category: "custom" });
+    const remoteTarget: ManagementTarget = {
+      type: "remote",
+      profile: {
+        id: "remote-1",
+        name: "Remote 1",
+        host: "192.168.1.20",
+        port: 22,
+        username: "root",
+        authMethod: { type: "password" },
+        helperPath: "~/.local/bin/cc-switch-remote-helper",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      secret: { password: "secret" },
+    };
+
+    const { result } = renderHook(
+      () => useProviderActions("claude", true, false, remoteTarget),
+      {
+        wrapper,
+      },
+    );
+
+    await act(async () => {
+      await result.current.switchProvider(provider);
+    });
+
+    expect(settingsApiApplyMock).toHaveBeenCalledWith(
+      { official: false },
+      remoteTarget,
+    );
+    expect(settingsApiGetMock).toHaveBeenCalledWith(remoteTarget);
   });
 
   it("should not call applyClaudePluginConfig when integration is disabled", async () => {
@@ -648,7 +693,66 @@ describe("useProviderActions", () => {
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: ["providers", "claude", "local"],
     });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["subscription", "quota", "local", "claude"],
+    });
     expect(toastSuccessMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes remote provider and quota caches when saving a remote usage script", async () => {
+    providersApiUpdateMock.mockResolvedValueOnce(true);
+    const { wrapper, queryClient } = createWrapper();
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+    const remoteTarget: ManagementTarget = {
+      type: "remote",
+      profile: {
+        id: "remote-1",
+        name: "Remote 1",
+        host: "192.168.1.20",
+        port: 22,
+        username: "root",
+        authMethod: { type: "password" },
+        helperPath: "~/.local/bin/cc-switch-remote-helper",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      secret: { password: "secret" },
+    };
+    const provider = createProvider();
+    const script: UsageScript = {
+      enabled: true,
+      language: "javascript",
+      code: "return { success: true };",
+      timeout: 5,
+    };
+
+    const { result } = renderHook(
+      () => useProviderActions("codex", false, false, remoteTarget),
+      { wrapper },
+    );
+
+    await act(async () => {
+      await result.current.saveUsageScript(provider, script);
+    });
+
+    expect(providersApiUpdateMock).toHaveBeenCalledWith(
+      {
+        ...provider,
+        meta: {
+          ...provider.meta,
+          usage_script: script,
+        },
+      },
+      "codex",
+      undefined,
+      remoteTarget,
+    );
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["providers", "codex", "remote:remote-1"],
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["subscription", "quota", "remote:remote-1", "codex"],
+    });
   });
 
   it("should show error toast when saveUsageScript fails with error message", async () => {

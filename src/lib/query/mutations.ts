@@ -141,7 +141,7 @@ export const useAddProviderMutation = (
       }
 
       if (appId === "hermes") {
-        await invalidateHermesProviderCaches(queryClient);
+        await invalidateHermesProviderCaches(queryClient, target);
       }
 
       if (target.type === "local") {
@@ -212,7 +212,7 @@ export const useUpdateProviderMutation = (
         });
       }
       if (appId === "hermes") {
-        await invalidateHermesProviderCaches(queryClient);
+        await invalidateHermesProviderCaches(queryClient, target);
       }
       toast.success(
         t("notifications.updateSuccess", {
@@ -262,7 +262,7 @@ export const useDeleteProviderMutation = (
       }
 
       if (appId === "hermes") {
-        await invalidateHermesProviderCaches(queryClient);
+        await invalidateHermesProviderCaches(queryClient, target);
       }
 
       if (target.type === "local") {

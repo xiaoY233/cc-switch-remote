@@ -143,13 +143,16 @@ export function useProviderActions(
       if (activeApp !== "claude") return;
 
       try {
-        const settings = await settingsApi.get();
+        const settings = await settingsApi.get(target);
         if (!settings?.enableClaudePluginIntegration) {
           return;
         }
 
         const isOfficial = provider.category === "official";
-        await settingsApi.applyClaudePluginConfig({ official: isOfficial });
+        await settingsApi.applyClaudePluginConfig(
+          { official: isOfficial },
+          target,
+        );
 
         // 静默执行，不显示成功通知
       } catch (error) {
@@ -161,7 +164,7 @@ export function useProviderActions(
         toast.error(detail, { duration: 4200 });
       }
     },
-    [activeApp, t],
+    [activeApp, t, target],
   );
 
   // 添加供应商
@@ -328,9 +331,7 @@ export function useProviderActions(
 
       try {
         const result = await switchProviderMutation.mutateAsync(provider.id);
-        if (target.type === "local") {
-          await syncClaudePlugin(provider);
-        }
+        await syncClaudePlugin(provider);
 
         // Show backfill warning if present
         if (result?.warnings?.length) {
@@ -421,7 +422,12 @@ export function useProviderActions(
           queryKey: usageKeys.script(provider.id, activeApp),
         });
         await queryClient.invalidateQueries({
-          queryKey: ["subscription", "quota", activeApp],
+          queryKey: [
+            "subscription",
+            "quota",
+            target.type === "remote" ? `remote:${target.profile.id}` : "local",
+            activeApp,
+          ],
         });
         toast.success(
           t("provider.usageSaved", {

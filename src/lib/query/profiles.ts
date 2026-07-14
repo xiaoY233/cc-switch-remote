@@ -149,17 +149,22 @@ export const useApplyProfileMutation = (
     mutationFn: ({ id, scope }: { id: string; scope: ProfileScope }) =>
       profilesApi.apply(id, scope, target),
     onSuccess: async (warnings) => {
+      const targetKey = getManagementTargetKey(target);
       await queryClient.invalidateQueries({
         queryKey: profileQueryKey(target),
       });
       await queryClient.invalidateQueries({
-        queryKey: ["providers", "claude"],
+        queryKey: ["providers", "claude", targetKey],
       });
       await queryClient.invalidateQueries({
-        queryKey: ["providers", "claude-desktop"],
+        queryKey: ["providers", "claude-desktop", targetKey],
       });
-      await queryClient.invalidateQueries({ queryKey: ["providers", "codex"] });
-      await queryClient.invalidateQueries({ queryKey: ["mcp", "all"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["providers", "codex", targetKey],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["mcp", "all", targetKey],
+      });
       await queryClient.invalidateQueries({ queryKey: ["skills"] });
       await updateTrayMenuSafely(target);
 

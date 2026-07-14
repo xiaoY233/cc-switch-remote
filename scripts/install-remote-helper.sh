@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="${CC_SWITCH_REPO:-xiaoY233/cc-switch}"
+REPO="${CC_SWITCH_REPO:-xiaoY233/cc-switch-remote}"
 VERSION="${1:-${CC_SWITCH_REMOTE_HELPER_RELEASE_TAG:-remote-helper-latest}}"
 BIN_DIR="${CC_SWITCH_BIN_DIR:-$HOME/.local/bin}"
 BIN_NAME="${CC_SWITCH_BIN_NAME:-cc-switch-remote-helper}"

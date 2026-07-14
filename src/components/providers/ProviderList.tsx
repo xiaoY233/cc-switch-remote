@@ -23,10 +23,12 @@ import { getManagementTargetKey } from "@/lib/managementTarget";
 import { providersApi } from "@/lib/api/providers";
 import { useDragSort } from "@/hooks/useDragSort";
 import {
+  openclawKeys,
   useOpenClawLiveProviderIds,
   useOpenClawDefaultModel,
 } from "@/hooks/useOpenClaw";
 import {
+  hermesKeys,
   useHermesLiveProviderIds,
   useHermesModelConfig,
 } from "@/hooks/useHermes";
@@ -244,7 +246,24 @@ export function ProviderList({
     mutationFn: () => providersApi.importCurrent(appId, target),
     onSuccess: (imported) => {
       if (imported) {
-        queryClient.invalidateQueries({ queryKey: ["providers", appId] });
+        queryClient.invalidateQueries({
+          queryKey: ["providers", appId, targetKey],
+        });
+        if (appId === "opencode") {
+          queryClient.invalidateQueries({
+            queryKey: ["opencodeLiveProviderIds", targetKey],
+          });
+        }
+        if (appId === "openclaw") {
+          queryClient.invalidateQueries({
+            queryKey: openclawKeys.liveProviderIds(targetKey),
+          });
+        }
+        if (appId === "hermes") {
+          queryClient.invalidateQueries({
+            queryKey: hermesKeys.liveProviderIds(targetKey),
+          });
+        }
         if (appId === "claude-desktop") {
           queryClient.invalidateQueries({ queryKey: ["claudeDesktopStatus"] });
         }

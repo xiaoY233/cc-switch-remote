@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_updater::{UpdaterBuilder, UpdaterExt};
 use url::Url;
 
@@ -39,6 +39,16 @@ fn updater_builder_with_global_proxy(
         crate::proxy::http_client::mask_url(proxy_url)
     );
     Ok(builder.proxy(parsed))
+}
+
+fn updater_builder_for_app(app: &AppHandle) -> Result<UpdaterBuilder, String> {
+    let builder = app.updater_builder();
+    let Some(state) = app.try_state::<crate::store::AppState>() else {
+        log::warn!("AppState 未注册，应用更新将不读取全局代理配置");
+        return Ok(builder);
+    };
+
+    updater_builder_with_global_proxy(builder, state.inner())
 }
 
 fn merge_settings_for_save(
@@ -226,11 +236,8 @@ pub async fn restart_app(app: AppHandle) -> Result<bool, String> {
 /// `process.relaunch()`，旧进程可能已经处在 bundle 被替换后的不稳定窗口期。
 /// 这里把退出清理、安装和重启串在同一个后端流程中，避免依赖旧前端继续执行。
 #[tauri::command]
-pub async fn install_update_and_restart(
-    app: AppHandle,
-    state: tauri::State<'_, crate::store::AppState>,
-) -> Result<bool, String> {
-    let updater = updater_builder_with_global_proxy(app.updater_builder(), state.inner())?
+pub async fn install_update_and_restart(app: AppHandle) -> Result<bool, String> {
+    let updater = updater_builder_for_app(&app)?
         .build()
         .map_err(|e| format!("初始化更新器失败: {e}"))?;
 
@@ -309,11 +316,8 @@ pub async fn install_update_and_restart(
 /// 已是最新版本，但数据库仍不兼容（通常由第三方客户端或更高版本创建），应提示用户
 /// 升级无法解决，而不是让其反复尝试。
 #[tauri::command]
-pub async fn check_app_update_available(
-    app: AppHandle,
-    state: tauri::State<'_, crate::store::AppState>,
-) -> Result<Option<String>, String> {
-    let updater = updater_builder_with_global_proxy(app.updater_builder(), state.inner())?
+pub async fn check_app_update_available(app: AppHandle) -> Result<Option<String>, String> {
+    let updater = updater_builder_for_app(&app)?
         .build()
         .map_err(|e| format!("初始化更新器失败: {e}"))?;
     let update = updater

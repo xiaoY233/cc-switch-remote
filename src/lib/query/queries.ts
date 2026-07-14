@@ -19,7 +19,7 @@ import type {
   SessionMeta,
   SessionMessage,
 } from "@/types";
-import { usageKeys } from "@/lib/query/usage";
+import { usageScriptResultKey } from "@/lib/query/usage";
 import {
   extractErrorMessage,
   isRemotePasswordRequiredError,
@@ -307,7 +307,7 @@ export const useUsageQuery = (
       : 5 * 60 * 1000; // 默认 5 分钟
 
   const query = useQuery<UsageResult>({
-    queryKey: [...usageKeys.script(providerId, appId), targetKey(target)],
+    queryKey: usageScriptResultKey(providerId, appId, target),
     queryFn: async () => usageApi.query(providerId, appId, target),
     enabled: enabled && !!providerId,
     refetchInterval:

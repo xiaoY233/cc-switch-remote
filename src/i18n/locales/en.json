@@ -371,6 +371,10 @@
         "title": "Cloud Sync",
         "description": "Sync data across devices via WebDAV"
       },
+      "modelTest": {
+        "title": "Model Test",
+        "description": "Configure model connectivity test parameters"
+      },
       "rectifier": {
         "title": "Rectifier",
         "description": "Automatically fix API request compatibility issues",

@@ -59,7 +59,8 @@ import {
   type ClaudeDesktopRoleId,
 } from "@/config/claudeDesktopProviderPresets";
 import {
-  fetchModelsForConfig,
+  canUseStoredRemoteProviderApiKey,
+  fetchModelsForProviderConfig,
   showFetchModelsError,
   type FetchedModel,
 } from "@/lib/api/model-fetch";
@@ -88,6 +89,7 @@ type PresetEntry = {
 };
 
 export interface ClaudeDesktopProviderFormProps {
+  providerId?: string;
   submitLabel: string;
   onSubmit: (values: ClaudeDesktopProviderFormValues) => Promise<void> | void;
   onCancel: () => void;
@@ -250,6 +252,7 @@ function defaultRouteRows(
 }
 
 export function ClaudeDesktopProviderForm({
+  providerId,
   submitLabel,
   onSubmit,
   onCancel,
@@ -510,17 +513,27 @@ export function ClaudeDesktopProviderForm({
   }, [defaultProxyRouteRows, mode, routes.length]);
 
   const handleFetchModels = async () => {
-    if (!baseUrl.trim() || !apiKey.trim()) {
+    const trimmedBaseUrl = baseUrl.trim();
+    const trimmedApiKey = apiKey.trim();
+    const hasApiKeyForFetch =
+      !!trimmedApiKey || canUseStoredRemoteProviderApiKey(target, providerId);
+    if (!trimmedBaseUrl || !hasApiKeyForFetch) {
       showFetchModelsError(null, t, {
-        hasBaseUrl: Boolean(baseUrl.trim()),
-        hasApiKey: Boolean(apiKey.trim()),
+        hasBaseUrl: Boolean(trimmedBaseUrl),
+        hasApiKey: hasApiKeyForFetch,
       });
       return;
     }
 
     setIsFetchingModels(true);
     try {
-      const models = await fetchModelsForConfig(baseUrl.trim(), apiKey.trim());
+      const models = await fetchModelsForProviderConfig({
+        app: "claude-desktop",
+        providerId,
+        target,
+        baseUrl: trimmedBaseUrl,
+        apiKey: trimmedApiKey,
+      });
       setFetchedModels(models);
       toast.success(
         t("providerForm.fetchModelsSuccess", {
@@ -530,8 +543,8 @@ export function ClaudeDesktopProviderForm({
       );
     } catch (error) {
       showFetchModelsError(error, t, {
-        hasBaseUrl: Boolean(baseUrl.trim()),
-        hasApiKey: Boolean(apiKey.trim()),
+        hasBaseUrl: Boolean(trimmedBaseUrl),
+        hasApiKey: hasApiKeyForFetch,
       });
     } finally {
       setIsFetchingModels(false);

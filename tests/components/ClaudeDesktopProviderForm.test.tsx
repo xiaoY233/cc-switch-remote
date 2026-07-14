@@ -1,14 +1,23 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import type { ComponentProps } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ClaudeDesktopProviderForm } from "@/components/providers/forms/ClaudeDesktopProviderForm";
 import { createTestQueryClient } from "../utils/testQueryClient";
 import type { ManagementTarget } from "@/lib/api";
 
-const { codexOAuthSectionMock, copilotAuthSectionMock } = vi.hoisted(() => ({
+const {
+  codexOAuthSectionMock,
+  copilotAuthSectionMock,
+  modelFetchApiMock,
+} = vi.hoisted(() => ({
   codexOAuthSectionMock: vi.fn(),
   copilotAuthSectionMock: vi.fn(),
+  modelFetchApiMock: {
+    canUseStoredRemoteProviderApiKey: vi.fn(),
+    fetchModelsForProviderConfig: vi.fn(),
+    showFetchModelsError: vi.fn(),
+  },
 }));
 
 vi.mock("@/components/providers/forms/CodexOAuthSection", () => ({
@@ -29,6 +38,13 @@ vi.mock("@/lib/api/providers", () => ({
   providersApi: {
     getClaudeDesktopDefaultRoutes: () => Promise.resolve([]),
   },
+}));
+
+vi.mock("@/lib/api/model-fetch", () => ({
+  canUseStoredRemoteProviderApiKey:
+    modelFetchApiMock.canUseStoredRemoteProviderApiKey,
+  fetchModelsForProviderConfig: modelFetchApiMock.fetchModelsForProviderConfig,
+  showFetchModelsError: modelFetchApiMock.showFetchModelsError,
 }));
 
 function renderForm(
@@ -52,8 +68,19 @@ function renderForm(
 }
 
 describe("ClaudeDesktopProviderForm", () => {
-  it("远程 Claude Desktop Codex OAuth 表单使用远程目标的账号状态", () => {
+  beforeEach(() => {
     codexOAuthSectionMock.mockClear();
+    copilotAuthSectionMock.mockClear();
+    modelFetchApiMock.canUseStoredRemoteProviderApiKey.mockReset();
+    modelFetchApiMock.fetchModelsForProviderConfig.mockReset();
+    modelFetchApiMock.showFetchModelsError.mockReset();
+    modelFetchApiMock.canUseStoredRemoteProviderApiKey.mockImplementation(
+      (target, providerId) => target?.type === "remote" && Boolean(providerId),
+    );
+    modelFetchApiMock.fetchModelsForProviderConfig.mockResolvedValue([]);
+  });
+
+  it("远程 Claude Desktop Codex OAuth 表单使用远程目标的账号状态", () => {
     const target: ManagementTarget = {
       type: "remote",
       profile: {
@@ -90,6 +117,67 @@ describe("ClaudeDesktopProviderForm", () => {
 
     expect(codexOAuthSectionMock).toHaveBeenCalledWith(
       expect.objectContaining({ target }),
+    );
+  });
+
+  it("远程编辑 Claude Desktop 供应商时 API Key 留空也使用远端已存密钥获取模型", async () => {
+    const target: ManagementTarget = {
+      type: "remote",
+      profile: {
+        id: "remote-host",
+        name: "Remote Host",
+        host: "192.168.1.20",
+        port: 22,
+        username: "root",
+        authMethod: { type: "password" },
+        helperPath: "~/.local/bin/cc-switch-remote-helper",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      secret: { password: "secret" },
+    };
+
+    renderForm(
+      {
+        name: "Remote Claude Desktop",
+        settingsConfig: {
+          env: {
+            ANTHROPIC_BASE_URL: "https://api.example.com",
+            ANTHROPIC_AUTH_TOKEN: "",
+          },
+        },
+        meta: {
+          claudeDesktopMode: "direct",
+          claudeDesktopModelRoutes: {
+            "claude-sonnet-5": { model: "claude-sonnet-5" },
+          },
+        },
+      },
+      vi.fn(),
+      { providerId: "remote-claude-desktop-provider", target },
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /providerForm\.fetchModels|获取模型/,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(
+        modelFetchApiMock.fetchModelsForProviderConfig,
+      ).toHaveBeenCalledWith({
+        app: "claude-desktop",
+        providerId: "remote-claude-desktop-provider",
+        target,
+        baseUrl: "https://api.example.com",
+        apiKey: "",
+      });
+    });
+    expect(modelFetchApiMock.showFetchModelsError).not.toHaveBeenCalledWith(
+      null,
+      expect.anything(),
+      expect.objectContaining({ hasApiKey: false }),
     );
   });
 

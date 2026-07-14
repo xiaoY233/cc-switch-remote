@@ -371,6 +371,10 @@
         "title": "雲端同步",
         "description": "透過 WebDAV 在多裝置間同步資料"
       },
+      "modelTest": {
+        "title": "模型測試",
+        "description": "設定模型連通性測試參數"
+      },
       "rectifier": {
         "title": "整流器",
         "description": "自動修復 API 請求中的相容性問題",

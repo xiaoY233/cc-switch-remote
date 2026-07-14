@@ -4,6 +4,8 @@ import type { ManagementTarget, RemoteHostProfile } from "./remote";
 const invokeMock = vi.fn();
 const remoteGetAppConfigDirMock = vi.fn();
 const remoteSetAppConfigDirMock = vi.fn();
+const remoteApplyClaudePluginConfigMock = vi.fn();
+const remoteGetSettingsMock = vi.fn();
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (...args: unknown[]) => invokeMock(...args),
@@ -13,6 +15,9 @@ vi.mock("./remote", () => ({
   remoteApi: {
     getAppConfigDir: (...args: unknown[]) => remoteGetAppConfigDirMock(...args),
     setAppConfigDir: (...args: unknown[]) => remoteSetAppConfigDirMock(...args),
+    applyClaudePluginConfig: (...args: unknown[]) =>
+      remoteApplyClaudePluginConfigMock(...args),
+    getSettings: (...args: unknown[]) => remoteGetSettingsMock(...args),
   },
 }));
 
@@ -39,6 +44,8 @@ describe("app config dir API", () => {
     invokeMock.mockReset();
     remoteGetAppConfigDirMock.mockReset();
     remoteSetAppConfigDirMock.mockReset();
+    remoteApplyClaudePluginConfigMock.mockReset();
+    remoteGetSettingsMock.mockReset();
   });
 
   it("loads and saves the remote app config dir through remote API", async () => {
@@ -60,6 +67,41 @@ describe("app config dir API", () => {
     expect(remoteSetAppConfigDirMock).toHaveBeenCalledWith(
       profile,
       "/srv/cc-switch",
+      remoteTarget.secret,
+    );
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it("loads settings through the selected remote target", async () => {
+    const { settingsApi } = await import("./settings");
+    remoteGetSettingsMock.mockResolvedValue({
+      language: "zh",
+      theme: "dark",
+    });
+
+    await expect(settingsApi.get(remoteTarget)).resolves.toEqual({
+      language: "zh",
+      theme: "dark",
+    });
+
+    expect(remoteGetSettingsMock).toHaveBeenCalledWith(
+      profile,
+      remoteTarget.secret,
+    );
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it("applies Claude plugin config through the selected remote target", async () => {
+    const { settingsApi } = await import("./settings");
+    remoteApplyClaudePluginConfigMock.mockResolvedValue(true);
+
+    await expect(
+      settingsApi.applyClaudePluginConfig({ official: false }, remoteTarget),
+    ).resolves.toBe(true);
+
+    expect(remoteApplyClaudePluginConfigMock).toHaveBeenCalledWith(
+      profile,
+      false,
       remoteTarget.secret,
     );
     expect(invokeMock).not.toHaveBeenCalled();

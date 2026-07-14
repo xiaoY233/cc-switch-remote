@@ -6,6 +6,8 @@ import { useUpdateProviderMutation } from "@/lib/query/mutations";
 import { LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
 import { usageKeys } from "@/lib/query/usage";
 import type { Provider } from "@/types";
+import { invalidateHermesProviderCaches } from "@/hooks/useHermes";
+import type { ManagementTarget } from "@/lib/api";
 
 const apiMocks = vi.hoisted(() => ({
   update: vi.fn(),
@@ -70,6 +72,7 @@ function createProvider(overrides: Partial<Provider> = {}): Provider {
 
 beforeEach(() => {
   apiMocks.update.mockReset().mockResolvedValue(true);
+  vi.mocked(invalidateHermesProviderCaches).mockReset();
 });
 
 describe("useUpdateProviderMutation", () => {
@@ -130,5 +133,44 @@ describe("useUpdateProviderMutation", () => {
     expect(invalidateSpy).not.toHaveBeenCalledWith({
       queryKey: usageKeys.all,
     });
+  });
+
+  it("invalidates Hermes provider caches for the selected remote target", async () => {
+    const { wrapper } = createWrapper();
+    const remoteTarget: ManagementTarget = {
+      type: "remote",
+      profile: {
+        id: "remote-hermes",
+        name: "Remote Hermes",
+        host: "192.168.1.20",
+        port: 22,
+        username: "root",
+        authMethod: { type: "password" },
+        helperPath: "~/.local/bin/cc-switch-remote-helper",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      secret: { password: "secret" },
+    };
+    const provider = createProvider({ id: "provider-hermes" });
+    const { result } = renderHook(
+      () => useUpdateProviderMutation("hermes", remoteTarget),
+      { wrapper },
+    );
+
+    await act(async () => {
+      await result.current.mutateAsync({ provider });
+    });
+
+    expect(apiMocks.update).toHaveBeenCalledWith(
+      provider,
+      "hermes",
+      undefined,
+      remoteTarget,
+    );
+    expect(invalidateHermesProviderCaches).toHaveBeenCalledWith(
+      expect.any(QueryClient),
+      remoteTarget,
+    );
   });
 });
