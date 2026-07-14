@@ -107,6 +107,102 @@ mod tests {
     }
 
     #[test]
+    fn status_advertises_profiles_capability() {
+        let response = run_command(&["status".to_string()]);
+        let capabilities = response
+            .get("data")
+            .and_then(|data| data.get("capabilities"))
+            .and_then(Value::as_array)
+            .expect("status capabilities");
+
+        assert!(capabilities
+            .iter()
+            .any(|capability| capability == "profiles"));
+    }
+
+    #[test]
+    fn status_advertises_common_config_capability() {
+        let response = run_command(&["status".to_string()]);
+        let capabilities = response
+            .get("data")
+            .and_then(|data| data.get("capabilities"))
+            .and_then(Value::as_array)
+            .expect("status capabilities");
+
+        assert!(capabilities
+            .iter()
+            .any(|capability| capability == "common-config"));
+    }
+
+    #[test]
+    fn status_advertises_omo_capability() {
+        let response = run_command(&["status".to_string()]);
+        let capabilities = response
+            .get("data")
+            .and_then(|data| data.get("capabilities"))
+            .and_then(Value::as_array)
+            .expect("status capabilities");
+
+        assert!(capabilities.iter().any(|capability| capability == "omo"));
+    }
+
+    #[test]
+    fn profiles_update_rejects_invalid_bool_before_touching_state() {
+        let response = run_command(&[
+            "profiles".to_string(),
+            "update".to_string(),
+            "project-1".to_string(),
+            "-".to_string(),
+            "not-bool".to_string(),
+            "-".to_string(),
+        ]);
+
+        assert_eq!(response.get("ok").and_then(Value::as_bool), Some(false));
+        assert_eq!(
+            response
+                .get("error")
+                .and_then(|error| error.get("code"))
+                .and_then(Value::as_str),
+            Some("profiles_update_failed")
+        );
+    }
+
+    #[test]
+    fn common_config_toml_update_command_is_registered() {
+        let response = run_command(&[
+            "config".to_string(),
+            "common-update-toml".to_string(),
+            "[model_providers.x]\nname = \"x\"\n".to_string(),
+            "[tui]\nnotifications = false\n".to_string(),
+            "true".to_string(),
+        ]);
+
+        assert_eq!(response.get("ok").and_then(Value::as_bool), Some(true));
+        assert!(response
+            .get("data")
+            .and_then(Value::as_str)
+            .is_some_and(|value| value.contains("[tui]")));
+    }
+
+    #[test]
+    fn omo_rejects_unknown_variant_before_touching_state() {
+        let response = run_command(&[
+            "omo".to_string(),
+            "current-provider".to_string(),
+            "not-omo".to_string(),
+        ]);
+
+        assert_eq!(response.get("ok").and_then(Value::as_bool), Some(false));
+        assert_eq!(
+            response
+                .get("error")
+                .and_then(|error| error.get("code"))
+                .and_then(Value::as_str),
+            Some("omo_current_failed")
+        );
+    }
+
+    #[test]
     fn status_advertises_restore_preflight_capability() {
         let response = run_command(&["status".to_string()]);
         let capabilities = response
@@ -1092,6 +1188,171 @@ pub(crate) fn run_command(args: &[String]) -> Value {
                 Err(message) => {
                     serde_json::to_value(types::err::<()>("app_config_dir_failed", message))
                         .expect("serialize app config dir error")
+                }
+            }
+        }
+        [group, cmd] if group == "profiles" && cmd == "list" => match commands::list_profiles() {
+            Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize profiles"),
+            Err(message) => serde_json::to_value(types::err::<()>("profiles_list_failed", message))
+                .expect("serialize profiles list error"),
+        },
+        [group, cmd, name, scope] if group == "profiles" && cmd == "create" => {
+            match commands::create_profile(name, scope) {
+                Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize profile"),
+                Err(message) => {
+                    serde_json::to_value(types::err::<()>("profiles_create_failed", message))
+                        .expect("serialize profiles create error")
+                }
+            }
+        }
+        [group, cmd, id, name, resnapshot, scope] if group == "profiles" && cmd == "update" => {
+            let name = if name == "-" { None } else { Some(name.as_str()) };
+            let resnapshot = if resnapshot == "-" {
+                Ok(None)
+            } else {
+                parse_bool_arg(resnapshot).map(Some)
+            };
+            match resnapshot {
+                Ok(resnapshot) => {
+                    let scope = if scope == "-" {
+                        None
+                    } else {
+                        Some(scope.as_str())
+                    };
+                    match commands::update_profile(id, name, resnapshot, scope) {
+                        Ok(value) => {
+                            serde_json::to_value(types::ok(value)).expect("serialize profile")
+                        }
+                        Err(message) => serde_json::to_value(types::err::<()>(
+                            "profiles_update_failed",
+                            message,
+                        ))
+                        .expect("serialize profiles update error"),
+                    }
+                }
+                Err(message) => serde_json::to_value(types::err::<()>(
+                    "profiles_update_failed",
+                    message,
+                ))
+                .expect("serialize profiles update error"),
+            }
+        }
+        [group, cmd, id] if group == "profiles" && cmd == "delete" => {
+            match commands::delete_profile(id) {
+                Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize profile"),
+                Err(message) => {
+                    serde_json::to_value(types::err::<()>("profiles_delete_failed", message))
+                        .expect("serialize profiles delete error")
+                }
+            }
+        }
+        [group, cmd, id, scope] if group == "profiles" && cmd == "apply" => {
+            match commands::apply_profile(id, scope) {
+                Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize profile"),
+                Err(message) => {
+                    serde_json::to_value(types::err::<()>("profiles_apply_failed", message))
+                        .expect("serialize profiles apply error")
+                }
+            }
+        }
+        [group, cmd, scope] if group == "profiles" && cmd == "clear-current" => {
+            match commands::clear_current_profile(scope) {
+                Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize profile"),
+                Err(message) => serde_json::to_value(types::err::<()>(
+                    "profiles_clear_current_failed",
+                    message,
+                ))
+                .expect("serialize profiles clear current error"),
+            }
+        }
+        [group, cmd, app_type] if group == "config" && cmd == "common-get" => {
+            match commands::get_common_config_snippet(app_type) {
+                Ok(value) => {
+                    serde_json::to_value(types::ok(value)).expect("serialize common config")
+                }
+                Err(message) => serde_json::to_value(types::err::<()>(
+                    "common_config_get_failed",
+                    message,
+                ))
+                .expect("serialize common config get error"),
+            }
+        }
+        [group, cmd, app_type, snippet] if group == "config" && cmd == "common-set" => {
+            match commands::set_common_config_snippet(app_type, snippet) {
+                Ok(value) => {
+                    serde_json::to_value(types::ok(value)).expect("serialize common config")
+                }
+                Err(message) => serde_json::to_value(types::err::<()>(
+                    "common_config_set_failed",
+                    message,
+                ))
+                .expect("serialize common config set error"),
+            }
+        }
+        [group, cmd, config_toml, snippet_toml, enabled]
+            if group == "config" && cmd == "common-update-toml" =>
+        {
+            match parse_bool_arg(enabled)
+                .and_then(|enabled| {
+                    commands::update_toml_common_config_snippet(
+                        config_toml,
+                        snippet_toml,
+                        enabled,
+                    )
+                }) {
+                Ok(value) => {
+                    serde_json::to_value(types::ok(value)).expect("serialize common config")
+                }
+                Err(message) => serde_json::to_value(types::err::<()>(
+                    "common_config_update_toml_failed",
+                    message,
+                ))
+                .expect("serialize common config update toml error"),
+            }
+        }
+        [group, cmd, app_type, settings_config]
+            if group == "config" && cmd == "common-extract" =>
+        {
+            let settings_config = if settings_config == "-" {
+                None
+            } else {
+                Some(settings_config.as_str())
+            };
+            match commands::extract_common_config_snippet(app_type, settings_config) {
+                Ok(value) => {
+                    serde_json::to_value(types::ok(value)).expect("serialize common config")
+                }
+                Err(message) => serde_json::to_value(types::err::<()>(
+                    "common_config_extract_failed",
+                    message,
+                ))
+                .expect("serialize common config extract error"),
+            }
+        }
+        [group, cmd, variant] if group == "omo" && cmd == "read-local-file" => {
+            match commands::read_omo_local_file(variant) {
+                Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize omo file"),
+                Err(message) => {
+                    serde_json::to_value(types::err::<()>("omo_read_failed", message))
+                        .expect("serialize omo read error")
+                }
+            }
+        }
+        [group, cmd, variant] if group == "omo" && cmd == "current-provider" => {
+            match commands::get_current_omo_provider_id(variant) {
+                Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize omo current"),
+                Err(message) => {
+                    serde_json::to_value(types::err::<()>("omo_current_failed", message))
+                        .expect("serialize omo current error")
+                }
+            }
+        }
+        [group, cmd, variant] if group == "omo" && cmd == "disable-current" => {
+            match commands::disable_current_omo(variant) {
+                Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize omo disable"),
+                Err(message) => {
+                    serde_json::to_value(types::err::<()>("omo_disable_failed", message))
+                        .expect("serialize omo disable error")
                 }
             }
         }
@@ -2423,7 +2684,7 @@ pub(crate) fn run_command(args: &[String]) -> Value {
         }
         _ => serde_json::to_value(types::err::<()>(
             "unsupported_command",
-            "Supported commands: status, providers, universal-providers, routing-config, routing-runtime, routing-runtime daemon-start/status/stop/run, sessions, hermes, openclaw, mcp, prompts, skills, import-export, cloud-sync, tools, settings, plugin, stream-check, usage, auth",
+            "Supported commands: status, providers, profiles, config, universal-providers, routing-config, routing-runtime, routing-runtime daemon-start/status/stop/run, sessions, hermes, openclaw, mcp, prompts, skills, import-export, cloud-sync, tools, settings, plugin, stream-check, usage, auth",
         ))
         .expect("serialize error response"),
     }

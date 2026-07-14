@@ -3,7 +3,10 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { providersApi, type ManagementTarget } from "@/lib/api";
 import { useProvidersQuery } from "@/lib/query/queries";
-import { LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
+import {
+  getManagementTargetKey,
+  LOCAL_MANAGEMENT_TARGET,
+} from "@/lib/managementTarget";
 import type { OpenCodeProviderConfig } from "@/types";
 import { OPENCODE_PRESET_MODEL_VARIANTS } from "@/config/opencodeProviderPresets";
 import { parseOpencodeConfigStrict } from "../helpers/opencodeFormUtils";
@@ -47,7 +50,7 @@ export function useOmoModelSource({
   target = LOCAL_MANAGEMENT_TARGET,
 }: UseOmoModelSourceParams): OmoModelSourceResult {
   const { t } = useTranslation();
-  const isLocalTarget = target.type === "local";
+  const targetKey = getManagementTargetKey(target);
 
   const { data: opencodeProvidersData } = useProvidersQuery("opencode", {
     target,
@@ -67,9 +70,9 @@ export function useOmoModelSource({
 
   useEffect(() => {
     let active = true;
-    if (!isOmoCategory || !isLocalTarget) {
+    if (!isOmoCategory) {
       setEnabledOpencodeProviderIds(null);
-      setOmoLiveIdsLoadFailed(!isLocalTarget);
+      setOmoLiveIdsLoadFailed(false);
       return () => {
         active = false;
       };
@@ -80,7 +83,7 @@ export function useOmoModelSource({
 
     (async () => {
       try {
-        const ids = await providersApi.getOpenCodeLiveProviderIds();
+        const ids = await providersApi.getOpenCodeLiveProviderIds(target);
         if (active) {
           setEnabledOpencodeProviderIds(ids);
         }
@@ -99,7 +102,7 @@ export function useOmoModelSource({
     return () => {
       active = false;
     };
-  }, [isOmoCategory, isLocalTarget]);
+  }, [isOmoCategory, target, targetKey]);
 
   const omoModelBuild = useMemo<OmoModelBuild>(() => {
     const empty: OmoModelBuild = {
@@ -118,7 +121,7 @@ export function useOmoModelSource({
       return empty;
     }
 
-    const shouldFilterByLive = isLocalTarget && !omoLiveIdsLoadFailed;
+    const shouldFilterByLive = !omoLiveIdsLoadFailed;
     if (shouldFilterByLive && enabledOpencodeProviderIds === null) {
       return empty;
     }
@@ -230,11 +233,10 @@ export function useOmoModelSource({
       variantsMap,
       presetMetaMap,
       parseFailedProviders,
-      usedFallbackSource: isLocalTarget && omoLiveIdsLoadFailed,
+      usedFallbackSource: omoLiveIdsLoadFailed,
     };
   }, [
     isOmoCategory,
-    isLocalTarget,
     opencodeProvidersData?.providers,
     enabledOpencodeProviderIds,
     omoLiveIdsLoadFailed,

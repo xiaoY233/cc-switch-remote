@@ -20,7 +20,10 @@ import type {
 } from "@/types";
 import type { AppId } from "./types";
 import type { ProviderSortUpdate, SwitchResult } from "./providers";
-import type { StreamCheckConfig, StreamCheckResult } from "./connectivity-check";
+import type {
+  StreamCheckConfig,
+  StreamCheckResult,
+} from "./connectivity-check";
 import type { BackupEntry, LogConfig } from "./settings";
 import type { SubscriptionQuota } from "@/types/subscription";
 import type { Prompt } from "./prompts";
@@ -79,6 +82,12 @@ import type {
 } from "./auth";
 import type { CopilotModel, CopilotUsageResponse } from "./copilot";
 import type { FetchedModel } from "./model-fetch";
+import type { Profile, ProfileScope, ProfilesResponse } from "./profiles";
+import type {
+  AppType as ConfigAppType,
+  ExtractCommonConfigSnippetOptions,
+} from "./config";
+import type { OmoLocalFileData } from "@/types/omo";
 
 export type RemoteAuthMethod =
   | { type: "sshAgent" }
@@ -424,6 +433,176 @@ export const remoteApi = {
     return invoke<boolean>("remote_save_settings", {
       profile,
       settings,
+      secret,
+    });
+  },
+
+  listProjectProfiles(
+    profile: RemoteHostProfile,
+    secret?: RemoteConnectionSecret,
+  ): Promise<ProfilesResponse> {
+    return invoke<ProfilesResponse>("remote_list_project_profiles", {
+      profile,
+      secret,
+    });
+  },
+
+  createProjectProfile(
+    profile: RemoteHostProfile,
+    name: string,
+    scope: ProfileScope,
+    secret?: RemoteConnectionSecret,
+  ): Promise<Profile> {
+    return invoke<Profile>("remote_create_project_profile", {
+      profile,
+      name,
+      scope,
+      secret,
+    });
+  },
+
+  updateProjectProfile(
+    profile: RemoteHostProfile,
+    id: string,
+    options: { name?: string; resnapshot?: boolean; scope?: ProfileScope },
+    secret?: RemoteConnectionSecret,
+  ): Promise<Profile> {
+    return invoke<Profile>("remote_update_project_profile", {
+      profile,
+      id,
+      name: options.name ?? null,
+      resnapshot: options.resnapshot ?? null,
+      scope: options.scope ?? null,
+      secret,
+    });
+  },
+
+  deleteProjectProfile(
+    profile: RemoteHostProfile,
+    id: string,
+    secret?: RemoteConnectionSecret,
+  ): Promise<void> {
+    return invoke<void>("remote_delete_project_profile", {
+      profile,
+      id,
+      secret,
+    });
+  },
+
+  applyProjectProfile(
+    profile: RemoteHostProfile,
+    id: string,
+    scope: ProfileScope,
+    secret?: RemoteConnectionSecret,
+  ): Promise<string[]> {
+    return invoke<string[]>("remote_apply_project_profile", {
+      profile,
+      id,
+      scope,
+      secret,
+    });
+  },
+
+  clearCurrentProjectProfile(
+    profile: RemoteHostProfile,
+    scope: ProfileScope,
+    secret?: RemoteConnectionSecret,
+  ): Promise<void> {
+    return invoke<void>("remote_clear_current_project_profile", {
+      profile,
+      scope,
+      secret,
+    });
+  },
+
+  getCommonConfigSnippet(
+    profile: RemoteHostProfile,
+    appType: ConfigAppType,
+    secret?: RemoteConnectionSecret,
+  ): Promise<string | null> {
+    return invoke<string | null>("remote_get_common_config_snippet", {
+      profile,
+      appType,
+      secret,
+    });
+  },
+
+  setCommonConfigSnippet(
+    profile: RemoteHostProfile,
+    appType: ConfigAppType,
+    snippet: string,
+    secret?: RemoteConnectionSecret,
+  ): Promise<void> {
+    return invoke<void>("remote_set_common_config_snippet", {
+      profile,
+      appType,
+      snippet,
+      secret,
+    });
+  },
+
+  updateTomlCommonConfigSnippet(
+    profile: RemoteHostProfile,
+    configToml: string,
+    snippetToml: string,
+    enabled: boolean,
+    secret?: RemoteConnectionSecret,
+  ): Promise<string> {
+    return invoke<string>("remote_update_toml_common_config_snippet", {
+      profile,
+      configToml,
+      snippetToml,
+      enabled,
+      secret,
+    });
+  },
+
+  extractCommonConfigSnippet(
+    profile: RemoteHostProfile,
+    appType: Exclude<ConfigAppType, "omo">,
+    options?: ExtractCommonConfigSnippetOptions,
+    secret?: RemoteConnectionSecret,
+  ): Promise<string> {
+    return invoke<string>("remote_extract_common_config_snippet", {
+      profile,
+      appType,
+      settingsConfig: options?.settingsConfig ?? null,
+      secret,
+    });
+  },
+
+  readOmoLocalFile(
+    profile: RemoteHostProfile,
+    variant: "omo" | "omo-slim",
+    secret?: RemoteConnectionSecret,
+  ): Promise<OmoLocalFileData> {
+    return invoke<OmoLocalFileData>("remote_read_omo_local_file", {
+      profile,
+      variant,
+      secret,
+    });
+  },
+
+  getCurrentOmoProviderId(
+    profile: RemoteHostProfile,
+    variant: "omo" | "omo-slim",
+    secret?: RemoteConnectionSecret,
+  ): Promise<string> {
+    return invoke<string>("remote_get_current_omo_provider_id", {
+      profile,
+      variant,
+      secret,
+    });
+  },
+
+  disableCurrentOmo(
+    profile: RemoteHostProfile,
+    variant: "omo" | "omo-slim",
+    secret?: RemoteConnectionSecret,
+  ): Promise<void> {
+    return invoke<void>("remote_disable_current_omo", {
+      profile,
+      variant,
       secret,
     });
   },

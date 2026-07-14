@@ -213,4 +213,49 @@ describe("useAddProviderMutation", () => {
     expect(apiMocks.add).not.toHaveBeenCalled();
     expect(persistedProvider).toEqual(seedProvider);
   });
+
+  it("does not run the local Codex official seed flow for remote targets", async () => {
+    const remoteTarget = {
+      type: "remote" as const,
+      profile: {
+        id: "remote-host",
+        name: "Remote Host",
+        host: "192.168.1.20",
+        port: 22,
+        username: "root",
+        authMethod: { type: "password" as const },
+        helperPath: "~/.local/bin/cc-switch-remote-helper",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      secret: { password: "secret" },
+    };
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(
+      () => useAddProviderMutation("codex", remoteTarget),
+      { wrapper },
+    );
+
+    await act(async () =>
+      result.current.mutateAsync({
+        name: "OpenAI Official",
+        settingsConfig: { auth: {}, config: "" },
+        category: "official",
+        ensureCodexOfficialSeed: true,
+      }),
+    );
+
+    expect(apiMocks.ensureCodexOfficialProvider).not.toHaveBeenCalled();
+    expect(apiMocks.getAll).not.toHaveBeenCalled();
+    expect(apiMocks.add).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "generated-uuid",
+        name: "OpenAI Official",
+        category: "official",
+      }),
+      "codex",
+      undefined,
+      remoteTarget,
+    );
+  });
 });

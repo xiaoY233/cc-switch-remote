@@ -1,11 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { profilesApi, providersApi } from "@/lib/api";
+import { providersApi } from "@/lib/api";
+import { profilesApi } from "@/lib/api/profiles";
+import type { ManagementTarget } from "@/lib/api/remote";
 import type { ProfileScope } from "@/lib/api/profiles";
+import { getManagementTargetKey } from "@/lib/managementTarget";
 import { extractErrorMessage } from "@/utils/errorUtils";
 
-const updateTrayMenuSafely = async () => {
+const updateTrayMenuSafely = async (target: ManagementTarget) => {
+  if (target.type !== "local") return;
   try {
     await providersApi.updateTrayMenu();
   } catch (trayError) {
@@ -13,23 +17,34 @@ const updateTrayMenuSafely = async () => {
   }
 };
 
-export const useProfilesQuery = () => {
+const profileQueryKey = (target: ManagementTarget) => [
+  "profiles",
+  getManagementTargetKey(target),
+];
+
+export const useProfilesQuery = (
+  target: ManagementTarget = { type: "local" },
+) => {
   return useQuery({
-    queryKey: ["profiles"],
-    queryFn: () => profilesApi.list(),
+    queryKey: profileQueryKey(target),
+    queryFn: () => profilesApi.list(target),
   });
 };
 
-export const useCreateProfileMutation = () => {
+export const useCreateProfileMutation = (
+  target: ManagementTarget = { type: "local" },
+) => {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
 
   return useMutation({
     mutationFn: ({ name, scope }: { name: string; scope: ProfileScope }) =>
-      profilesApi.create(name, scope),
+      profilesApi.create(name, scope, target),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["profiles"] });
-      await updateTrayMenuSafely();
+      await queryClient.invalidateQueries({
+        queryKey: profileQueryKey(target),
+      });
+      await updateTrayMenuSafely(target);
       toast.success(t("profiles.createSuccess"), { closeButton: true });
     },
     onError: (error: Error) => {
@@ -41,7 +56,9 @@ export const useCreateProfileMutation = () => {
   });
 };
 
-export const useUpdateProfileMutation = () => {
+export const useUpdateProfileMutation = (
+  target: ManagementTarget = { type: "local" },
+) => {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
 
@@ -56,10 +73,12 @@ export const useUpdateProfileMutation = () => {
       name?: string;
       resnapshot?: boolean;
       scope?: ProfileScope;
-    }) => profilesApi.update(id, { name, resnapshot, scope }),
+    }) => profilesApi.update(id, { name, resnapshot, scope }, target),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["profiles"] });
-      await updateTrayMenuSafely();
+      await queryClient.invalidateQueries({
+        queryKey: profileQueryKey(target),
+      });
+      await updateTrayMenuSafely(target);
       toast.success(t("profiles.updateSuccess"), { closeButton: true });
     },
     onError: (error: Error) => {
@@ -71,15 +90,19 @@ export const useUpdateProfileMutation = () => {
   });
 };
 
-export const useDeleteProfileMutation = () => {
+export const useDeleteProfileMutation = (
+  target: ManagementTarget = { type: "local" },
+) => {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
 
   return useMutation({
-    mutationFn: (id: string) => profilesApi.delete(id),
+    mutationFn: (id: string) => profilesApi.delete(id, target),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["profiles"] });
-      await updateTrayMenuSafely();
+      await queryClient.invalidateQueries({
+        queryKey: profileQueryKey(target),
+      });
+      await updateTrayMenuSafely(target);
       toast.success(t("profiles.deleteSuccess"), { closeButton: true });
     },
     onError: (error: Error) => {
@@ -91,15 +114,20 @@ export const useDeleteProfileMutation = () => {
   });
 };
 
-export const useClearProfileMutation = () => {
+export const useClearProfileMutation = (
+  target: ManagementTarget = { type: "local" },
+) => {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
 
   return useMutation({
-    mutationFn: (scope: ProfileScope) => profilesApi.clearCurrent(scope),
+    mutationFn: (scope: ProfileScope) =>
+      profilesApi.clearCurrent(scope, target),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["profiles"] });
-      await updateTrayMenuSafely();
+      await queryClient.invalidateQueries({
+        queryKey: profileQueryKey(target),
+      });
+      await updateTrayMenuSafely(target);
       toast.success(t("profiles.clearSuccess"), { closeButton: true });
     },
     onError: (error: Error) => {
@@ -111,15 +139,19 @@ export const useClearProfileMutation = () => {
   });
 };
 
-export const useApplyProfileMutation = () => {
+export const useApplyProfileMutation = (
+  target: ManagementTarget = { type: "local" },
+) => {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
 
   return useMutation({
     mutationFn: ({ id, scope }: { id: string; scope: ProfileScope }) =>
-      profilesApi.apply(id, scope),
+      profilesApi.apply(id, scope, target),
     onSuccess: async (warnings) => {
-      await queryClient.invalidateQueries({ queryKey: ["profiles"] });
+      await queryClient.invalidateQueries({
+        queryKey: profileQueryKey(target),
+      });
       await queryClient.invalidateQueries({
         queryKey: ["providers", "claude"],
       });
@@ -129,7 +161,7 @@ export const useApplyProfileMutation = () => {
       await queryClient.invalidateQueries({ queryKey: ["providers", "codex"] });
       await queryClient.invalidateQueries({ queryKey: ["mcp", "all"] });
       await queryClient.invalidateQueries({ queryKey: ["skills"] });
-      await updateTrayMenuSafely();
+      await updateTrayMenuSafely(target);
 
       if (warnings.length > 0) {
         toast.warning(

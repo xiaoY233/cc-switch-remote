@@ -17,10 +17,12 @@ import {
   useProfilesQuery,
   useUpdateProfileMutation,
 } from "@/lib/query/profiles";
+import type { ManagementTarget } from "@/lib/api/remote";
 
 interface ProfileManageDialogProps {
   isOpen: boolean;
   onClose: () => void;
+  target?: ManagementTarget;
 }
 
 type PendingConfirm = {
@@ -37,11 +39,12 @@ type PendingConfirm = {
 export function ProfileManageDialog({
   isOpen,
   onClose,
+  target = { type: "local" },
 }: ProfileManageDialogProps) {
   const { t } = useTranslation();
-  const { data } = useProfilesQuery();
-  const updateMutation = useUpdateProfileMutation();
-  const deleteMutation = useDeleteProfileMutation();
+  const { data } = useProfilesQuery(target);
+  const updateMutation = useUpdateProfileMutation(target);
+  const deleteMutation = useDeleteProfileMutation(target);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");

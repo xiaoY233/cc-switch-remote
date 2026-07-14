@@ -567,7 +567,7 @@ function App() {
     managementTarget,
   );
 
-  const disableOmoMutation = useDisableCurrentOmo();
+  const disableOmoMutation = useDisableCurrentOmo(managementTarget);
   const handleDisableOmo = () => {
     disableOmoMutation.mutate(undefined, {
       onSuccess: () => {
@@ -584,7 +584,7 @@ function App() {
     });
   };
 
-  const disableOmoSlimMutation = useDisableCurrentOmoSlim();
+  const disableOmoSlimMutation = useDisableCurrentOmoSlim(managementTarget);
   const handleDisableOmoSlim = () => {
     disableOmoSlimMutation.mutate(undefined, {
       onSuccess: () => {
@@ -1641,13 +1641,15 @@ function App() {
                 </div>
               )}
             {currentView === "providers" &&
-              managementTarget.type === "local" &&
               (settingsData?.showProfileSwitcher ?? true) && (
                 <div
                   className="flex shrink-0 items-center"
                   style={{ WebkitAppRegion: "no-drag" } as any}
                 >
-                  <ProfileSwitcher activeApp={activeApp} />
+                  <ProfileSwitcher
+                    activeApp={activeApp}
+                    target={managementTarget}
+                  />
                 </div>
               )}
             {currentView === "providers" &&

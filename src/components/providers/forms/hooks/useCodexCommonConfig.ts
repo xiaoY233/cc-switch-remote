@@ -3,6 +3,8 @@ import { useTranslation } from "react-i18next";
 import { parse as parseToml } from "smol-toml";
 import { hasTomlCommonConfigSnippet } from "@/utils/providerConfigUtils";
 import { configApi } from "@/lib/api";
+import type { ManagementTarget } from "@/lib/api/remote";
+import { LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
 import { normalizeTomlText } from "@/utils/textNormalization";
 
 /**
@@ -13,12 +15,14 @@ const applyTomlSnippet = async (
   configToml: string,
   snippetToml: string,
   enabled: boolean,
+  target: ManagementTarget,
 ): Promise<{ updatedConfig: string; error?: string }> => {
   try {
     const updatedConfig = await configApi.updateTomlCommonConfigSnippet(
       configToml,
       snippetToml,
       enabled,
+      target,
     );
     return { updatedConfig };
   } catch (e) {
@@ -40,6 +44,7 @@ interface UseCodexCommonConfigProps {
   selectedPresetId?: string;
   /** When false, skip local common config loading and injection. Default: true */
   enabled?: boolean;
+  target?: ManagementTarget;
 }
 
 /**
@@ -53,6 +58,7 @@ export function useCodexCommonConfig({
   initialEnabled,
   selectedPresetId,
   enabled = true,
+  target = LOCAL_MANAGEMENT_TARGET,
 }: UseCodexCommonConfigProps) {
   const { t } = useTranslation();
   const [useCommonConfig, setUseCommonConfig] = useState(false);
@@ -133,7 +139,7 @@ export function useCodexCommonConfig({
     const loadSnippet = async () => {
       try {
         // 使用统一 API 加载
-        const snippet = await configApi.getCommonConfigSnippet("codex");
+        const snippet = await configApi.getCommonConfigSnippet("codex", target);
 
         if (snippet && snippet.trim()) {
           if (mounted) {
@@ -147,7 +153,11 @@ export function useCodexCommonConfig({
                 window.localStorage.getItem(LEGACY_STORAGE_KEY);
               if (legacySnippet && legacySnippet.trim()) {
                 // 迁移到 config.json
-                await configApi.setCommonConfigSnippet("codex", legacySnippet);
+                await configApi.setCommonConfigSnippet(
+                  "codex",
+                  legacySnippet,
+                  target,
+                );
                 if (mounted) {
                   setCommonConfigSnippetState(legacySnippet);
                 }
@@ -176,7 +186,7 @@ export function useCodexCommonConfig({
     return () => {
       mounted = false;
     };
-  }, [enabled]);
+  }, [enabled, target]);
 
   // 初始化时检查通用配置片段（编辑模式）
   useEffect(() => {
@@ -223,6 +233,7 @@ export function useCodexCommonConfig({
           codexConfig,
           commonConfigSnippet,
           true,
+          target,
         );
         if (cancelled || isTomlOpStale(seq, codexConfig)) {
           return;
@@ -288,6 +299,7 @@ export function useCodexCommonConfig({
         codexConfig,
         commonConfigSnippet,
         true,
+        target,
       );
       if (cancelled || isTomlOpStale(seq, codexConfig)) {
         return;
@@ -346,6 +358,7 @@ export function useCodexCommonConfig({
         codexConfig,
         commonConfigSnippet,
         checked,
+        target,
       );
       if (isTomlOpStale(seq, codexConfig)) {
         return;
@@ -397,6 +410,7 @@ export function useCodexCommonConfig({
               codexConfig,
               previousSnippet,
               false,
+              target,
             );
             if (isTomlOpStale(seq, codexConfig)) {
               return false;
@@ -414,7 +428,7 @@ export function useCodexCommonConfig({
 
         setCommonConfigSnippetState("");
         configApi
-          .setCommonConfigSnippet("codex", "")
+          .setCommonConfigSnippet("codex", "", target)
           .catch((error: unknown) => {
             console.error("保存 Codex 通用配置失败:", error);
             setCommonConfigError(
@@ -440,6 +454,7 @@ export function useCodexCommonConfig({
             codexConfig,
             previousSnippet,
             false,
+            target,
           );
           if (isTomlOpStale(seq, codexConfig)) {
             return false;
@@ -451,7 +466,12 @@ export function useCodexCommonConfig({
           nextConfig = removeResult.updatedConfig;
         }
 
-        const addResult = await applyTomlSnippet(nextConfig, value, true);
+        const addResult = await applyTomlSnippet(
+          nextConfig,
+          value,
+          true,
+          target,
+        );
         // nextConfig 派生自发起时的 codexConfig，基线校验仍对 codexConfig 做
         if (isTomlOpStale(seq, codexConfig)) {
           return false;
@@ -474,7 +494,7 @@ export function useCodexCommonConfig({
       setCommonConfigError("");
       setCommonConfigSnippetState(value);
       configApi
-        .setCommonConfigSnippet("codex", value)
+        .setCommonConfigSnippet("codex", value, target)
         .catch((error: unknown) => {
           console.error("保存 Codex 通用配置失败:", error);
           setCommonConfigError(
@@ -525,11 +545,15 @@ export function useCodexCommonConfig({
     setCommonConfigError("");
 
     try {
-      const extracted = await configApi.extractCommonConfigSnippet("codex", {
-        settingsConfig: JSON.stringify({
-          config: codexConfig ?? "",
-        }),
-      });
+      const extracted = await configApi.extractCommonConfigSnippet(
+        "codex",
+        {
+          settingsConfig: JSON.stringify({
+            config: codexConfig ?? "",
+          }),
+        },
+        target,
+      );
 
       if (!extracted || !extracted.trim()) {
         setCommonConfigError(t("codexConfig.extractNoCommonConfig"));
@@ -540,7 +564,7 @@ export function useCodexCommonConfig({
       setCommonConfigSnippetState(extracted);
 
       // 保存到后端
-      await configApi.setCommonConfigSnippet("codex", extracted);
+      await configApi.setCommonConfigSnippet("codex", extracted, target);
     } catch (error) {
       console.error("提取 Codex 通用配置失败:", error);
       setCommonConfigError(
@@ -549,7 +573,7 @@ export function useCodexCommonConfig({
     } finally {
       setIsExtracting(false);
     }
-  }, [codexConfig, t]);
+  }, [codexConfig, t, target]);
 
   const clearCommonConfigError = useCallback(() => {
     setCommonConfigError("");

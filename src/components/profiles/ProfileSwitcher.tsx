@@ -42,6 +42,7 @@ import {
 import { ProfileManageDialog } from "./ProfileManageDialog";
 import { APP_PROFILE_SCOPE, hasScopeSnapshot } from "./scope";
 import type { CurrentProfileIds, ProfileScope } from "@/lib/api/profiles";
+import type { ManagementTarget } from "@/lib/api/remote";
 
 const CURRENT_ID_KEY: Record<ProfileScope, keyof CurrentProfileIds> = {
   claude: "claude",
@@ -51,6 +52,7 @@ const CURRENT_ID_KEY: Record<ProfileScope, keyof CurrentProfileIds> = {
 
 interface ProfileSwitcherProps {
   activeApp: AppId;
+  target?: ManagementTarget;
 }
 
 /**
@@ -61,17 +63,20 @@ interface ProfileSwitcherProps {
  * 的供应商）与 Codex 组各自指向自己的当前项目、只应用组内快照。
  * 与右侧 AppSwitcher（仅切换查看的应用）语义不同。
  */
-export function ProfileSwitcher({ activeApp }: ProfileSwitcherProps) {
+export function ProfileSwitcher({
+  activeApp,
+  target = { type: "local" },
+}: ProfileSwitcherProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isManageOpen, setIsManageOpen] = useState(false);
   const [newName, setNewName] = useState("");
 
-  const { data } = useProfilesQuery();
-  const applyMutation = useApplyProfileMutation();
-  const clearMutation = useClearProfileMutation();
-  const createMutation = useCreateProfileMutation();
+  const { data } = useProfilesQuery(target);
+  const applyMutation = useApplyProfileMutation(target);
+  const clearMutation = useClearProfileMutation(target);
+  const createMutation = useCreateProfileMutation(target);
 
   // Profile 仅作用于受支持的应用——在其他应用的标签页展示会误导用户
   // 以为当前应用也被切换了，因此只在有所属分组的应用页面渲染
@@ -247,6 +252,7 @@ export function ProfileSwitcher({ activeApp }: ProfileSwitcherProps) {
       <ProfileManageDialog
         isOpen={isManageOpen}
         onClose={() => setIsManageOpen(false)}
+        target={target}
       />
     </>
   );

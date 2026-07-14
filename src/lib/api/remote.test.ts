@@ -93,6 +93,97 @@ describe("remote preview profile store", () => {
   });
 });
 
+describe("remote project profile API", () => {
+  const remoteProfile = profile();
+  const secret: RemoteConnectionSecret = { password: "secret" };
+
+  it("invokes remote project profile read command with profile and secret", async () => {
+    invokeMock.mockResolvedValueOnce({ profiles: [], currentIds: {} });
+
+    await remoteApi.listProjectProfiles(remoteProfile, secret);
+
+    expect(invokeMock).toHaveBeenCalledWith("remote_list_project_profiles", {
+      profile: remoteProfile,
+      secret,
+    });
+  });
+
+  it("invokes remote project profile mutation commands with target data", async () => {
+    invokeMock.mockResolvedValueOnce({
+      id: "project-1",
+      name: "Project",
+      payload: {},
+    });
+    invokeMock.mockResolvedValueOnce([]);
+
+    await remoteApi.createProjectProfile(
+      remoteProfile,
+      "Project",
+      "codex",
+      secret,
+    );
+    await remoteApi.applyProjectProfile(
+      remoteProfile,
+      "project-1",
+      "codex",
+      secret,
+    );
+
+    expect(invokeMock).toHaveBeenNthCalledWith(
+      1,
+      "remote_create_project_profile",
+      {
+        profile: remoteProfile,
+        name: "Project",
+        scope: "codex",
+        secret,
+      },
+    );
+    expect(invokeMock).toHaveBeenNthCalledWith(
+      2,
+      "remote_apply_project_profile",
+      {
+        profile: remoteProfile,
+        id: "project-1",
+        scope: "codex",
+        secret,
+      },
+    );
+  });
+});
+
+describe("remote OMO API", () => {
+  const remoteProfile = profile();
+  const secret: RemoteConnectionSecret = { password: "secret" };
+
+  it("invokes remote OMO commands with variant and target secret", async () => {
+    invokeMock.mockResolvedValueOnce("omo-provider");
+    invokeMock.mockResolvedValueOnce(undefined);
+
+    await remoteApi.getCurrentOmoProviderId(remoteProfile, "omo", secret);
+    await remoteApi.disableCurrentOmo(remoteProfile, "omo-slim", secret);
+
+    expect(invokeMock).toHaveBeenNthCalledWith(
+      1,
+      "remote_get_current_omo_provider_id",
+      {
+        profile: remoteProfile,
+        variant: "omo",
+        secret,
+      },
+    );
+    expect(invokeMock).toHaveBeenNthCalledWith(
+      2,
+      "remote_disable_current_omo",
+      {
+        profile: remoteProfile,
+        variant: "omo-slim",
+        secret,
+      },
+    );
+  });
+});
+
 describe("remote API invoke mappings", () => {
   it("fetches Codex OAuth models through the remote helper command", async () => {
     const remoteProfile = profile();

@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { configApi } from "@/lib/api";
+import type { ManagementTarget } from "@/lib/api/remote";
+import { LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
 
 const LEGACY_STORAGE_KEY = "cc-switch:gemini-common-config-snippet";
 const DEFAULT_GEMINI_COMMON_CONFIG_SNIPPET = "{}";
@@ -23,6 +25,7 @@ interface UseGeminiCommonConfigProps {
   selectedPresetId?: string;
   /** When false, skip local common config loading and injection. Default: true */
   enabled?: boolean;
+  target?: ManagementTarget;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -49,6 +52,7 @@ export function useGeminiCommonConfig({
   initialEnabled,
   selectedPresetId,
   enabled = true,
+  target = LOCAL_MANAGEMENT_TARGET,
 }: UseGeminiCommonConfigProps) {
   const { t } = useTranslation();
   const [useCommonConfig, setUseCommonConfig] = useState(false);
@@ -171,7 +175,10 @@ export function useGeminiCommonConfig({
     const loadSnippet = async () => {
       try {
         // 使用统一 API 加载
-        const snippet = await configApi.getCommonConfigSnippet("gemini");
+        const snippet = await configApi.getCommonConfigSnippet(
+          "gemini",
+          target,
+        );
 
         if (snippet && snippet.trim()) {
           if (mounted) {
@@ -192,7 +199,11 @@ export function useGeminiCommonConfig({
                   return;
                 }
                 // 迁移到 config.json
-                await configApi.setCommonConfigSnippet("gemini", legacySnippet);
+                await configApi.setCommonConfigSnippet(
+                  "gemini",
+                  legacySnippet,
+                  target,
+                );
                 if (mounted) {
                   setCommonConfigSnippetState(legacySnippet);
                 }
@@ -221,7 +232,7 @@ export function useGeminiCommonConfig({
     return () => {
       mounted = false;
     };
-  }, [parseSnippetEnv, enabled]);
+  }, [parseSnippetEnv, enabled, target]);
 
   // 初始化时检查通用配置片段（编辑模式）
   useEffect(() => {
@@ -412,7 +423,7 @@ export function useGeminiCommonConfig({
 
         setCommonConfigSnippetState("");
         configApi
-          .setCommonConfigSnippet("gemini", "")
+          .setCommonConfigSnippet("gemini", "", target)
           .catch((error: unknown) => {
             console.error("保存 Gemini 通用配置失败:", error);
             setCommonConfigError(
@@ -455,7 +466,7 @@ export function useGeminiCommonConfig({
       setCommonConfigError("");
       setCommonConfigSnippetState(value);
       configApi
-        .setCommonConfigSnippet("gemini", value)
+        .setCommonConfigSnippet("gemini", value, target)
         .catch((error: unknown) => {
           console.error("保存 Gemini 通用配置失败:", error);
           setCommonConfigError(
@@ -507,11 +518,15 @@ export function useGeminiCommonConfig({
     setCommonConfigError("");
 
     try {
-      const extracted = await configApi.extractCommonConfigSnippet("gemini", {
-        settingsConfig: JSON.stringify({
-          env: envStringToObj(envValue),
-        }),
-      });
+      const extracted = await configApi.extractCommonConfigSnippet(
+        "gemini",
+        {
+          settingsConfig: JSON.stringify({
+            env: envStringToObj(envValue),
+          }),
+        },
+        target,
+      );
 
       if (!extracted || extracted === "{}") {
         setCommonConfigError(t("geminiConfig.extractNoCommonConfig"));
@@ -529,7 +544,7 @@ export function useGeminiCommonConfig({
       setCommonConfigSnippetState(extracted);
 
       // 保存到后端
-      await configApi.setCommonConfigSnippet("gemini", extracted);
+      await configApi.setCommonConfigSnippet("gemini", extracted, target);
     } catch (error) {
       console.error("提取 Gemini 通用配置失败:", error);
       setCommonConfigError(
@@ -538,7 +553,7 @@ export function useGeminiCommonConfig({
     } finally {
       setIsExtracting(false);
     }
-  }, [envStringToObj, envValue, parseSnippetEnv, t]);
+  }, [envStringToObj, envValue, parseSnippetEnv, t, target]);
 
   const clearCommonConfigError = useCallback(() => {
     setCommonConfigError("");

@@ -1,5 +1,6 @@
 // 配置相关 API
 import { invoke } from "@tauri-apps/api/core";
+import { remoteApi, type ManagementTarget } from "./remote";
 
 export type AppType = "claude" | "codex" | "gemini" | "omo" | "omo_slim";
 
@@ -31,7 +32,15 @@ export async function setClaudeCommonConfigSnippet(
  */
 export async function getCommonConfigSnippet(
   appType: AppType,
+  target: ManagementTarget = { type: "local" },
 ): Promise<string | null> {
+  if (target.type === "remote") {
+    return remoteApi.getCommonConfigSnippet(
+      target.profile,
+      appType,
+      target.secret,
+    );
+  }
   return invoke<string | null>("get_common_config_snippet", { appType });
 }
 
@@ -44,7 +53,16 @@ export async function getCommonConfigSnippet(
 export async function setCommonConfigSnippet(
   appType: AppType,
   snippet: string,
+  target: ManagementTarget = { type: "local" },
 ): Promise<void> {
+  if (target.type === "remote") {
+    return remoteApi.setCommonConfigSnippet(
+      target.profile,
+      appType,
+      snippet,
+      target.secret,
+    );
+  }
   return invoke("set_common_config_snippet", { appType, snippet });
 }
 
@@ -63,7 +81,17 @@ export async function updateTomlCommonConfigSnippet(
   configToml: string,
   snippetToml: string,
   enabled: boolean,
+  target: ManagementTarget = { type: "local" },
 ): Promise<string> {
+  if (target.type === "remote") {
+    return remoteApi.updateTomlCommonConfigSnippet(
+      target.profile,
+      configToml,
+      snippetToml,
+      enabled,
+      target.secret,
+    );
+  }
   return invoke<string>("update_toml_common_config_snippet", {
     configToml,
     snippetToml,
@@ -88,7 +116,16 @@ export type ExtractCommonConfigSnippetOptions = {
 export async function extractCommonConfigSnippet(
   appType: Exclude<AppType, "omo">,
   options?: ExtractCommonConfigSnippetOptions,
+  target: ManagementTarget = { type: "local" },
 ): Promise<string> {
+  if (target.type === "remote") {
+    return remoteApi.extractCommonConfigSnippet(
+      target.profile,
+      appType,
+      options,
+      target.secret,
+    );
+  }
   const args: Record<string, unknown> = { appType };
   const settingsConfig = options?.settingsConfig;
 

@@ -1,6 +1,9 @@
 use crate::app_config::{InstalledSkill, UnmanagedSkill};
+use crate::database::Profile;
 use crate::prompt::Prompt;
 use crate::provider::UniversalProvider;
+use crate::services::omo::{OmoLocalFileData, OmoVariant, SLIM, STANDARD};
+use crate::services::profile::{ProfilePayload, ProfileScope, ProfileService};
 use crate::services::provider_secrets::{
     redact_provider_map_secret_values, redact_secret_values, restore_redacted_secret_values,
     restore_redacted_secret_values_for,
@@ -9,6 +12,7 @@ use crate::services::skill::{
     DiscoverableSkill, ImportSkillSelection, SkillBackupEntry, SkillRepo, SkillService,
     SkillStorageLocation, SkillUninstallResult, SkillUpdateInfo,
 };
+use crate::services::OmoService;
 use crate::services::ProviderSortUpdate;
 use crate::{
     AppError, AppState, AppType, Database, McpServer, McpService, PromptService, Provider,
@@ -65,6 +69,52 @@ pub struct StatusPayload {
     pub platform: String,
     pub arch: String,
     pub capabilities: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileDto {
+    pub id: String,
+    pub name: String,
+    pub payload: ProfilePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<i64>,
+}
+
+impl From<Profile> for ProfileDto {
+    fn from(profile: Profile) -> Self {
+        let payload = serde_json::from_str(&profile.payload).unwrap_or_else(|e| {
+            log::warn!(
+                "Failed to parse profile '{}' payload, using default: {e}",
+                profile.id
+            );
+            ProfilePayload::default()
+        });
+        Self {
+            id: profile.id,
+            name: profile.name,
+            payload,
+            created_at: profile.created_at,
+            updated_at: profile.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CurrentProfileIds {
+    pub claude: Option<String>,
+    pub claude_desktop: Option<String>,
+    pub codex: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfilesResponse {
+    pub profiles: Vec<ProfileDto>,
+    pub current_ids: CurrentProfileIds,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1081,6 +1131,217 @@ pub fn get_app_config_dir() -> String {
 pub fn set_app_config_dir(path: &str) -> Result<bool, String> {
     crate::app_store::set_app_config_dir_override_for_cli(Some(path)).map_err(|e| e.to_string())?;
     Ok(true)
+}
+
+pub fn list_profiles() -> Result<ProfilesResponse, String> {
+    let state = build_command_state()?;
+    let profiles = ProfileService::list(&state).map_err(|e| e.to_string())?;
+    let current_ids = CurrentProfileIds {
+        claude: state
+            .db
+            .get_current_profile_id(ProfileScope::Claude.as_str())
+            .map_err(|e| e.to_string())?,
+        claude_desktop: state
+            .db
+            .get_current_profile_id(ProfileScope::ClaudeDesktop.as_str())
+            .map_err(|e| e.to_string())?,
+        codex: state
+            .db
+            .get_current_profile_id(ProfileScope::Codex.as_str())
+            .map_err(|e| e.to_string())?,
+    };
+    Ok(ProfilesResponse {
+        profiles: profiles.into_iter().map(ProfileDto::from).collect(),
+        current_ids,
+    })
+}
+
+pub fn create_profile(name: &str, scope: &str) -> Result<ProfileDto, String> {
+    let state = build_command_state()?;
+    let scope = ProfileScope::parse(scope).map_err(|e| e.to_string())?;
+    ProfileService::create(&state, name, scope)
+        .map(ProfileDto::from)
+        .map_err(|e| e.to_string())
+}
+
+pub fn update_profile(
+    id: &str,
+    name: Option<&str>,
+    resnapshot: Option<bool>,
+    scope: Option<&str>,
+) -> Result<ProfileDto, String> {
+    let state = build_command_state()?;
+    let scope = scope
+        .map(ProfileScope::parse)
+        .transpose()
+        .map_err(|e| e.to_string())?;
+    ProfileService::update(
+        &state,
+        id,
+        name.map(str::to_string),
+        resnapshot.unwrap_or(false),
+        scope,
+    )
+    .map(ProfileDto::from)
+    .map_err(|e| e.to_string())
+}
+
+pub fn delete_profile(id: &str) -> Result<(), String> {
+    let state = build_command_state()?;
+    ProfileService::delete(&state, id).map_err(|e| e.to_string())
+}
+
+pub fn clear_current_profile(scope: &str) -> Result<(), String> {
+    let state = build_command_state()?;
+    let scope = ProfileScope::parse(scope).map_err(|e| e.to_string())?;
+    state
+        .db
+        .set_current_profile_id(scope.as_str(), None)
+        .map_err(|e| e.to_string())
+}
+
+pub fn apply_profile(id: &str, scope: &str) -> Result<Vec<String>, String> {
+    let state = build_command_state()?;
+    let scope = ProfileScope::parse(scope).map_err(|e| e.to_string())?;
+    let (mut warnings, should_stop_proxy) =
+        ProfileService::apply(&state, id, scope).map_err(|e| e.to_string())?;
+
+    if should_stop_proxy {
+        #[cfg(feature = "proxy-runtime")]
+        if let Err(error) = routing_runtime()?.block_on(state.proxy_service.stop()) {
+            warnings.push(format!("stop proxy after profile switch failed: {error}"));
+        }
+    }
+
+    Ok(warnings)
+}
+
+pub fn get_common_config_snippet(app_type: &str) -> Result<Option<String>, String> {
+    let db = Database::init().map_err(|e| e.to_string())?;
+    db.get_config_snippet(app_type).map_err(|e| e.to_string())
+}
+
+pub fn set_common_config_snippet(app_type: &str, snippet: &str) -> Result<(), String> {
+    let state = build_command_state()?;
+    let is_cleared = snippet.trim().is_empty();
+    let old_snippet = state
+        .db
+        .get_config_snippet(app_type)
+        .map_err(|e| e.to_string())?;
+
+    validate_common_config_snippet(app_type, snippet)?;
+
+    if matches!(app_type, "claude" | "codex" | "gemini") {
+        if let Some(legacy_snippet) = old_snippet
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+        {
+            let app = AppType::from_str(app_type).map_err(|e| e.to_string())?;
+            ProviderService::migrate_legacy_common_config_usage(&state, app, legacy_snippet)
+                .map_err(|e| e.to_string())?;
+        }
+    }
+
+    let value = if is_cleared {
+        None
+    } else {
+        Some(snippet.to_string())
+    };
+    state
+        .db
+        .set_config_snippet(app_type, value)
+        .map_err(|e| e.to_string())?;
+    state
+        .db
+        .set_config_snippet_cleared(app_type, is_cleared)
+        .map_err(|e| e.to_string())?;
+
+    if matches!(app_type, "claude" | "codex" | "gemini") {
+        let app = AppType::from_str(app_type).map_err(|e| e.to_string())?;
+        ProviderService::sync_current_provider_for_app(&state, app).map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+pub fn update_toml_common_config_snippet(
+    config_toml: &str,
+    snippet_toml: &str,
+    enabled: bool,
+) -> Result<String, String> {
+    crate::services::provider::update_toml_common_config_snippet(config_toml, snippet_toml, enabled)
+        .map_err(|e| e.to_string())
+}
+
+pub fn extract_common_config_snippet(
+    app_type: &str,
+    settings_config: Option<&str>,
+) -> Result<String, String> {
+    let app = AppType::from_str(app_type).map_err(|e| e.to_string())?;
+    if let Some(settings_config) = settings_config.filter(|value| !value.trim().is_empty()) {
+        let settings: Value = serde_json::from_str(settings_config).map_err(|e| e.to_string())?;
+        return ProviderService::extract_common_config_snippet_from_settings(app, &settings)
+            .map_err(|e| e.to_string());
+    }
+    let state = build_command_state()?;
+    ProviderService::extract_common_config_snippet(&state, app).map_err(|e| e.to_string())
+}
+
+fn parse_omo_variant(variant: &str) -> Result<&'static OmoVariant, String> {
+    match variant {
+        "omo" => Ok(&STANDARD),
+        "omo-slim" => Ok(&SLIM),
+        other => Err(format!("Unsupported OMO variant: {other}")),
+    }
+}
+
+pub fn read_omo_local_file(variant: &str) -> Result<OmoLocalFileData, String> {
+    let variant = parse_omo_variant(variant)?;
+    OmoService::read_local_file(variant).map_err(|e| e.to_string())
+}
+
+pub fn get_current_omo_provider_id(variant: &str) -> Result<String, String> {
+    let variant = parse_omo_variant(variant)?;
+    let db = Database::init().map_err(|e| e.to_string())?;
+    let provider = db
+        .get_current_omo_provider("opencode", variant.category)
+        .map_err(|e| e.to_string())?;
+    Ok(provider.map(|provider| provider.id).unwrap_or_default())
+}
+
+pub fn disable_current_omo(variant: &str) -> Result<(), String> {
+    let variant = parse_omo_variant(variant)?;
+    let state = build_command_state()?;
+    let providers = state
+        .db
+        .get_all_providers("opencode")
+        .map_err(|e| e.to_string())?;
+    for (id, provider) in &providers {
+        if provider.category.as_deref() == Some(variant.category) {
+            state
+                .db
+                .clear_omo_provider_current("opencode", id, variant.category)
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    OmoService::delete_config_file(variant).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn validate_common_config_snippet(app_type: &str, snippet: &str) -> Result<(), String> {
+    if snippet.trim().is_empty() {
+        return Ok(());
+    }
+    match app_type {
+        "claude" | "gemini" => serde_json::from_str::<Value>(snippet)
+            .map(|_| ())
+            .map_err(|e| format!("Common config JSON format error: {e}")),
+        "codex" => snippet
+            .parse::<toml_edit::DocumentMut>()
+            .map(|_| ())
+            .map_err(|e| format!("Common config TOML format error: {e}")),
+        _ => Ok(()),
+    }
 }
 
 pub fn webdav_test_connection(settings_json: &str, preserve: &str) -> Result<Value, String> {

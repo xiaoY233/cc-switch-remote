@@ -16,6 +16,7 @@ import { generateUUID } from "@/utils/uuid";
 import { openclawKeys } from "@/hooks/useOpenClaw";
 import { invalidateHermesProviderCaches } from "@/hooks/useHermes";
 import { usageKeys } from "@/lib/query/usage";
+import { omoKeys, omoSlimKeys } from "@/lib/query/omo";
 import { CODEX_OFFICIAL_PROVIDER_ID } from "@/utils/providerCapabilities";
 
 const targetKey = (target: ManagementTarget) =>
@@ -26,6 +27,22 @@ const providerQueryKey = (appId: AppId, target: ManagementTarget) => [
   appId,
   targetKey(target),
 ];
+
+const invalidateOpenCodeDerivedState = async (
+  queryClient: ReturnType<typeof useQueryClient>,
+  target: ManagementTarget,
+) => {
+  const key = targetKey(target);
+  await queryClient.invalidateQueries({
+    queryKey: ["opencodeLiveProviderIds", key],
+  });
+  await queryClient.invalidateQueries({
+    queryKey: omoKeys.currentProviderId(key),
+  });
+  await queryClient.invalidateQueries({
+    queryKey: omoSlimKeys.currentProviderId(key),
+  });
+};
 
 export const useAddProviderMutation = (
   appId: AppId,
@@ -65,7 +82,11 @@ export const useAddProviderMutation = (
         return officialProvider;
       }
 
-      if (appId === "codex" && ensureCodexOfficialSeed) {
+      if (
+        appId === "codex" &&
+        ensureCodexOfficialSeed &&
+        target.type === "local"
+      ) {
         await providersApi.ensureCodexOfficialProvider();
         const providers = await providersApi.getAll(appId);
         const officialProvider = providers[CODEX_OFFICIAL_PROVIDER_ID];
@@ -110,18 +131,7 @@ export const useAddProviderMutation = (
       });
 
       if (appId === "opencode") {
-        await queryClient.invalidateQueries({
-          queryKey: ["omo", "current-provider-id"],
-        });
-        await queryClient.invalidateQueries({
-          queryKey: ["omo", "provider-count"],
-        });
-        await queryClient.invalidateQueries({
-          queryKey: ["omo-slim", "current-provider-id"],
-        });
-        await queryClient.invalidateQueries({
-          queryKey: ["omo-slim", "provider-count"],
-        });
+        await invalidateOpenCodeDerivedState(queryClient, target);
       }
 
       if (appId === "openclaw") {
@@ -242,18 +252,7 @@ export const useDeleteProviderMutation = (
       });
 
       if (appId === "opencode") {
-        await queryClient.invalidateQueries({
-          queryKey: ["omo", "current-provider-id"],
-        });
-        await queryClient.invalidateQueries({
-          queryKey: ["omo", "provider-count"],
-        });
-        await queryClient.invalidateQueries({
-          queryKey: ["omo-slim", "current-provider-id"],
-        });
-        await queryClient.invalidateQueries({
-          queryKey: ["omo-slim", "provider-count"],
-        });
+        await invalidateOpenCodeDerivedState(queryClient, target);
       }
 
       if (appId === "openclaw") {
@@ -322,15 +321,7 @@ export const useSwitchProviderMutation = (
 
       // OpenCode/OpenClaw: also invalidate live provider IDs cache to update button state
       if (appId === "opencode") {
-        await queryClient.invalidateQueries({
-          queryKey: ["opencodeLiveProviderIds", targetKey(target)],
-        });
-        await queryClient.invalidateQueries({
-          queryKey: ["omo", "current-provider-id"],
-        });
-        await queryClient.invalidateQueries({
-          queryKey: ["omo-slim", "current-provider-id"],
-        });
+        await invalidateOpenCodeDerivedState(queryClient, target);
       }
       if (appId === "openclaw") {
         await queryClient.invalidateQueries({

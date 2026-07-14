@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { remoteApi, type ManagementTarget } from "./remote";
 
 /**
  * Profile 操作的应用分组（与后端 services/profile.rs 的 ProfileScope 严格对应）
@@ -58,14 +59,31 @@ export const profilesApi = {
   /**
    * 获取所有项目及各分组当前激活项目 id
    */
-  async list(): Promise<ProfilesResponse> {
+  async list(
+    target: ManagementTarget = { type: "local" },
+  ): Promise<ProfilesResponse> {
+    if (target.type === "remote") {
+      return await remoteApi.listProjectProfiles(target.profile, target.secret);
+    }
     return await invoke("list_profiles");
   },
 
   /**
    * 创建新项目（只拍发起页所属分组的当前状态，其余分组槽位留空）
    */
-  async create(name: string, scope: ProfileScope): Promise<Profile> {
+  async create(
+    name: string,
+    scope: ProfileScope,
+    target: ManagementTarget = { type: "local" },
+  ): Promise<Profile> {
+    if (target.type === "remote") {
+      return await remoteApi.createProjectProfile(
+        target.profile,
+        name,
+        scope,
+        target.secret,
+      );
+    }
     return await invoke("create_profile", { name, scope });
   },
 
@@ -76,7 +94,16 @@ export const profilesApi = {
   async update(
     id: string,
     options: { name?: string; resnapshot?: boolean; scope?: ProfileScope },
+    target: ManagementTarget = { type: "local" },
   ): Promise<Profile> {
+    if (target.type === "remote") {
+      return await remoteApi.updateProjectProfile(
+        target.profile,
+        id,
+        options,
+        target.secret,
+      );
+    }
     return await invoke("update_profile", {
       id,
       name: options.name,
@@ -88,7 +115,17 @@ export const profilesApi = {
   /**
    * 删除项目
    */
-  async delete(id: string): Promise<void> {
+  async delete(
+    id: string,
+    target: ManagementTarget = { type: "local" },
+  ): Promise<void> {
+    if (target.type === "remote") {
+      return await remoteApi.deleteProjectProfile(
+        target.profile,
+        id,
+        target.secret,
+      );
+    }
     return await invoke("delete_profile", { id });
   },
 
@@ -96,14 +133,36 @@ export const profilesApi = {
    * 应用项目快照（只作用于发起页所属分组内的应用），返回 warnings
    * （best-effort，部分失败不中断）
    */
-  async apply(id: string, scope: ProfileScope): Promise<string[]> {
+  async apply(
+    id: string,
+    scope: ProfileScope,
+    target: ManagementTarget = { type: "local" },
+  ): Promise<string[]> {
+    if (target.type === "remote") {
+      return await remoteApi.applyProjectProfile(
+        target.profile,
+        id,
+        scope,
+        target.secret,
+      );
+    }
     return await invoke("apply_profile", { id, scope });
   },
 
   /**
    * 不使用项目：仅清除某分组的激活标记，不改动任何配置
    */
-  async clearCurrent(scope: ProfileScope): Promise<void> {
+  async clearCurrent(
+    scope: ProfileScope,
+    target: ManagementTarget = { type: "local" },
+  ): Promise<void> {
+    if (target.type === "remote") {
+      return await remoteApi.clearCurrentProjectProfile(
+        target.profile,
+        scope,
+        target.secret,
+      );
+    }
     return await invoke("clear_current_profile", { scope });
   },
 };

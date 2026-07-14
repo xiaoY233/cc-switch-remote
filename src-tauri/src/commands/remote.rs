@@ -229,6 +229,234 @@ pub async fn remote_save_settings(
     .await
 }
 
+#[tauri::command]
+pub async fn remote_list_project_profiles(
+    profile: RemoteHostProfile,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Value, String> {
+    run_remote_helper_json(
+        profile,
+        vec!["profiles".to_string(), "list".to_string()],
+        secret,
+        "Remote profiles list",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_create_project_profile(
+    profile: RemoteHostProfile,
+    name: String,
+    scope: String,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Value, String> {
+    run_remote_helper_json(
+        profile,
+        vec!["profiles".to_string(), "create".to_string(), name, scope],
+        secret,
+        "Remote profiles create",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_update_project_profile(
+    profile: RemoteHostProfile,
+    id: String,
+    name: Option<String>,
+    resnapshot: Option<bool>,
+    scope: Option<String>,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Value, String> {
+    run_remote_helper_json(
+        profile,
+        vec![
+            "profiles".to_string(),
+            "update".to_string(),
+            id,
+            name.unwrap_or_else(|| "-".to_string()),
+            resnapshot
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            scope.unwrap_or_else(|| "-".to_string()),
+        ],
+        secret,
+        "Remote profiles update",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_delete_project_profile(
+    profile: RemoteHostProfile,
+    id: String,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<(), String> {
+    run_remote_helper_json(
+        profile,
+        vec!["profiles".to_string(), "delete".to_string(), id],
+        secret,
+        "Remote profiles delete",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_apply_project_profile(
+    profile: RemoteHostProfile,
+    id: String,
+    scope: String,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Vec<String>, String> {
+    run_remote_helper_json(
+        profile,
+        vec!["profiles".to_string(), "apply".to_string(), id, scope],
+        secret,
+        "Remote profiles apply",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_clear_current_project_profile(
+    profile: RemoteHostProfile,
+    scope: String,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<(), String> {
+    run_remote_helper_json(
+        profile,
+        vec!["profiles".to_string(), "clear-current".to_string(), scope],
+        secret,
+        "Remote profiles clear current",
+    )
+    .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn remote_get_common_config_snippet(
+    profile: RemoteHostProfile,
+    app_type: String,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Option<String>, String> {
+    run_remote_helper_json(
+        profile,
+        vec!["config".to_string(), "common-get".to_string(), app_type],
+        secret,
+        "Remote common config get",
+    )
+    .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn remote_set_common_config_snippet(
+    profile: RemoteHostProfile,
+    app_type: String,
+    snippet: String,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<(), String> {
+    run_remote_helper_json(
+        profile,
+        vec![
+            "config".to_string(),
+            "common-set".to_string(),
+            app_type,
+            snippet,
+        ],
+        secret,
+        "Remote common config set",
+    )
+    .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn remote_update_toml_common_config_snippet(
+    profile: RemoteHostProfile,
+    config_toml: String,
+    snippet_toml: String,
+    enabled: bool,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<String, String> {
+    run_remote_helper_json(
+        profile,
+        vec![
+            "config".to_string(),
+            "common-update-toml".to_string(),
+            config_toml,
+            snippet_toml,
+            enabled.to_string(),
+        ],
+        secret,
+        "Remote common config update TOML",
+    )
+    .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn remote_extract_common_config_snippet(
+    profile: RemoteHostProfile,
+    app_type: String,
+    settings_config: Option<String>,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<String, String> {
+    run_remote_helper_json(
+        profile,
+        vec![
+            "config".to_string(),
+            "common-extract".to_string(),
+            app_type,
+            settings_config.unwrap_or_else(|| "-".to_string()),
+        ],
+        secret,
+        "Remote common config extract",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_read_omo_local_file(
+    profile: RemoteHostProfile,
+    variant: String,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Value, String> {
+    run_remote_helper_json(
+        profile,
+        vec!["omo".to_string(), "read-local-file".to_string(), variant],
+        secret,
+        "Remote OMO read local file",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_get_current_omo_provider_id(
+    profile: RemoteHostProfile,
+    variant: String,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<String, String> {
+    run_remote_helper_json(
+        profile,
+        vec!["omo".to_string(), "current-provider".to_string(), variant],
+        secret,
+        "Remote OMO current provider",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_disable_current_omo(
+    profile: RemoteHostProfile,
+    variant: String,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<(), String> {
+    run_remote_helper_json(
+        profile,
+        vec!["omo".to_string(), "disable-current".to_string(), variant],
+        secret,
+        "Remote OMO disable current",
+    )
+    .await
+}
+
 #[tauri::command(rename_all = "camelCase")]
 pub async fn remote_auth_start_login(
     profile: RemoteHostProfile,

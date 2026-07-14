@@ -6,6 +6,8 @@ import {
   validateJsonConfig,
 } from "@/utils/providerConfigUtils";
 import { configApi } from "@/lib/api";
+import type { ManagementTarget } from "@/lib/api/remote";
+import { LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
 
 const LEGACY_STORAGE_KEY = "cc-switch:common-config-snippet";
 const DEFAULT_COMMON_CONFIG_SNIPPET = `{
@@ -22,6 +24,7 @@ interface UseCommonConfigSnippetProps {
   selectedPresetId?: string;
   /** When false, the hook skips all logic and returns disabled state. Default: true */
   enabled?: boolean;
+  target?: ManagementTarget;
 }
 
 /**
@@ -35,6 +38,7 @@ export function useCommonConfigSnippet({
   initialEnabled,
   selectedPresetId,
   enabled = true,
+  target = LOCAL_MANAGEMENT_TARGET,
 }: UseCommonConfigSnippetProps) {
   const { t } = useTranslation();
   const [useCommonConfig, setUseCommonConfig] = useState(false);
@@ -70,7 +74,10 @@ export function useCommonConfigSnippet({
     const loadSnippet = async () => {
       try {
         // 使用统一 API 加载
-        const snippet = await configApi.getCommonConfigSnippet("claude");
+        const snippet = await configApi.getCommonConfigSnippet(
+          "claude",
+          target,
+        );
 
         if (snippet && snippet.trim()) {
           if (mounted) {
@@ -84,7 +91,11 @@ export function useCommonConfigSnippet({
                 window.localStorage.getItem(LEGACY_STORAGE_KEY);
               if (legacySnippet && legacySnippet.trim()) {
                 // 迁移到 config.json
-                await configApi.setCommonConfigSnippet("claude", legacySnippet);
+                await configApi.setCommonConfigSnippet(
+                  "claude",
+                  legacySnippet,
+                  target,
+                );
                 if (mounted) {
                   setCommonConfigSnippetState(legacySnippet);
                 }
@@ -113,7 +124,7 @@ export function useCommonConfigSnippet({
     return () => {
       mounted = false;
     };
-  }, [enabled]);
+  }, [enabled, target]);
 
   // 初始化时检查通用配置片段（编辑模式）
   useEffect(() => {
@@ -237,7 +248,7 @@ export function useCommonConfigSnippet({
         setCommonConfigError("");
         // 保存到 config.json（清空）
         configApi
-          .setCommonConfigSnippet("claude", "")
+          .setCommonConfigSnippet("claude", "", target)
           .catch((error: unknown) => {
             console.error("保存通用配置失败:", error);
             setCommonConfigError(
@@ -265,7 +276,7 @@ export function useCommonConfigSnippet({
         setCommonConfigError("");
         // 保存到 config.json
         configApi
-          .setCommonConfigSnippet("claude", value)
+          .setCommonConfigSnippet("claude", value, target)
           .catch((error: unknown) => {
             console.error("保存通用配置失败:", error);
             setCommonConfigError(
@@ -305,7 +316,13 @@ export function useCommonConfigSnippet({
         }, 0);
       }
     },
-    [commonConfigSnippet, settingsConfig, useCommonConfig, onConfigChange],
+    [
+      commonConfigSnippet,
+      settingsConfig,
+      target,
+      useCommonConfig,
+      onConfigChange,
+    ],
   );
 
   // 当配置变化时检查是否包含通用配置（但避免在通过通用配置更新时检查）
@@ -327,9 +344,13 @@ export function useCommonConfigSnippet({
     setCommonConfigError("");
 
     try {
-      const extracted = await configApi.extractCommonConfigSnippet("claude", {
-        settingsConfig,
-      });
+      const extracted = await configApi.extractCommonConfigSnippet(
+        "claude",
+        {
+          settingsConfig,
+        },
+        target,
+      );
 
       if (!extracted || extracted === "{}") {
         setCommonConfigError(t("claudeConfig.extractNoCommonConfig"));
@@ -347,7 +368,7 @@ export function useCommonConfigSnippet({
       setCommonConfigSnippetState(extracted);
 
       // 保存到后端
-      await configApi.setCommonConfigSnippet("claude", extracted);
+      await configApi.setCommonConfigSnippet("claude", extracted, target);
     } catch (error) {
       console.error("提取通用配置失败:", error);
       setCommonConfigError(
@@ -356,7 +377,7 @@ export function useCommonConfigSnippet({
     } finally {
       setIsExtracting(false);
     }
-  }, [settingsConfig, t]);
+  }, [settingsConfig, t, target]);
 
   return {
     useCommonConfig,

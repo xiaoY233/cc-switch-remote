@@ -1,5 +1,8 @@
 pub const REMOTE_HELPER_CAPABILITIES: &[&str] = &[
     "providers",
+    "profiles",
+    "common-config",
+    "omo",
     "provider-model-fetch",
     "universal-providers",
     "routing-config",

@@ -184,11 +184,10 @@ export function ProviderList({
     isProxyTakeover === true && isAutoFailoverEnabled === true;
 
   const isOpenCode = appId === "opencode";
-  const { data: currentOmoId } = useCurrentOmoProviderId(
-    isLocalTarget && isOpenCode,
-  );
+  const { data: currentOmoId } = useCurrentOmoProviderId(isOpenCode, target);
   const { data: currentOmoSlimId } = useCurrentOmoSlimProviderId(
-    isLocalTarget && isOpenCode,
+    isOpenCode,
+    target,
   );
 
   const getFailoverPriority = useCallback(

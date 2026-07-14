@@ -41,6 +41,8 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useReadOmoLocalFile, useReadOmoSlimLocalFile } from "@/lib/query/omo";
+import type { ManagementTarget } from "@/lib/api";
+import { LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
 import {
   OMO_BUILTIN_AGENTS,
   OMO_BUILTIN_CATEGORIES,
@@ -76,6 +78,7 @@ interface OmoFormFieldsProps {
   otherFieldsStr: string;
   onOtherFieldsStrChange: (value: string) => void;
   isSlim?: boolean;
+  target?: ManagementTarget;
 }
 
 export type CustomModelItem = {
@@ -312,6 +315,7 @@ export function OmoFormFields({
   otherFieldsStr,
   onOtherFieldsStrChange,
   isSlim = false,
+  target = LOCAL_MANAGEMENT_TARGET,
 }: OmoFormFieldsProps) {
   const { t } = useTranslation();
 
@@ -832,8 +836,8 @@ export function OmoFormFields({
   const mainAgents = builtinAgentDefs.filter((a) => a.group === "main");
   const subAgents = builtinAgentDefs.filter((a) => a.group === "sub");
 
-  const readLocalFile = useReadOmoLocalFile();
-  const readSlimLocalFile = useReadOmoSlimLocalFile();
+  const readLocalFile = useReadOmoLocalFile(target);
+  const readSlimLocalFile = useReadOmoSlimLocalFile(target);
   const [localFilePath, setLocalFilePath] = useState<string | null>(null);
 
   const handleImportFromLocal = useCallback(async () => {

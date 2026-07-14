@@ -762,7 +762,8 @@ function ProviderFormFull({
     initialEnabled:
       appId === "claude" ? initialData?.meta?.commonConfigEnabled : undefined,
     selectedPresetId: selectedPresetId ?? undefined,
-    enabled: appId === "claude" && isLocalTarget,
+    enabled: appId === "claude",
+    target,
   });
 
   const {
@@ -781,7 +782,8 @@ function ProviderFormFull({
     initialEnabled:
       appId === "codex" ? initialData?.meta?.commonConfigEnabled : undefined,
     selectedPresetId: selectedPresetId ?? undefined,
-    enabled: appId === "codex" && isLocalTarget,
+    enabled: appId === "codex",
+    target,
   });
 
   const {
@@ -868,7 +870,8 @@ function ProviderFormFull({
     initialEnabled:
       appId === "gemini" ? initialData?.meta?.commonConfigEnabled : undefined,
     selectedPresetId: selectedPresetId ?? undefined,
-    enabled: appId === "gemini" && isLocalTarget,
+    enabled: appId === "gemini",
+    target,
   });
 
   // ── Extracted hooks: OpenCode / OMO / OpenClaw ─────────────────────
@@ -888,9 +891,12 @@ function ProviderFormFull({
     data: opencodeLiveProviderIds = [],
     isLoading: isOpencodeLiveProviderIdsLoading,
   } = useQuery({
-    queryKey: ["opencodeLiveProviderIds"],
-    queryFn: () => providersApi.getOpenCodeLiveProviderIds(),
-    enabled: isLocalTarget && appId === "opencode" && !isAnyOmoCategory,
+    queryKey: [
+      "opencodeLiveProviderIds",
+      target.type === "remote" ? `remote:${target.profile.id}` : "local",
+    ],
+    queryFn: () => providersApi.getOpenCodeLiveProviderIds(target),
+    enabled: appId === "opencode" && !isAnyOmoCategory,
   });
 
   const opencodeForm = useOpencodeFormState({
@@ -925,7 +931,7 @@ function ProviderFormFull({
   const {
     data: openclawLiveProviderIds = [],
     isLoading: isOpenclawLiveProviderIdsLoading,
-  } = useOpenClawLiveProviderIds(isLocalTarget && appId === "openclaw");
+  } = useOpenClawLiveProviderIds(appId === "openclaw", target);
 
   const hermesForm = useHermesFormState({
     initialData,
@@ -938,7 +944,7 @@ function ProviderFormFull({
   const {
     data: hermesLiveProviderIds = [],
     isLoading: isHermesLiveProviderIdsLoading,
-  } = useHermesLiveProviderIds(isLocalTarget && appId === "hermes");
+  } = useHermesLiveProviderIds(appId === "hermes", target);
 
   const additiveExistingProviderKeys = useMemo(() => {
     if (appId === "opencode" && !isAnyOmoCategory) {
@@ -1545,11 +1551,11 @@ function ProviderFormFull({
     const nextMeta: ProviderMeta = {
       ...(baseMeta ?? {}),
       commonConfigEnabled:
-        isLocalTarget && appId === "claude"
+        appId === "claude"
           ? useCommonConfig
-          : isLocalTarget && appId === "codex"
+          : appId === "codex"
             ? useCodexCommonConfigFlag
-            : isLocalTarget && appId === "gemini"
+            : appId === "gemini"
               ? useGeminiCommonConfigFlag
               : baseMeta?.commonConfigEnabled,
       endpointAutoSelect,
@@ -2380,6 +2386,7 @@ function ProviderFormFull({
                 otherFieldsStr={omoDraft.omoOtherFieldsStr}
                 onOtherFieldsStrChange={omoDraft.setOmoOtherFieldsStr}
                 isSlim={category === "omo-slim"}
+                target={target}
               />
             )}
 
@@ -2442,7 +2449,7 @@ function ProviderFormFull({
                 providerName={form.watch("name")}
                 showRemoteCompaction={category !== "official"}
                 isProxyTakeover={isProxyTakeover}
-                commonConfigEnabled={isLocalTarget}
+                commonConfigEnabled
                 onAuthChange={setCodexAuth}
                 onConfigChange={handleCodexConfigChange}
                 useCommonConfig={useCodexCommonConfigFlag}
@@ -2465,7 +2472,7 @@ function ProviderFormFull({
               <GeminiConfigEditor
                 envValue={geminiEnv}
                 configValue={geminiConfig}
-                commonConfigEnabled={isLocalTarget}
+                commonConfigEnabled
                 onEnvChange={handleGeminiEnvChange}
                 onConfigChange={handleGeminiConfigChange}
                 useCommonConfig={useGeminiCommonConfigFlag}
@@ -2567,7 +2574,7 @@ function ProviderFormFull({
               <CommonConfigEditor
                 value={form.getValues("settingsConfig")}
                 onChange={(value) => form.setValue("settingsConfig", value)}
-                commonConfigEnabled={isLocalTarget}
+                commonConfigEnabled
                 useCommonConfig={useCommonConfig}
                 onCommonConfigToggle={handleCommonConfigToggle}
                 commonConfigSnippet={commonConfigSnippet}

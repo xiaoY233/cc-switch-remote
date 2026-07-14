@@ -648,7 +648,15 @@ export function RemoteSettingsPage({
                     })}
               </div>
             ) : (
-              <UsageDashboard target={target} />
+              <UsageDashboard
+                target={target}
+                refreshIntervalMs={
+                  remoteSettings?.usageDashboardRefreshIntervalMs
+                }
+                onRefreshIntervalChange={(usageDashboardRefreshIntervalMs) => {
+                  void saveRemoteSettings({ usageDashboardRefreshIntervalMs });
+                }}
+              />
             )}
           </TabsContent>
 
