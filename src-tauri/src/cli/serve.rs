@@ -76,6 +76,12 @@ mod tests {
         let dir = tempfile::tempdir().expect("temp test home");
         let previous_home = std::env::var_os("CC_SWITCH_TEST_HOME");
         std::env::set_var("CC_SWITCH_TEST_HOME", dir.path());
+        let db = crate::database::Database::init().expect("init test database");
+        let mut proxy_config =
+            futures::executor::block_on(db.get_proxy_config()).expect("get proxy config");
+        proxy_config.listen_port = 0;
+        futures::executor::block_on(db.update_proxy_config(proxy_config))
+            .expect("disable external proxy probe");
 
         let response = handle_line(r#"{"id":"proxy","command":["routing-runtime","status"]}"#);
 

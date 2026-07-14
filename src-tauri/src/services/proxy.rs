@@ -2632,6 +2632,15 @@ impl ProxyService {
             };
             crate::codex_config::write_codex_live_config_atomic(Some(&live_config))
                 .map_err(|e| format!("写入 Codex 配置失败: {e}"))?;
+            if !official_passthrough {
+                if let Some(auth) = config
+                    .get("auth")
+                    .filter(|_| !crate::codex_config::get_codex_auth_path().exists())
+                {
+                    write_json_file(&crate::codex_config::get_codex_auth_path(), auth)
+                        .map_err(|e| format!("写入 Codex auth 失败: {e}"))?;
+                }
+            }
             return Ok(());
         }
 

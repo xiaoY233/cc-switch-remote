@@ -497,8 +497,7 @@ fn routing_config_commands_round_trip_through_json_cli() {
         let optimizer_json = serde_json::json!({
             "enabled": true,
             "thinkingOptimizer": false,
-            "cacheInjection": true,
-            "cacheTtl": "5m"
+            "cacheInjection": true
         })
         .to_string();
 
@@ -661,7 +660,7 @@ fn routing_config_commands_round_trip_through_json_cli() {
     assert_eq!(get_optimizer_response["ok"], true);
     assert_eq!(get_optimizer_response["data"]["enabled"], true);
     assert_eq!(get_optimizer_response["data"]["thinkingOptimizer"], false);
-    assert_eq!(get_optimizer_response["data"]["cacheTtl"], "5m");
+    assert_eq!(get_optimizer_response["data"]["cacheInjection"], true);
     assert_eq!(set_outbound_response["ok"], true);
     assert_eq!(get_outbound_response["ok"], true);
     assert_eq!(get_outbound_response["data"], "socks5://127.0.0.1:1080");
@@ -1087,6 +1086,6 @@ fn unsupported_command_returns_stable_error_envelope() {
     assert_eq!(response["error"]["code"], "unsupported_command");
     assert_eq!(
         response["error"]["message"],
-        "Supported commands: status, providers, universal-providers, routing-config, routing-runtime, routing-runtime daemon-start/status/stop/run, sessions, hermes, openclaw, mcp, prompts, skills, import-export, cloud-sync, tools, settings, plugin, stream-check, usage, auth"
+        "Supported commands: status, providers, profiles, config, universal-providers, routing-config, routing-runtime, routing-runtime daemon-start/status/stop/run, sessions, hermes, openclaw, mcp, prompts, skills, import-export, cloud-sync, tools, settings, plugin, stream-check, usage, auth"
     );
 }

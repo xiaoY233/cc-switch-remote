@@ -13,6 +13,7 @@
     "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx,css,json}\"",
     "format:check": "prettier --check \"src/**/*.{js,jsx,ts,tsx,css,json}\"",
     "test:unit": "vitest run",
+    "test:scripts": "node --test scripts/*.test.mjs",
     "test:unit:watch": "vitest watch"
   },
   "keywords": [],
