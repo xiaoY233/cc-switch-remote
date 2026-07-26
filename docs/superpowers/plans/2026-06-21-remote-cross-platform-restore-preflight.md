@@ -83,7 +83,7 @@ fn detects_macos_codex_runtime_paths() {
     let sql = sql_with_provider(r#"
 model_provider = "newapi"
 model = "Groq/gpt-oss-120b"
-notify = [ "/Users/wangyu19/.codex/computer-use/Codex Computer Use.app/Contents/MacOS/SkyComputerUseClient", "turn-ended" ]
+notify = [ "/Users/example/.codex/computer-use/Codex Computer Use.app/Contents/MacOS/SkyComputerUseClient", "turn-ended" ]
 
 [model_providers.newapi]
 name = "OpenAI"
@@ -94,7 +94,7 @@ wire_api = "responses"
 command = "/Applications/Codex.app/Contents/Resources/cua_node/bin/node_repl"
 
 [mcp_servers.node_repl.env]
-CODEX_HOME = "/Users/wangyu19/.codex"
+CODEX_HOME = "/Users/example/.codex"
 "#);
 
     let report = preflight_sql(&sql, SourceKind::SqlFile).expect("preflight");
@@ -115,7 +115,7 @@ fn portable_transform_keeps_provider_route_and_removes_runtime_sections() {
     let sql = sql_with_provider(r#"
 model_provider = "newapi"
 model = "Groq/gpt-oss-120b"
-notify = [ "/Users/wangyu19/.codex/computer-use/Codex Computer Use.app/Contents/MacOS/SkyComputerUseClient", "turn-ended" ]
+notify = [ "/Users/example/.codex/computer-use/Codex Computer Use.app/Contents/MacOS/SkyComputerUseClient", "turn-ended" ]
 
 [model_providers.newapi]
 name = "OpenAI"
@@ -137,7 +137,7 @@ appearanceTheme = "dark"
     assert!(transformed.contains("model_provider = \\\"newapi\\\""));
     assert!(transformed.contains("base_url = \\\"http://192.168.123.216:3000/v1\\\""));
     assert!(transformed.contains("mcp_servers.DeepWiki"));
-    assert!(!transformed.contains("/Users/wangyu19"));
+    assert!(!transformed.contains("/Users/example"));
     assert!(!transformed.contains("/Applications/Codex.app"));
     assert!(!transformed.contains("appearanceTheme"));
 }

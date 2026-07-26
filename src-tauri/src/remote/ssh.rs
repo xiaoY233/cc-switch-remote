@@ -752,14 +752,14 @@ mod tests {
 @    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 IT IS POSSIBLE THAT SOMEONE IS DOING SOMETHING NASTY!
-Offending ED25519 key in /Users/wangyu19/.ssh/known_hosts:33
+Offending ED25519 key in ~/.ssh/known_hosts:33
 Host key for 192.168.123.111 has changed and you have requested strict checking.
 Host key verification failed."#,
         );
 
         assert!(message.contains("远程主机密钥已变更"));
         assert!(message.contains("ssh-keygen -R 192.168.123.111"));
-        assert!(message.contains("/Users/wangyu19/.ssh/known_hosts:33"));
+        assert!(message.contains("~/.ssh/known_hosts:33"));
         assert!(!message.contains("SOMETHING NASTY"));
     }
 
