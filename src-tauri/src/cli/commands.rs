@@ -35,6 +35,7 @@ use crate::proxy::providers::codex_oauth_auth::{CodexOAuthError, CodexOAuthManag
 use crate::proxy::providers::copilot_auth::{
     CopilotAuthError, CopilotAuthManager, CopilotModel, GitHubAccount, GitHubDeviceCodeResponse,
 };
+use crate::proxy::providers::xai_oauth_auth::{XaiOAuthAccount, XaiOAuthError, XaiOAuthManager};
 
 #[cfg(feature = "proxy-runtime")]
 static ROUTING_RUNTIME: Lazy<Result<tokio::runtime::Runtime, String>> =
@@ -47,6 +48,7 @@ static ROUTING_STATE: Lazy<Result<AppState, String>> = Lazy::new(|| {
         crate::proxy::managed_auth_runtime::ManagedAuthRuntime {
             copilot: Some(COPILOT_AUTH_MANAGER.clone()),
             codex_oauth: Some(CODEX_OAUTH_MANAGER.clone()),
+            xai_oauth: Some(XAI_OAUTH_MANAGER.clone()),
         },
     ))
 });
@@ -57,9 +59,12 @@ static COPILOT_AUTH_MANAGER: Lazy<Arc<CopilotAuthManager>> =
     Lazy::new(|| Arc::new(CopilotAuthManager::new(crate::config::get_app_config_dir())));
 static CODEX_OAUTH_MANAGER: Lazy<Arc<CodexOAuthManager>> =
     Lazy::new(|| Arc::new(CodexOAuthManager::new(crate::config::get_app_config_dir())));
+static XAI_OAUTH_MANAGER: Lazy<Arc<XaiOAuthManager>> =
+    Lazy::new(|| Arc::new(XaiOAuthManager::new(crate::config::get_app_config_dir())));
 
 const AUTH_PROVIDER_GITHUB_COPILOT: &str = "github_copilot";
 const AUTH_PROVIDER_CODEX_OAUTH: &str = "codex_oauth";
+const AUTH_PROVIDER_XAI_OAUTH: &str = "xai_oauth";
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -126,6 +131,7 @@ pub struct ManagedAuthAccount {
     pub authenticated_at: i64,
     pub is_default: bool,
     pub github_domain: String,
+    pub requires_reauth: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -244,6 +250,7 @@ fn build_command_state() -> Result<AppState, String> {
         crate::proxy::managed_auth_runtime::ManagedAuthRuntime {
             copilot: Some(COPILOT_AUTH_MANAGER.clone()),
             codex_oauth: Some(CODEX_OAUTH_MANAGER.clone()),
+            xai_oauth: Some(XAI_OAUTH_MANAGER.clone()),
         },
     ))
 }
@@ -339,6 +346,77 @@ pub fn fetch_codex_oauth_models(
             .map_err(|e| format!("Codex OAuth token unavailable: {e}"))?;
 
         crate::services::codex_oauth_models::fetch_models_with_token(&token, &id).await
+    })
+}
+
+#[derive(Debug, Deserialize)]
+struct XaiModelsResponse {
+    #[serde(default)]
+    data: Vec<XaiModelEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct XaiModelEntry {
+    id: String,
+    #[serde(default)]
+    owned_by: Option<String>,
+}
+
+pub fn fetch_xai_oauth_models(
+    auth_provider: &str,
+    account_id: Option<&str>,
+) -> Result<Vec<crate::services::model_fetch::FetchedModel>, String> {
+    if ensure_auth_provider(auth_provider)? != AUTH_PROVIDER_XAI_OAUTH {
+        return Err(format!(
+            "Model list is only supported for {AUTH_PROVIDER_XAI_OAUTH}"
+        ));
+    }
+
+    auth_runtime()?.block_on(async {
+        let resolved = match account_id
+            .map(str::trim)
+            .filter(|id| !id.is_empty() && *id != "-")
+        {
+            Some(id) => Some(id.to_string()),
+            None => XAI_OAUTH_MANAGER.default_account_id().await,
+        };
+        let Some(id) = resolved else {
+            return Err("No usable xAI account available".to_string());
+        };
+
+        let token = XAI_OAUTH_MANAGER
+            .get_valid_token_for_account(&id)
+            .await
+            .map_err(|e| format!("xAI OAuth token unavailable: {e}"))?;
+
+        let response = crate::proxy::http_client::get()
+            .get(format!(
+                "{}/models",
+                crate::proxy::providers::XAI_API_BASE_URL
+            ))
+            .bearer_auth(token)
+            .timeout(std::time::Duration::from_secs(15))
+            .send()
+            .await
+            .map_err(|error| format!("xAI models request failed: {error}"))?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(format!("xAI models request failed: HTTP {status}"));
+        }
+        let payload: XaiModelsResponse = response
+            .json()
+            .await
+            .map_err(|_| "xAI models response was not valid JSON".to_string())?;
+        let mut models: Vec<crate::services::model_fetch::FetchedModel> = payload
+            .data
+            .into_iter()
+            .map(|model| crate::services::model_fetch::FetchedModel {
+                id: model.id,
+                owned_by: model.owned_by,
+            })
+            .collect();
+        models.sort_by(|a, b| a.id.cmp(&b.id));
+        Ok(models)
     })
 }
 
@@ -451,6 +529,7 @@ fn ensure_auth_provider(auth_provider: &str) -> Result<&'static str, String> {
     match auth_provider {
         AUTH_PROVIDER_GITHUB_COPILOT => Ok(AUTH_PROVIDER_GITHUB_COPILOT),
         AUTH_PROVIDER_CODEX_OAUTH => Ok(AUTH_PROVIDER_CODEX_OAUTH),
+        AUTH_PROVIDER_XAI_OAUTH => Ok(AUTH_PROVIDER_XAI_OAUTH),
         _ => Err(format!("Unsupported auth provider: {auth_provider}")),
     }
 }
@@ -468,6 +547,24 @@ fn map_auth_account(
         avatar_url: account.avatar_url,
         authenticated_at: account.authenticated_at,
         github_domain: account.github_domain,
+        requires_reauth: false,
+    }
+}
+
+fn map_xai_auth_account(
+    provider: &str,
+    account: XaiOAuthAccount,
+    default_account_id: Option<&str>,
+) -> ManagedAuthAccount {
+    ManagedAuthAccount {
+        is_default: default_account_id == Some(account.id.as_str()),
+        id: account.id,
+        provider: provider.to_string(),
+        login: account.login,
+        avatar_url: account.avatar_url,
+        authenticated_at: account.authenticated_at,
+        github_domain: "github.com".to_string(),
+        requires_reauth: account.requires_reauth,
     }
 }
 
@@ -501,6 +598,13 @@ pub fn auth_start_login(
             }
             AUTH_PROVIDER_CODEX_OAUTH => {
                 let response = CODEX_OAUTH_MANAGER
+                    .start_device_flow()
+                    .await
+                    .map_err(|e| e.to_string())?;
+                Ok(map_device_code_response(auth_provider, response))
+            }
+            AUTH_PROVIDER_XAI_OAUTH => {
+                let response = XAI_OAUTH_MANAGER
                     .start_device_flow()
                     .await
                     .map_err(|e| e.to_string())?;
@@ -548,6 +652,17 @@ pub fn auth_poll_for_account(
                     Err(e) => Err(e.to_string()),
                 }
             }
+            AUTH_PROVIDER_XAI_OAUTH => match XAI_OAUTH_MANAGER.poll_for_token(device_code).await {
+                Ok(account) => {
+                    let default_account_id =
+                        XAI_OAUTH_MANAGER.get_status().await.default_account_id;
+                    Ok(account.map(|account| {
+                        map_xai_auth_account(auth_provider, account, default_account_id.as_deref())
+                    }))
+                }
+                Err(XaiOAuthError::AuthorizationPending) => Ok(None),
+                Err(e) => Err(e.to_string()),
+            },
             _ => unreachable!(),
         }
     })
@@ -576,6 +691,17 @@ pub fn auth_list_accounts(auth_provider: &str) -> Result<Vec<ManagedAuthAccount>
                     .into_iter()
                     .map(|account| {
                         map_auth_account(auth_provider, account, default_account_id.as_deref())
+                    })
+                    .collect())
+            }
+            AUTH_PROVIDER_XAI_OAUTH => {
+                let status = XAI_OAUTH_MANAGER.get_status().await;
+                let default_account_id = status.default_account_id.clone();
+                Ok(status
+                    .accounts
+                    .into_iter()
+                    .map(|account| {
+                        map_xai_auth_account(auth_provider, account, default_account_id.as_deref())
                     })
                     .collect())
             }
@@ -622,6 +748,27 @@ pub fn auth_get_status(auth_provider: &str) -> Result<ManagedAuthStatus, String>
                         .collect(),
                 })
             }
+            AUTH_PROVIDER_XAI_OAUTH => {
+                let status = XAI_OAUTH_MANAGER.get_status().await;
+                let default_account_id = status.default_account_id.clone();
+                Ok(ManagedAuthStatus {
+                    provider: auth_provider.to_string(),
+                    authenticated: status.authenticated,
+                    default_account_id: default_account_id.clone(),
+                    migration_error: None,
+                    accounts: status
+                        .accounts
+                        .into_iter()
+                        .map(|account| {
+                            map_xai_auth_account(
+                                auth_provider,
+                                account,
+                                default_account_id.as_deref(),
+                            )
+                        })
+                        .collect(),
+                })
+            }
             _ => unreachable!(),
         }
     })
@@ -636,6 +783,10 @@ pub fn auth_remove_account(auth_provider: &str, account_id: &str) -> Result<bool
                 .await
                 .map_err(|e| e.to_string())?,
             AUTH_PROVIDER_CODEX_OAUTH => CODEX_OAUTH_MANAGER
+                .remove_account(account_id)
+                .await
+                .map_err(|e| e.to_string())?,
+            AUTH_PROVIDER_XAI_OAUTH => XAI_OAUTH_MANAGER
                 .remove_account(account_id)
                 .await
                 .map_err(|e| e.to_string())?,
@@ -657,6 +808,10 @@ pub fn auth_set_default_account(auth_provider: &str, account_id: &str) -> Result
                 .set_default_account(account_id)
                 .await
                 .map_err(|e| e.to_string())?,
+            AUTH_PROVIDER_XAI_OAUTH => XAI_OAUTH_MANAGER
+                .set_default_account(account_id)
+                .await
+                .map_err(|e| e.to_string())?,
             _ => unreachable!(),
         }
         Ok(true)
@@ -672,6 +827,10 @@ pub fn auth_logout(auth_provider: &str) -> Result<bool, String> {
                 .await
                 .map_err(|e| e.to_string())?,
             AUTH_PROVIDER_CODEX_OAUTH => CODEX_OAUTH_MANAGER
+                .clear_auth()
+                .await
+                .map_err(|e| e.to_string())?,
+            AUTH_PROVIDER_XAI_OAUTH => XAI_OAUTH_MANAGER
                 .clear_auth()
                 .await
                 .map_err(|e| e.to_string())?,
@@ -2086,7 +2245,28 @@ pub fn usage_data_sources() -> Result<Vec<crate::services::session_usage::DataSo
 
 pub fn usage_sync_session() -> Result<crate::services::session_usage::SessionSyncResult, String> {
     let db = Database::init().map_err(|e| e.to_string())?;
-    crate::services::session_usage_sync::sync_all_session_usage(&db).map_err(|e| e.to_string())
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+    runtime.block_on(async {
+        let _guard = crate::services::session_usage::session_sync_mutex()
+            .lock()
+            .await;
+        Ok(crate::services::session_usage::sync_all_unlocked(&db))
+    })
+}
+
+pub fn usage_rebuild_codex() -> Result<crate::services::session_usage::SessionSyncResult, String> {
+    let db = Database::init().map_err(|e| e.to_string())?;
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+    runtime.block_on(async {
+        let _guard = crate::services::session_usage::session_sync_mutex()
+            .lock()
+            .await;
+        db.backup_database_file().map_err(|e| e.to_string())?;
+        db.reset_codex_usage().map_err(|e| e.to_string())?;
+        let result = crate::services::session_usage_codex::sync_codex_usage(&db);
+        crate::usage_events::notify_log_recorded();
+        result.map_err(|e| e.to_string())
+    })
 }
 
 pub fn usage_model_pricing() -> Result<Vec<crate::services::usage_pricing::ModelPricingInfo>, String>

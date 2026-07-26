@@ -21,6 +21,8 @@ ${posixScriptInstallCommand("https://claude.ai/install.sh")} || npm i -g @anthro
 npm i -g @openai/codex@latest
 # Gemini CLI
 npm i -g @google/gemini-cli@latest
+# Grok Build
+npm i -g @xai-official/grok@latest
 # OpenCode
 ${posixScriptInstallCommand("https://opencode.ai/install")} || npm i -g opencode-ai@latest
 # OpenClaw
@@ -34,6 +36,8 @@ npm i -g @anthropic-ai/claude-code@latest
 npm i -g @openai/codex@latest
 # Gemini CLI
 npm i -g @google/gemini-cli@latest
+# Grok Build
+npm i -g @xai-official/grok@latest
 # OpenCode
 npm i -g opencode-ai@latest
 # OpenClaw

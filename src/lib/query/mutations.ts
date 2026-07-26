@@ -17,7 +17,10 @@ import { openclawKeys } from "@/hooks/useOpenClaw";
 import { invalidateHermesProviderCaches } from "@/hooks/useHermes";
 import { usageKeys } from "@/lib/query/usage";
 import { omoKeys, omoSlimKeys } from "@/lib/query/omo";
-import { CODEX_OFFICIAL_PROVIDER_ID } from "@/utils/providerCapabilities";
+import {
+  CODEX_OFFICIAL_PROVIDER_ID,
+  GROKBUILD_OFFICIAL_PROVIDER_ID,
+} from "@/utils/providerCapabilities";
 
 const targetKey = (target: ManagementTarget) =>
   target.type === "remote" ? `remote:${target.profile.id}` : "local";
@@ -58,6 +61,7 @@ export const useAddProviderMutation = (
         addToLive?: boolean;
         ensureClaudeDesktopOfficialSeed?: boolean;
         ensureCodexOfficialSeed?: boolean;
+        ensureGrokBuildOfficialSeed?: boolean;
       },
     ) => {
       const {
@@ -65,6 +69,7 @@ export const useAddProviderMutation = (
         addToLive,
         ensureClaudeDesktopOfficialSeed,
         ensureCodexOfficialSeed,
+        ensureGrokBuildOfficialSeed,
         ...rest
       } = providerInput;
 
@@ -92,6 +97,20 @@ export const useAddProviderMutation = (
         const officialProvider = providers[CODEX_OFFICIAL_PROVIDER_ID];
         if (!officialProvider) {
           throw new Error("Codex official provider was not created");
+        }
+        return officialProvider;
+      }
+
+      if (
+        appId === "grokbuild" &&
+        ensureGrokBuildOfficialSeed &&
+        target.type === "local"
+      ) {
+        await providersApi.ensureGrokBuildOfficialProvider();
+        const providers = await providersApi.getAll(appId);
+        const officialProvider = providers[GROKBUILD_OFFICIAL_PROVIDER_ID];
+        if (!officialProvider) {
+          throw new Error("Grok Build official provider was not created");
         }
         return officialProvider;
       }

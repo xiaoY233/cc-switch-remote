@@ -1107,6 +1107,17 @@ pub(crate) fn run_command(args: &[String]) -> Value {
                 }
             }
         }
+        [group, cmd] if group == "usage" && cmd == "rebuild-codex" => {
+            match commands::usage_rebuild_codex() {
+                Ok(value) => {
+                    serde_json::to_value(types::ok(value)).expect("serialize Codex usage rebuild")
+                }
+                Err(message) => {
+                    serde_json::to_value(types::err::<()>("usage_rebuild_codex_failed", message))
+                        .expect("serialize Codex usage rebuild error")
+                }
+            }
+        }
         [group, cmd] if group == "usage" && cmd == "model-pricing" => {
             match commands::usage_model_pricing() {
                 Ok(value) => {
@@ -1433,6 +1444,16 @@ pub(crate) fn run_command(args: &[String]) -> Value {
                     }
                     Err(message) => serde_json::to_value(types::err::<()>(
                         "codex_oauth_models_failed",
+                        message,
+                    ))
+                    .expect("serialize auth models error"),
+                },
+                "xai_oauth" => match commands::fetch_xai_oauth_models(auth_provider, account_id) {
+                    Ok(value) => {
+                        serde_json::to_value(types::ok(value)).expect("serialize auth models")
+                    }
+                    Err(message) => serde_json::to_value(types::err::<()>(
+                        "xai_oauth_models_failed",
                         message,
                     ))
                     .expect("serialize auth models error"),

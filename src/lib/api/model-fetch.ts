@@ -105,6 +105,24 @@ export async function fetchCodexOauthModels(
   });
 }
 
+/** 获取当前 xAI OAuth 账号可访问的模型列表。 */
+export async function fetchXaiOauthModels(
+  accountId?: string | null,
+  target: ManagementTarget = { type: "local" },
+): Promise<FetchedModel[]> {
+  if (target.type === "remote") {
+    return remoteApi.fetchXaiOauthModels(
+      target.profile,
+      accountId || null,
+      target.secret,
+    );
+  }
+
+  return invoke("get_xai_oauth_models", {
+    accountId: accountId || null,
+  });
+}
+
 /**
  * 根据错误类型显示对应的 toast 提示
  */

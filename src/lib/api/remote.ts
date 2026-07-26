@@ -701,6 +701,18 @@ export const remoteApi = {
     });
   },
 
+  fetchXaiOauthModels(
+    profile: RemoteHostProfile,
+    accountId?: string | null,
+    secret?: RemoteConnectionSecret,
+  ): Promise<FetchedModel[]> {
+    return invoke<FetchedModel[]>("remote_fetch_xai_oauth_models", {
+      profile,
+      accountId: accountId || null,
+      secret,
+    });
+  },
+
   getAppConfigDir(
     profile: RemoteHostProfile,
     secret?: RemoteConnectionSecret,
@@ -1480,6 +1492,16 @@ export const remoteApi = {
     secret?: RemoteConnectionSecret,
   ): Promise<SessionSyncResult> {
     return invoke<SessionSyncResult>("remote_sync_session_usage", {
+      profile,
+      secret,
+    });
+  },
+
+  rebuildCodexUsage(
+    profile: RemoteHostProfile,
+    secret?: RemoteConnectionSecret,
+  ): Promise<SessionSyncResult> {
+    return invoke<SessionSyncResult>("remote_rebuild_codex_usage", {
       profile,
       secret,
     });

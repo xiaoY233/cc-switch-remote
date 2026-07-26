@@ -9,6 +9,8 @@ pub fn sync_all_session_usage(db: &Database) -> Result<SessionSyncResult, AppErr
             imported: 0,
             skipped: 0,
             files_scanned: 0,
+            suspected_duplicates: 0,
+            deferred_files: 0,
             errors: vec![],
         });
     }
@@ -37,5 +39,7 @@ fn merge_sync_result(target: &mut SessionSyncResult, source: SessionSyncResult) 
     target.imported += source.imported;
     target.skipped += source.skipped;
     target.files_scanned += source.files_scanned;
+    target.suspected_duplicates += source.suspected_duplicates;
+    target.deferred_files += source.deferred_files;
     target.errors.extend(source.errors);
 }

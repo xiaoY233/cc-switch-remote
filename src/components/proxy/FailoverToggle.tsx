@@ -51,7 +51,9 @@ export function FailoverToggle({
       ? "Claude"
       : activeApp === "codex"
         ? "Codex"
-        : "Gemini";
+        : activeApp === "grokbuild"
+          ? "Grok Build"
+          : "Gemini";
 
   const tooltipText = !routingReady
     ? isLocalTarget

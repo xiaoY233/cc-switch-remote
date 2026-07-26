@@ -36,6 +36,9 @@ mod gemini_config;
 #[path = "../gemini_mcp.rs"]
 #[cfg(not(feature = "desktop"))]
 mod gemini_mcp;
+#[path = "../grok_config.rs"]
+#[cfg(not(feature = "desktop"))]
+mod grok_config;
 #[path = "../hermes_config.rs"]
 #[cfg(not(feature = "desktop"))]
 pub mod hermes_config;
@@ -90,6 +93,114 @@ mod tool_environment;
 #[path = "../usage_script.rs"]
 #[cfg(not(feature = "desktop"))]
 mod usage_script;
+
+#[cfg(not(feature = "desktop"))]
+pub(crate) struct RedactedUrl<'a> {
+    url: &'a str,
+    known_secrets: &'a [String],
+}
+
+#[cfg(not(feature = "desktop"))]
+impl std::fmt::Display for RedactedUrl<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&redact_url_for_log_with_secrets(
+            self.url,
+            self.known_secrets,
+        ))
+    }
+}
+
+#[cfg(not(feature = "desktop"))]
+pub(crate) fn url_for_log_with_secrets<'a>(
+    url: &'a str,
+    known_secrets: &'a [String],
+) -> RedactedUrl<'a> {
+    RedactedUrl { url, known_secrets }
+}
+
+#[cfg(not(feature = "desktop"))]
+const MIN_KNOWN_SECRET_LEN: usize = 8;
+
+#[cfg(not(feature = "desktop"))]
+fn redact_known_secrets(text: &str, known_secrets: &[String]) -> String {
+    let mut output = text.to_string();
+    for secret in known_secrets {
+        if secret.chars().count() >= MIN_KNOWN_SECRET_LEN {
+            output = output.replace(secret.as_str(), "[REDACTED]");
+        }
+    }
+    output
+}
+
+#[cfg(not(feature = "desktop"))]
+fn strip_bare_userinfo(input: &str) -> &str {
+    let authority_end = input.find('/').unwrap_or(input.len());
+    match input[..authority_end].rfind('@') {
+        Some(at) => &input[at + 1..],
+        None => input,
+    }
+}
+
+#[cfg(not(feature = "desktop"))]
+pub(crate) fn redact_url_for_log(url_str: &str) -> String {
+    redact_url_for_log_with_secrets(url_str, &[])
+}
+
+#[cfg(not(feature = "desktop"))]
+pub(crate) fn redact_url_for_log_with_secrets(url_str: &str, known_secrets: &[String]) -> String {
+    let scheme_relative = url_str.starts_with("//");
+    let parsed = if scheme_relative {
+        url::Url::parse(&format!("https:{url_str}"))
+    } else {
+        url::Url::parse(url_str)
+    };
+
+    let sanitized = match parsed {
+        Ok(mut url) if url.has_host() => {
+            let _ = url.set_username("");
+            let _ = url.set_password(None);
+            url.set_query(None);
+            url.set_fragment(None);
+            let rendered = url.as_str();
+            if scheme_relative {
+                rendered
+                    .strip_prefix("https:")
+                    .unwrap_or(rendered)
+                    .to_string()
+            } else {
+                rendered.to_string()
+            }
+        }
+        _ => {
+            let without_tail = url_str.split(['?', '#']).next().unwrap_or(url_str);
+            strip_bare_userinfo(without_tail).to_string()
+        }
+    };
+
+    redact_known_secrets(&sanitized, known_secrets)
+}
+
+#[cfg(not(feature = "desktop"))]
+pub(crate) fn redact_url_origin_for_log(url_str: &str) -> String {
+    let scheme_relative = url_str.starts_with("//");
+    let parsed = if scheme_relative {
+        url::Url::parse(&format!("https:{url_str}"))
+    } else {
+        url::Url::parse(url_str)
+    };
+
+    match parsed {
+        Ok(url) if url.has_host() => {
+            let authority = &url[url::Position::BeforeHost..url::Position::AfterPort];
+            if scheme_relative {
+                format!("//{authority}")
+            } else {
+                format!("{}://{authority}", url.scheme())
+            }
+        }
+        _ => "[invalid target]".to_string(),
+    }
+}
 
 #[cfg(not(feature = "desktop"))]
 mod app_store {

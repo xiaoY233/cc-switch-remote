@@ -326,6 +326,15 @@ export const usageApi = {
     return invoke("sync_session_usage");
   },
 
+  rebuildCodexUsage: async (
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+  ): Promise<SessionSyncResult> => {
+    if (target.type === "remote") {
+      return remoteApi.rebuildCodexUsage(target.profile, target.secret);
+    }
+    return invoke("rebuild_codex_usage");
+  },
+
   getDataSourceBreakdown: async (
     target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
   ): Promise<DataSourceSummary[]> => {

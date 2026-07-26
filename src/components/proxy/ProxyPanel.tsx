@@ -81,30 +81,37 @@ export function ProxyPanel({
   const { data: claudeQueue = [] } = useFailoverQueue("claude", target);
   const { data: codexQueue = [] } = useFailoverQueue("codex", target);
   const { data: geminiQueue = [] } = useFailoverQueue("gemini", target);
+  const { data: grokQueue = [] } = useFailoverQueue("grokbuild", target);
   const { data: claudeAppConfig } = useAppProxyConfig("claude", target);
   const { data: codexAppConfig } = useAppProxyConfig("codex", target);
   const { data: geminiAppConfig } = useAppProxyConfig("gemini", target);
+  const { data: grokAppConfig } = useAppProxyConfig("grokbuild", target);
   const { data: claudePreflight, isLoading: isClaudePreflightLoading } =
     useRoutingAppPreflight("claude", target, !isLocalTarget);
   const { data: codexPreflight, isLoading: isCodexPreflightLoading } =
     useRoutingAppPreflight("codex", target, !isLocalTarget);
   const { data: geminiPreflight, isLoading: isGeminiPreflightLoading } =
     useRoutingAppPreflight("gemini", target, !isLocalTarget);
+  const { data: grokPreflight, isLoading: isGrokPreflightLoading } =
+    useRoutingAppPreflight("grokbuild", target, !isLocalTarget);
 
   const appConfigs = {
     claude: claudeAppConfig,
     codex: codexAppConfig,
     gemini: geminiAppConfig,
+    grokbuild: grokAppConfig,
   };
   const appPreflights = {
     claude: claudePreflight,
     codex: codexPreflight,
     gemini: geminiPreflight,
+    grokbuild: grokPreflight,
   };
   const appPreflightLoading = {
     claude: isClaudePreflightLoading,
     codex: isCodexPreflightLoading,
     gemini: isGeminiPreflightLoading,
+    grokbuild: isGrokPreflightLoading,
   };
 
   const handleTakeoverChange = async (appType: string, enabled: boolean) => {
@@ -137,7 +144,7 @@ export function ProxyPanel({
   };
 
   const handleRemoteAppRoutingChange = async (
-    appType: "claude" | "codex" | "gemini",
+    appType: "claude" | "codex" | "gemini" | "grokbuild",
     enabled: boolean,
   ) => {
     const config = appConfigs[appType];
@@ -360,8 +367,8 @@ export function ProxyPanel({
                         defaultValue: "应用路由",
                       })}
                 </p>
-                <div className="grid gap-2 sm:grid-cols-3">
-                  {(["claude", "codex", "gemini"] as const).map((appType) => {
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  {(["claude", "codex", "gemini", "grokbuild"] as const).map((appType) => {
                     const isEnabled = isLocalTarget
                       ? (takeoverStatus?.[
                           appType as keyof typeof takeoverStatus
@@ -390,7 +397,7 @@ export function ProxyPanel({
                         title={disabledReason}
                       >
                         <span className="text-sm font-medium capitalize">
-                          {appType}
+                          {appType === "grokbuild" ? "Grok Build" : appType}
                         </span>
                         <Switch
                           checked={isEnabled}
@@ -531,7 +538,8 @@ export function ProxyPanel({
               {/* [6] Provider queues */}
               {(claudeQueue.length > 0 ||
                 codexQueue.length > 0 ||
-                geminiQueue.length > 0) && (
+                geminiQueue.length > 0 ||
+                grokQueue.length > 0) && (
                 <div className="pt-3 border-t border-border space-y-3">
                   <div className="flex items-center gap-2">
                     <ListOrdered className="h-3.5 w-3.5 text-muted-foreground" />
@@ -571,6 +579,19 @@ export function ProxyPanel({
                       appType="gemini"
                       appLabel="Gemini"
                       targets={geminiQueue.map((item) => ({
+                        id: item.providerId,
+                        name: item.providerName,
+                      }))}
+                      status={status}
+                      target={target}
+                    />
+                  )}
+
+                  {grokQueue.length > 0 && (
+                    <ProviderQueueGroup
+                      appType="grokbuild"
+                      appLabel="Grok Build"
+                      targets={grokQueue.map((item) => ({
                         id: item.providerId,
                         name: item.providerName,
                       }))}

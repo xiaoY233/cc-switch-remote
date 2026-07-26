@@ -27,8 +27,8 @@ pub struct ToolVersion {
     wsl_distro: Option<String>,
 }
 
-const VALID_TOOLS: [&str; 6] = [
-    "claude", "codex", "gemini", "opencode", "openclaw", "hermes",
+const VALID_TOOLS: [&str; 7] = [
+    "claude", "codex", "gemini", "grok", "opencode", "openclaw", "hermes",
 ];
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -533,6 +533,7 @@ fn tool_display_name(tool: &str) -> &'static str {
         "claude" => "Claude Code",
         "codex" => "Codex",
         "gemini" => "Gemini CLI",
+        "grok" => "Grok Build",
         "opencode" => "OpenCode",
         "openclaw" => "OpenClaw",
         "hermes" => "Hermes",
@@ -549,6 +550,8 @@ const CLAUDE_INSTALL_UNIX: &str =
     "bash -c 'tmp=$(mktemp) && curl -fsSL https://claude.ai/install.sh -o $tmp && bash $tmp; status=$?; rm -f $tmp; exit $status'";
 const OPENCODE_INSTALL_UNIX: &str =
     "bash -c 'tmp=$(mktemp) && curl -fsSL https://opencode.ai/install -o $tmp && bash $tmp; status=$?; rm -f $tmp; exit $status'";
+const GROK_INSTALL_UNIX: &str =
+    "bash -c 'tmp=$(mktemp) && curl -fsSL https://x.ai/cli/install.sh -o $tmp && bash $tmp; status=$?; rm -f $tmp; exit $status'";
 
 /// Hermes 官方安装器会自带/选择合适的 Python 运行时。不要再用
 /// `python3 -m pip ... || python -m pip ...`:Hermes PyPI 包要求 Python >=3.11,
@@ -562,6 +565,8 @@ const HERMES_UPDATE_UNIX: &str =
 #[cfg(target_os = "windows")]
 const HERMES_INSTALL_WINDOWS_SCRIPT: &str =
     "irm https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.ps1 | iex";
+#[cfg(target_os = "windows")]
+const GROK_INSTALL_WINDOWS_SCRIPT: &str = "irm https://x.ai/cli/install.ps1 | iex";
 
 #[cfg(target_os = "windows")]
 fn powershell_encoded_command(script: &str) -> String {
@@ -579,6 +584,14 @@ fn hermes_install_windows_command() -> String {
     format!(
         "powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand {}",
         powershell_encoded_command(HERMES_INSTALL_WINDOWS_SCRIPT)
+    )
+}
+
+#[cfg(target_os = "windows")]
+fn grok_install_windows_command() -> String {
+    format!(
+        "powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand {}",
+        powershell_encoded_command(GROK_INSTALL_WINDOWS_SCRIPT)
     )
 }
 
@@ -601,6 +614,7 @@ fn npm_install_command_for(tool: &str) -> Option<&'static str> {
         "claude" => Some("npm i -g @anthropic-ai/claude-code@latest"),
         "codex" => Some("npm i -g @openai/codex@latest"),
         "gemini" => Some("npm i -g @google/gemini-cli@latest"),
+        "grok" => Some("npm i -g @xai-official/grok@latest"),
         "opencode" => Some("npm i -g opencode-ai@latest"),
         "openclaw" => Some("npm i -g openclaw@latest"),
         _ => None,
@@ -609,7 +623,7 @@ fn npm_install_command_for(tool: &str) -> Option<&'static str> {
 
 fn official_update_args(tool: &str) -> Option<&'static str> {
     match tool {
-        "claude" | "codex" | "hermes" => Some("update"),
+        "claude" | "codex" | "grok" | "hermes" => Some("update"),
         "openclaw" => Some("update --yes"),
         "opencode" => Some("upgrade"),
         _ => None,
@@ -659,6 +673,18 @@ fn tool_action_shell_command_for_shell(
             }
             .to_string(),
         );
+    }
+
+    #[cfg(target_os = "windows")]
+    if tool == "grok"
+        && matches!(action, ToolLifecycleAction::Install)
+        && matches!(shell, LifecycleCommandShell::WindowsBatch)
+    {
+        return Some(chain_update_commands(
+            grok_install_windows_command(),
+            npm_install_command_for(tool)?.to_string(),
+            shell,
+        ));
     }
 
     let install = npm_install_command_for(tool)?;
@@ -871,6 +897,7 @@ async fn get_single_tool_version_impl(
         }
         "codex" => fetch_npm_latest_for_tool(&client, "@openai/codex", tool, local).await,
         "gemini" => fetch_npm_latest_for_tool(&client, "@google/gemini-cli", tool, local).await,
+        "grok" => fetch_npm_latest_for_tool(&client, "@xai-official/grok", tool, local).await,
         "opencode" => {
             if let Some(version) =
                 fetch_npm_latest_for_tool(&client, "opencode-ai", tool, local).await
@@ -1490,6 +1517,18 @@ fn opencode_extra_search_paths(
     paths
 }
 
+fn grok_extra_search_paths(
+    home: &Path,
+    grok_bin_dir: Option<std::ffi::OsString>,
+) -> Vec<std::path::PathBuf> {
+    let mut paths = Vec::new();
+    push_env_single_dir(&mut paths, grok_bin_dir);
+    if !home.as_os_str().is_empty() {
+        push_unique_path(&mut paths, home.join(".grok").join("bin"));
+    }
+    paths
+}
+
 fn tool_executable_candidates(tool: &str, dir: &Path) -> Vec<std::path::PathBuf> {
     #[cfg(target_os = "windows")]
     {
@@ -1650,6 +1689,12 @@ fn build_tool_search_paths(tool: &str) -> Vec<std::path::PathBuf> {
         );
 
         for path in extra_paths {
+            push_unique_path(&mut search_paths, path);
+        }
+    }
+
+    if tool == "grok" {
+        for path in grok_extra_search_paths(&home, std::env::var_os("GROK_BIN_DIR")) {
             push_unique_path(&mut search_paths, path);
         }
     }
@@ -1965,6 +2010,7 @@ fn npm_package_for(tool: &str) -> Option<&'static str> {
         "claude" => Some("@anthropic-ai/claude-code"),
         "codex" => Some("@openai/codex"),
         "gemini" => Some("@google/gemini-cli"),
+        "grok" => Some("@xai-official/grok"),
         "opencode" => Some("opencode-ai"),
         "openclaw" => Some("openclaw"),
         _ => None,
@@ -2001,6 +2047,13 @@ fn brew_formula_from_path(real: &str) -> Option<String> {
         }
     }
     None
+}
+
+fn is_grok_native_install(bin_path: &str, real_target: &str) -> bool {
+    [bin_path, real_target].iter().any(|path| {
+        let normalized = path.replace('\\', "/").to_ascii_lowercase();
+        normalized.contains("/.grok/bin/") || normalized.contains("/.grok/downloads/grok-")
+    })
 }
 
 /// 含空格才用 POSIX 单引号包一层,否则保持裸路径——命令展示更干净。
@@ -2233,6 +2286,9 @@ fn anchored_command_from_paths(tool: &str, bin_path: &str, real_target: &str) ->
     {
         return anchored_official_update_command(tool, bin_path);
     }
+    if tool == "grok" && is_grok_native_install(bin_path, real_target) {
+        return anchored_official_update_command(tool, bin_path);
+    }
     let package_command = package_manager_anchored_command_from_paths(tool, bin_path, real_target);
     if brew_formula_from_path(real_target).is_some() {
         return package_command;
@@ -2306,8 +2362,11 @@ fn package_manager_anchored_command_from_paths(tool: &str, bin_path: &str) -> Op
 /// 扩展名存在时,支持官方自升级的工具仍返回 `<bin_path> update/upgrade`,其余工具
 /// 才返 None 让上游兜回静态命令、`anchored=false`。
 #[cfg(target_os = "windows")]
-fn anchored_command_from_paths(tool: &str, bin_path: &str, _real_target: &str) -> Option<String> {
+fn anchored_command_from_paths(tool: &str, bin_path: &str, real_target: &str) -> Option<String> {
     if tool == "hermes" {
+        return anchored_official_update_command(tool, bin_path);
+    }
+    if tool == "grok" && is_grok_native_install(bin_path, real_target) {
         return anchored_official_update_command(tool, bin_path);
     }
     let package_command = package_manager_anchored_command_from_paths(tool, bin_path);
@@ -2394,6 +2453,7 @@ fn installer_with_npm_fallback(installer: &str, tool: &str) -> String {
 fn posix_install_command_for(tool: &str) -> String {
     match tool {
         "claude" => installer_with_npm_fallback(CLAUDE_INSTALL_UNIX, tool),
+        "grok" => installer_with_npm_fallback(GROK_INSTALL_UNIX, tool),
         "opencode" => installer_with_npm_fallback(OPENCODE_INSTALL_UNIX, tool),
         "hermes" => HERMES_INSTALL_UNIX.to_string(),
         _ => static_fallback_command_for(tool, ToolLifecycleAction::Install),
@@ -2503,6 +2563,7 @@ fn wsl_distro_for_tool(tool: &str) -> Option<String> {
         "claude" => crate::settings::get_claude_override_dir(),
         "codex" => crate::settings::get_codex_override_dir(),
         "gemini" => crate::settings::get_gemini_override_dir(),
+        "grok" => crate::settings::get_grok_override_dir(),
         "opencode" => crate::settings::get_opencode_override_dir(),
         "openclaw" => crate::settings::get_openclaw_override_dir(),
         "hermes" => crate::settings::get_hermes_override_dir(),

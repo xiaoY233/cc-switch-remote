@@ -1804,6 +1804,20 @@ pub async fn remote_sync_session_usage(
 }
 
 #[tauri::command]
+pub async fn remote_rebuild_codex_usage(
+    profile: RemoteHostProfile,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<crate::services::session_usage::SessionSyncResult, String> {
+    run_remote_helper_json(
+        profile,
+        vec!["usage".to_string(), "rebuild-codex".to_string()],
+        secret,
+        "Remote Codex usage rebuild",
+    )
+    .await
+}
+
+#[tauri::command]
 pub async fn remote_get_model_pricing(
     profile: RemoteHostProfile,
     secret: Option<RemoteConnectionSecret>,
@@ -2232,6 +2246,26 @@ pub async fn remote_fetch_codex_oauth_models(
         ],
         secret,
         "Remote Codex OAuth fetch models",
+    )
+    .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn remote_fetch_xai_oauth_models(
+    profile: RemoteHostProfile,
+    account_id: Option<String>,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Vec<crate::services::model_fetch::FetchedModel>, String> {
+    run_remote_helper_json(
+        profile,
+        vec![
+            "auth".to_string(),
+            "models".to_string(),
+            "xai_oauth".to_string(),
+            account_id.unwrap_or_else(|| "-".to_string()),
+        ],
+        secret,
+        "Remote xAI OAuth fetch models",
     )
     .await
 }

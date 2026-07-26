@@ -21,6 +21,7 @@ import type { Provider } from "@/types";
 import type { AppId, ManagementTarget } from "@/lib/api";
 import { getManagementTargetKey } from "@/lib/managementTarget";
 import { providersApi } from "@/lib/api/providers";
+import { extractErrorMessage } from "@/utils/errorUtils";
 import { useDragSort } from "@/hooks/useDragSort";
 import {
   openclawKeys,
@@ -49,7 +50,6 @@ import { useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { isTextEditableTarget } from "@/utils/domUtils";
-import { extractErrorMessage } from "@/utils/errorUtils";
 
 interface ProviderListProps {
   providers: Record<string, Provider>;
@@ -272,8 +272,13 @@ export function ProviderList({
         toast.info(t("provider.noProviders"));
       }
     },
-    onError: (error: Error) => {
-      toast.error(error.message);
+    onError: (error: unknown) => {
+      // Tauri invoke 的 reject 值是后端序列化出的纯字符串而非 Error 对象，
+      // 取 .message 只会得到 undefined（空 toast）。
+      toast.error(extractErrorMessage(error) || t("settings.importFailed"));
+      // 导入失败前也可能已产生需要上屏的副作用：GrokBuild 官方登录态下点
+      // 导入，命令层会先补种官方条目、随后才因 live 不可导入而报错。
+      queryClient.invalidateQueries({ queryKey: ["providers", appId] });
     },
   });
 
