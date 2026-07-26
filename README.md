@@ -349,31 +349,13 @@ Download the latest `CC-Switch-v{version}-Windows.msi` installer or `CC-Switch-v
 
 ### macOS Users
 
-**Method 1: Install via Homebrew (Recommended)**
-
-```bash
-brew install --cask cc-switch
-```
-
-Update:
-
-```bash
-brew upgrade --cask cc-switch
-```
-
-**Method 2: Manual Download**
-
 Download `CC-Switch-v{version}-macOS.dmg` (recommended) or `.zip` from the [Releases](../../releases) page.
 
 > **Note**: CC Switch Remote for macOS is code-signed and notarized by Apple. You can install and open it directly.
 
 ### Arch Linux Users
 
-**Install via paru (Recommended)**
-
-```bash
-paru -S cc-switch-bin
-```
+Download the latest Linux package from this fork's [Releases](../../releases) page. Do not use the upstream `cc-switch-bin` AUR package for CC Switch Remote builds.
 
 ### Linux Users
 

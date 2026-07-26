@@ -83,16 +83,17 @@ export function useDragSort(
 
       try {
         await providersApi.updateSortOrder(updates, appId, target);
+        const targetKey = getProviderTargetKey(target);
         await queryClient.invalidateQueries({
-          queryKey: ["providers", appId, getProviderTargetKey(target)],
+          queryKey: ["providers", appId, targetKey],
+        });
+        // 刷新故障转移队列（队列顺序依赖 sort_index），本地与远程都按
+        // target 隔离缓存，避免远程排序后继续展示旧队列顺序。
+        await queryClient.invalidateQueries({
+          queryKey: ["failoverQueue", targetKey, appId],
         });
 
         if (target.type === "local") {
-          // 刷新故障转移队列（因为队列顺序依赖 sort_index）
-          await queryClient.invalidateQueries({
-            queryKey: ["failoverQueue", appId],
-          });
-
           // 更新托盘菜单以反映新的排序（失败不影响主操作）
           try {
             await providersApi.updateTrayMenu();

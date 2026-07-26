@@ -51,17 +51,18 @@ describe("usage query keys", () => {
     expect(usageScriptResultKey("provider-1", "codex")).toEqual([
       "usage",
       "local",
+      "script",
       "provider-1",
       "codex",
-      "local",
     ]);
 
     expect(usageScriptResultKey("provider-1", "codex", remoteTarget)).toEqual([
       "usage",
-      "local",
+      "remote",
+      "remote-usage",
+      "script",
       "provider-1",
       "codex",
-      "remote:remote-usage",
     ]);
   });
 });

@@ -166,10 +166,16 @@ export const usageKeys = {
   ) => [...usageKeys.all(target), "detail", requestId] as const,
   pricing: (target: ManagementTarget = LOCAL_MANAGEMENT_TARGET) =>
     [...usageKeys.all(target), "pricing"] as const,
-  limits: (providerId: string, appType: string) =>
-    [...usageKeys.all(), "limits", providerId, appType] as const,
-  script: (providerId: string, appType: string) =>
-    [...usageKeys.all(), providerId, appType] as const,
+  limits: (
+    providerId: string,
+    appType: string,
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+  ) => [...usageKeys.all(target), "limits", providerId, appType] as const,
+  script: (
+    providerId: string,
+    appType: string,
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+  ) => [...usageKeys.all(target), "script", providerId, appType] as const,
 };
 
 export function usageScriptResultKey(
@@ -177,9 +183,7 @@ export function usageScriptResultKey(
   appType: string,
   target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
 ) {
-  const key =
-    target.type === "remote" ? `remote:${target.profile.id}` : "local";
-  return [...usageKeys.script(providerId, appType), key] as const;
+  return usageKeys.script(providerId, appType, target);
 }
 
 /** 把 UI 侧的 "all" 哨兵归一成 undefined（后端语义：不过滤）。 */
@@ -400,9 +404,13 @@ export function useModelPricing(
   });
 }
 
-export function useProviderLimits(providerId: string, appType: string) {
+export function useProviderLimits(
+  providerId: string,
+  appType: string,
+  target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+) {
   return useQuery({
-    queryKey: usageKeys.limits(providerId, appType),
+    queryKey: usageKeys.limits(providerId, appType, target),
     queryFn: () => usageApi.checkProviderLimits(providerId, appType),
     enabled: !!providerId && !!appType,
   });

@@ -218,11 +218,11 @@ export const useUpdateProviderMutation = (
         queryKey: providerQueryKey(appId, target),
       });
       await queryClient.invalidateQueries({
-        queryKey: usageKeys.script(provider.id, appId),
+        queryKey: usageKeys.script(provider.id, appId, target),
       });
       if (variables.originalId && variables.originalId !== provider.id) {
         await queryClient.invalidateQueries({
-          queryKey: usageKeys.script(variables.originalId, appId),
+          queryKey: usageKeys.script(variables.originalId, appId, target),
         });
       }
       if (appId === "openclaw") {

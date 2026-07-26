@@ -1,9 +1,9 @@
 [Desktop Entry]
 Type=Application
-Name=CC Switch
+Name=CC Switch Remote
 Comment=All-in-One Assistant for Claude Code, Codex & Gemini CLI
-Exec=cc-switch
-Icon=com.ccswitch.desktop
+Exec=cc-switch-remote
+Icon=com.ccswitch.remote
 Terminal=false
 Categories=Utility;Development;
 StartupNotify=true

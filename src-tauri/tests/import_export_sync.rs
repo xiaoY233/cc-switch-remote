@@ -1056,7 +1056,7 @@ fn sync_gemini_packycode_sets_security_selected_type() {
     ConfigService::sync_current_providers_to_live(&mut config)
         .expect("syncing gemini live should succeed");
 
-    // security field is written to ~/.gemini/settings.json, not ~/.cc-switch/settings.json
+    // security field is written to ~/.gemini/settings.json, not ~/.cc-switch-remote/settings.json
     let gemini_settings = home.join(".gemini").join("settings.json");
     assert!(
         gemini_settings.exists(),
@@ -1107,7 +1107,7 @@ fn sync_gemini_google_official_sets_oauth_security() {
     ConfigService::sync_current_providers_to_live(&mut config)
         .expect("syncing google official gemini should succeed");
 
-    // security field is written to ~/.gemini/settings.json, not ~/.cc-switch/settings.json
+    // security field is written to ~/.gemini/settings.json, not ~/.cc-switch-remote/settings.json
     let gemini_settings = home.join(".gemini").join("settings.json");
     assert!(
         gemini_settings.exists(),

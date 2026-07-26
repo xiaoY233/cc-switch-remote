@@ -27,7 +27,12 @@ function createOmoQueryHooks(
     target: ManagementTarget,
   ) {
     const targetKey = getManagementTargetKey(target);
-    queryClient.invalidateQueries({ queryKey: ["providers"] });
+    queryClient.invalidateQueries({
+      queryKey: ["providers", "opencode", targetKey],
+    });
+    if (target.type === "local") {
+      queryClient.invalidateQueries({ queryKey: ["providers", "opencode"] });
+    }
     queryClient.invalidateQueries({
       queryKey: keys.currentProviderId(targetKey),
     });
