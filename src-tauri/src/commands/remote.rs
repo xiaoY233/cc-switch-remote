@@ -2001,6 +2001,21 @@ pub async fn remote_add_provider(
 }
 
 #[tauri::command]
+pub async fn remote_ensure_official_provider(
+    profile: RemoteHostProfile,
+    app: String,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<bool, String> {
+    run_remote_helper_json(
+        profile,
+        vec!["providers".to_string(), "ensure-official".to_string(), app],
+        secret,
+        "Remote official provider seed restore",
+    )
+    .await
+}
+
+#[tauri::command]
 pub async fn remote_update_provider(
     profile: RemoteHostProfile,
     app: String,

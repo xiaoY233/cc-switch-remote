@@ -147,6 +147,20 @@ mod tests {
     }
 
     #[test]
+    fn status_advertises_provider_official_seed_capability() {
+        let response = run_command(&["status".to_string()]);
+        let capabilities = response
+            .get("data")
+            .and_then(|data| data.get("capabilities"))
+            .and_then(Value::as_array)
+            .expect("status capabilities");
+
+        assert!(capabilities
+            .iter()
+            .any(|capability| capability == "provider-official-seed"));
+    }
+
+    #[test]
     fn profiles_update_rejects_invalid_bool_before_touching_state() {
         let response = run_command(&[
             "profiles".to_string(),
@@ -301,6 +315,24 @@ mod tests {
                 .and_then(|error| error.get("code"))
                 .and_then(Value::as_str),
             Some("providers_test_usage_script_failed")
+        );
+    }
+
+    #[test]
+    fn providers_ensure_official_command_is_registered() {
+        let response = run_command(&[
+            "providers".to_string(),
+            "ensure-official".to_string(),
+            "not-an-app".to_string(),
+        ]);
+
+        assert_eq!(response.get("ok").and_then(Value::as_bool), Some(false));
+        assert_eq!(
+            response
+                .get("error")
+                .and_then(|error| error.get("code"))
+                .and_then(Value::as_str),
+            Some("invalid_app")
         );
     }
 
@@ -720,6 +752,22 @@ pub(crate) fn run_command(args: &[String]) -> Value {
                         }
                     }
                 }
+                Err(err) => serde_json::to_value(types::err::<()>("invalid_app", err.to_string()))
+                    .expect("serialize invalid app error"),
+            }
+        }
+        [group, cmd, app] if group == "providers" && cmd == "ensure-official" => {
+            match app.parse() {
+                Ok(app_type) => match commands::ensure_official_provider(app_type) {
+                    Ok(value) => {
+                        serde_json::to_value(types::ok(value)).expect("serialize ensure official")
+                    }
+                    Err(message) => serde_json::to_value(types::err::<()>(
+                        "providers_ensure_official_failed",
+                        message,
+                    ))
+                    .expect("serialize ensure official error"),
+                },
                 Err(err) => serde_json::to_value(types::err::<()>("invalid_app", err.to_string()))
                     .expect("serialize invalid app error"),
             }

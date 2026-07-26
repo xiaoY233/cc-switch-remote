@@ -1085,6 +1085,18 @@ export const remoteApi = {
     });
   },
 
+  ensureOfficialProvider(
+    profile: RemoteHostProfile,
+    app: AppId,
+    secret?: RemoteConnectionSecret,
+  ): Promise<boolean> {
+    return invoke<boolean>("remote_ensure_official_provider", {
+      profile,
+      app,
+      secret,
+    });
+  },
+
   updateProvider(
     profile: RemoteHostProfile,
     app: AppId,

@@ -185,6 +185,25 @@ describe("remote OMO API", () => {
 });
 
 describe("remote API invoke mappings", () => {
+  it("restores an official provider seed through the remote helper command", async () => {
+    const remoteProfile = profile();
+    const secret: RemoteConnectionSecret = { password: "secret" };
+    invokeMock.mockResolvedValueOnce(true);
+
+    const result = await remoteApi.ensureOfficialProvider(
+      remoteProfile,
+      "grokbuild",
+      secret,
+    );
+
+    expect(result).toBe(true);
+    expect(invokeMock).toHaveBeenCalledWith("remote_ensure_official_provider", {
+      profile: remoteProfile,
+      app: "grokbuild",
+      secret,
+    });
+  });
+
   it("fetches Codex OAuth models through the remote helper command", async () => {
     const remoteProfile = profile();
     const secret: RemoteConnectionSecret = { password: "secret" };

@@ -293,6 +293,23 @@ pub fn test_usage_script(
         .map_err(|e| e.to_string())
 }
 
+pub fn ensure_official_provider(app_type: AppType) -> Result<bool, String> {
+    let provider_id = match app_type {
+        AppType::ClaudeDesktop => crate::database::CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID,
+        AppType::Codex => crate::database::CODEX_OFFICIAL_PROVIDER_ID,
+        AppType::GrokBuild => crate::database::GROKBUILD_OFFICIAL_PROVIDER_ID,
+        other => {
+            return Err(format!(
+                "Official seed restore is not supported for {}",
+                other.as_str()
+            ));
+        }
+    };
+    let db = Database::init().map_err(|e| e.to_string())?;
+    db.ensure_official_seed_by_id(provider_id, app_type)
+        .map_err(|e| e.to_string())
+}
+
 pub fn get_balance(options_json: &str) -> Result<crate::provider::UsageResult, String> {
     let options: RemoteBalanceOptions =
         serde_json::from_str(options_json).map_err(|e| format!("Invalid balance options: {e}"))?;

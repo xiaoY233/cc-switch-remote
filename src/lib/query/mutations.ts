@@ -75,11 +75,10 @@ export const useAddProviderMutation = (
 
       if (
         appId === "claude-desktop" &&
-        ensureClaudeDesktopOfficialSeed &&
-        target.type === "local"
+        ensureClaudeDesktopOfficialSeed
       ) {
-        await providersApi.ensureClaudeDesktopOfficialProvider();
-        const providers = await providersApi.getAll(appId);
+        await providersApi.ensureClaudeDesktopOfficialProvider(target);
+        const providers = await providersApi.getAll(appId, target);
         const officialProvider = providers["claude-desktop-official"];
         if (!officialProvider) {
           throw new Error("Claude Desktop official provider was not created");
@@ -87,13 +86,9 @@ export const useAddProviderMutation = (
         return officialProvider;
       }
 
-      if (
-        appId === "codex" &&
-        ensureCodexOfficialSeed &&
-        target.type === "local"
-      ) {
-        await providersApi.ensureCodexOfficialProvider();
-        const providers = await providersApi.getAll(appId);
+      if (appId === "codex" && ensureCodexOfficialSeed) {
+        await providersApi.ensureCodexOfficialProvider(target);
+        const providers = await providersApi.getAll(appId, target);
         const officialProvider = providers[CODEX_OFFICIAL_PROVIDER_ID];
         if (!officialProvider) {
           throw new Error("Codex official provider was not created");
@@ -103,11 +98,10 @@ export const useAddProviderMutation = (
 
       if (
         appId === "grokbuild" &&
-        ensureGrokBuildOfficialSeed &&
-        target.type === "local"
+        ensureGrokBuildOfficialSeed
       ) {
-        await providersApi.ensureGrokBuildOfficialProvider();
-        const providers = await providersApi.getAll(appId);
+        await providersApi.ensureGrokBuildOfficialProvider(target);
+        const providers = await providersApi.getAll(appId, target);
         const officialProvider = providers[GROKBUILD_OFFICIAL_PROVIDER_ID];
         if (!officialProvider) {
           throw new Error("Grok Build official provider was not created");

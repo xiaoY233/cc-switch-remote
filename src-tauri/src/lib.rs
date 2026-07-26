@@ -1616,6 +1616,7 @@ pub fn run() {
             commands::remote_get_provider_state,
             commands::remote_switch_provider,
             commands::remote_add_provider,
+            commands::remote_ensure_official_provider,
             commands::remote_update_provider,
             commands::remote_delete_provider,
             commands::remote_remove_provider_from_live_config,

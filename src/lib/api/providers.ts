@@ -223,15 +223,42 @@ export const providersApi = {
     return await invoke("import_claude_desktop_providers_from_claude");
   },
 
-  async ensureClaudeDesktopOfficialProvider(): Promise<boolean> {
+  async ensureClaudeDesktopOfficialProvider(
+    target: ManagementTarget = { type: "local" },
+  ): Promise<boolean> {
+    if (target.type === "remote") {
+      return await remoteApi.ensureOfficialProvider(
+        target.profile,
+        "claude-desktop",
+        target.secret,
+      );
+    }
     return await invoke("ensure_claude_desktop_official_provider");
   },
 
-  async ensureCodexOfficialProvider(): Promise<boolean> {
+  async ensureCodexOfficialProvider(
+    target: ManagementTarget = { type: "local" },
+  ): Promise<boolean> {
+    if (target.type === "remote") {
+      return await remoteApi.ensureOfficialProvider(
+        target.profile,
+        "codex",
+        target.secret,
+      );
+    }
     return await invoke("ensure_codex_official_provider");
   },
 
-  async ensureGrokBuildOfficialProvider(): Promise<boolean> {
+  async ensureGrokBuildOfficialProvider(
+    target: ManagementTarget = { type: "local" },
+  ): Promise<boolean> {
+    if (target.type === "remote") {
+      return await remoteApi.ensureOfficialProvider(
+        target.profile,
+        "grokbuild",
+        target.secret,
+      );
+    }
     return await invoke("ensure_grokbuild_official_provider");
   },
 
