@@ -67,6 +67,7 @@ jobs:
   backend:
     name: Backend Checks
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
