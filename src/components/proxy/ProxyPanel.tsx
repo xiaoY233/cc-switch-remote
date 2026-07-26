@@ -368,56 +368,58 @@ export function ProxyPanel({
                       })}
                 </p>
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                  {(["claude", "codex", "gemini", "grokbuild"] as const).map((appType) => {
-                    const isEnabled = isLocalTarget
-                      ? (takeoverStatus?.[
-                          appType as keyof typeof takeoverStatus
-                        ] ?? false)
-                      : (appConfigs[appType]?.enabled ?? false);
-                    const preflight = appPreflights[appType];
-                    const canEnableRemote = preflight?.canEnable ?? false;
-                    const remoteDisabled =
-                      !isLocalTarget &&
-                      (updateAppConfig.isPending ||
-                        appPreflightLoading[appType] ||
-                        !appConfigs[appType] ||
-                        (!isEnabled && !canEnableRemote));
-                    const disabledReason =
-                      !isLocalTarget && !isEnabled && !canEnableRemote
-                        ? preflight?.reason ||
-                          t("remote.routing.appUnavailable", {
-                            app: appType,
-                            defaultValue: `${appType} 当前不能启用远程路由`,
-                          })
-                        : undefined;
-                    return (
-                      <div
-                        key={appType}
-                        className="flex items-center justify-between rounded-md border border-primary/20 bg-background/60 px-3 py-2"
-                        title={disabledReason}
-                      >
-                        <span className="text-sm font-medium capitalize">
-                          {appType === "grokbuild" ? "Grok Build" : appType}
-                        </span>
-                        <Switch
-                          checked={isEnabled}
-                          onCheckedChange={(checked) =>
-                            isLocalTarget
-                              ? handleTakeoverChange(appType, checked)
-                              : void handleRemoteAppRoutingChange(
-                                  appType,
-                                  checked,
-                                )
-                          }
-                          disabled={
-                            isLocalTarget
-                              ? setTakeoverForApp.isPending
-                              : remoteDisabled
-                          }
-                        />
-                      </div>
-                    );
-                  })}
+                  {(["claude", "codex", "gemini", "grokbuild"] as const).map(
+                    (appType) => {
+                      const isEnabled = isLocalTarget
+                        ? (takeoverStatus?.[
+                            appType as keyof typeof takeoverStatus
+                          ] ?? false)
+                        : (appConfigs[appType]?.enabled ?? false);
+                      const preflight = appPreflights[appType];
+                      const canEnableRemote = preflight?.canEnable ?? false;
+                      const remoteDisabled =
+                        !isLocalTarget &&
+                        (updateAppConfig.isPending ||
+                          appPreflightLoading[appType] ||
+                          !appConfigs[appType] ||
+                          (!isEnabled && !canEnableRemote));
+                      const disabledReason =
+                        !isLocalTarget && !isEnabled && !canEnableRemote
+                          ? preflight?.reason ||
+                            t("remote.routing.appUnavailable", {
+                              app: appType,
+                              defaultValue: `${appType} 当前不能启用远程路由`,
+                            })
+                          : undefined;
+                      return (
+                        <div
+                          key={appType}
+                          className="flex items-center justify-between rounded-md border border-primary/20 bg-background/60 px-3 py-2"
+                          title={disabledReason}
+                        >
+                          <span className="text-sm font-medium capitalize">
+                            {appType === "grokbuild" ? "Grok Build" : appType}
+                          </span>
+                          <Switch
+                            checked={isEnabled}
+                            onCheckedChange={(checked) =>
+                              isLocalTarget
+                                ? handleTakeoverChange(appType, checked)
+                                : void handleRemoteAppRoutingChange(
+                                    appType,
+                                    checked,
+                                  )
+                            }
+                            disabled={
+                              isLocalTarget
+                                ? setTakeoverForApp.isPending
+                                : remoteDisabled
+                            }
+                          />
+                        </div>
+                      );
+                    },
+                  )}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {t("proxy.takeover.hint", {
