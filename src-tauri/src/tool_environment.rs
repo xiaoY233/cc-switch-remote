@@ -773,7 +773,7 @@ fn build_tool_action_line(
         // (npm/pnpm)或 .exe(volta),静态命令头部是 `npm`(也是 .cmd)、`py` 等——
         // 全部加 `call ` 前缀,风格统一且语义正确。含空格的头部已被 `win_quote_path_for_batch`
         // 加上双引号,call 对带引号的路径解析正常。
-        return Ok(format!("call {command}"));
+        Ok(format!("call {command}"))
     }
 
     #[cfg(not(target_os = "windows"))]

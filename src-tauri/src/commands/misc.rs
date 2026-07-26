@@ -244,6 +244,7 @@ fn resolve_launch_cwd(cwd: Option<String>) -> Result<Option<PathBuf>, String> {
     Ok(Some(resolved))
 }
 
+#[cfg(not(target_os = "windows"))]
 fn is_valid_shell(shell: &str) -> bool {
     matches!(
         shell.rsplit('/').next().unwrap_or(shell),
@@ -251,6 +252,7 @@ fn is_valid_shell(shell: &str) -> bool {
     )
 }
 
+#[cfg(not(target_os = "windows"))]
 fn fallback_user_shell() -> &'static str {
     if cfg!(target_os = "macos") {
         "/bin/zsh"
@@ -259,6 +261,7 @@ fn fallback_user_shell() -> &'static str {
     }
 }
 
+#[cfg(not(target_os = "windows"))]
 fn valid_user_shell_path(shell: &str) -> bool {
     if shell.is_empty()
         || !shell.starts_with('/')
@@ -272,7 +275,7 @@ fn valid_user_shell_path(shell: &str) -> bool {
     path.is_file() && is_executable_file(path)
 }
 
-#[cfg(unix)]
+#[cfg(not(target_os = "windows"))]
 fn is_executable_file(path: &std::path::Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
 
@@ -281,11 +284,7 @@ fn is_executable_file(path: &std::path::Path) -> bool {
         .unwrap_or(false)
 }
 
-#[cfg(not(unix))]
-fn is_executable_file(path: &std::path::Path) -> bool {
-    path.is_file()
-}
-
+#[cfg(not(target_os = "windows"))]
 fn get_user_shell() -> String {
     std::env::var("SHELL")
         .ok()
@@ -293,6 +292,7 @@ fn get_user_shell() -> String {
         .unwrap_or_else(|| fallback_user_shell().to_string())
 }
 
+#[cfg(not(target_os = "windows"))]
 fn build_exec_line(shell: &str, cwd: Option<&Path>) -> String {
     let quoted_shell = shell_single_quote(shell);
 
@@ -311,6 +311,7 @@ fn build_exec_line(shell: &str, cwd: Option<&Path>) -> String {
     }
 }
 
+#[cfg(not(target_os = "windows"))]
 fn build_provider_command_line(shell: &str, config_path: &str, cwd: Option<&Path>) -> String {
     let claude_command = format!("claude --settings {}", shell_single_quote(config_path));
     let command = cwd
@@ -331,6 +332,7 @@ fn build_provider_command_line(shell: &str, config_path: &str, cwd: Option<&Path
     )
 }
 
+#[cfg(not(target_os = "windows"))]
 fn provider_command_flag_for_shell(shell: &str) -> &'static str {
     match shell.rsplit('/').next().unwrap_or(shell) {
         "dash" | "sh" => "-c",
@@ -339,6 +341,7 @@ fn provider_command_flag_for_shell(shell: &str) -> &'static str {
     }
 }
 
+#[cfg(not(target_os = "windows"))]
 fn build_final_shell_cd_command(shell: &str, cwd: Option<&Path>) -> String {
     if matches!(shell.rsplit('/').next().unwrap_or(shell), "zsh") {
         return String::new();
@@ -1186,6 +1189,7 @@ mod tests {
             .expect("fixture permissions should be set");
     }
 
+    #[cfg(not(target_os = "windows"))]
     #[test]
     fn build_exec_line_uses_user_shell() {
         assert_eq!(build_exec_line("/bin/zsh", None), "exec '/bin/zsh' -l");
@@ -1205,6 +1209,7 @@ mod tests {
         );
     }
 
+    #[cfg(not(target_os = "windows"))]
     #[test]
     fn build_provider_command_line_uses_user_shell_environment() {
         assert_eq!(
@@ -1229,6 +1234,7 @@ mod tests {
         );
     }
 
+    #[cfg(not(target_os = "windows"))]
     #[test]
     fn build_final_shell_cd_command_preserves_non_zsh_cwd() {
         assert_eq!(build_final_shell_cd_command("/bin/zsh", None), "");
