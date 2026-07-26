@@ -66,6 +66,24 @@ const AUTH_PROVIDER_GITHUB_COPILOT: &str = "github_copilot";
 const AUTH_PROVIDER_CODEX_OAUTH: &str = "codex_oauth";
 const AUTH_PROVIDER_XAI_OAUTH: &str = "xai_oauth";
 
+pub fn init_global_outbound_proxy_from_db() -> Result<(), String> {
+    let db = Database::init().map_err(|e| e.to_string())?;
+    let proxy_url = db.get_global_proxy_url().map_err(|e| e.to_string())?;
+
+    if let Err(error) = crate::proxy::http_client::init(proxy_url.as_deref()) {
+        if proxy_url.is_some() {
+            let _ = db.set_global_proxy_url(None);
+        }
+        crate::proxy::http_client::init(None).map_err(|fallback_error| {
+            format!(
+                "Failed to initialize remote global outbound proxy: {error}; fallback direct initialization failed: {fallback_error}"
+            )
+        })?;
+    }
+
+    Ok(())
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StatusPayload {
@@ -2887,12 +2905,15 @@ pub fn get_routing_global_outbound_proxy() -> Result<Option<String>, String> {
 
 pub fn set_routing_global_outbound_proxy(url: &str) -> Result<(), String> {
     let db = Database::init().map_err(|e| e.to_string())?;
-    let url = if url.trim().is_empty() || url == "-" {
+    let trimmed = url.trim();
+    let url = if trimmed.is_empty() || trimmed == "-" {
         None
     } else {
-        Some(url.trim())
+        Some(trimmed)
     };
-    db.set_global_proxy_url(url).map_err(|e| e.to_string())
+    crate::proxy::http_client::validate_proxy(url)?;
+    db.set_global_proxy_url(url).map_err(|e| e.to_string())?;
+    crate::proxy::http_client::apply_proxy(url)
 }
 
 pub fn export_database_sql() -> Result<String, String> {

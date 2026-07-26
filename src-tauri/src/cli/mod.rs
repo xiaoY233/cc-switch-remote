@@ -663,6 +663,12 @@ pub fn run_entry(args: &[String]) -> CliRunResult {
             .expect("serialize app config dir init error"),
         );
     }
+    if let Err(error) = commands::init_global_outbound_proxy_from_db() {
+        return CliRunResult::Json(
+            serde_json::to_value(types::err::<()>("global_outbound_proxy_init_failed", error))
+                .expect("serialize global outbound proxy init error"),
+        );
+    }
 
     let args = normalize_args(args);
     if args == ["serve"] {

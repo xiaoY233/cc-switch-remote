@@ -673,6 +673,26 @@ fn routing_config_commands_round_trip_through_json_cli() {
 
 #[test]
 #[serial]
+fn saved_invalid_global_outbound_proxy_is_cleared_on_cli_startup() {
+    let (status_response, get_response) = with_temp_home(|| {
+        let db = cc_switch_lib::Database::init().expect("init db");
+        db.set_global_proxy_url(Some("http://127.0.0.1:99999"))
+            .expect("seed invalid outbound proxy");
+
+        let status_response = cc_switch_lib::cli::run(&["status".to_string()]);
+        let get_response =
+            cc_switch_lib::cli::run(&["routing-config".to_string(), "global-outbound".to_string()]);
+
+        (status_response, get_response)
+    });
+
+    assert_eq!(status_response["ok"], true);
+    assert_eq!(get_response["ok"], true);
+    assert!(get_response["data"].is_null());
+}
+
+#[test]
+#[serial]
 fn routing_runtime_stop_clears_enabled_app_routing_configs() {
     let (stop_response, claude_response, codex_response, gemini_response) = with_temp_home(|| {
         let db = cc_switch_lib::Database::init().expect("init db");

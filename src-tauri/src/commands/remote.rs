@@ -1267,7 +1267,7 @@ async fn install_helper_from_local_download(
         )
     })?;
 
-    let helper_bytes = reqwest::Client::new()
+    let helper_bytes = crate::proxy::http_client::get()
         .get(&asset.browser_download_url)
         .header(reqwest::header::USER_AGENT, GITHUB_API_USER_AGENT)
         .send()
@@ -1305,7 +1305,7 @@ async fn fetch_github_helper_release(
         "https://api.github.com/repos/{}/releases/tags/{}",
         source.release_repo, source.release_tag
     );
-    reqwest::Client::new()
+    crate::proxy::http_client::get()
         .get(&url)
         .header(reqwest::header::USER_AGENT, GITHUB_API_USER_AGENT)
         .send()

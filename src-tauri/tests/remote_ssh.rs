@@ -274,6 +274,11 @@ fn helper_install_args_install_cli_and_link_configured_helper_path() {
     assert!(remote_command.contains("wget -qO- \"$1\""));
     assert!(remote_command.contains("fetch_url_to_file()"));
     assert!(remote_command.contains("wget -qO \"$2\" \"$1\""));
+    assert!(remote_command.contains("load_existing_helper_outbound_proxy()"));
+    assert!(remote_command.contains("--json routing-config global-outbound"));
+    assert!(remote_command.contains("export http_proxy=\"$outbound_proxy\""));
+    assert!(remote_command.contains("export https_proxy=\"$outbound_proxy\""));
+    assert!(remote_command.contains("export all_proxy=\"$outbound_proxy\""));
     assert!(remote_command.contains("verify_helper_status()"));
     assert!(remote_command.contains("Remote server cannot download helper"));
     assert!(remote_command.contains("Remote server failed to query GitHub helper release"));
