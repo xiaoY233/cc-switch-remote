@@ -254,28 +254,6 @@ pub fn ensure_grokbuild_official_provider(state: State<'_, AppState>) -> Result<
         .map_err(|e| e.to_string())
 }
 
-fn claude_provider_models_are_claude_safe(provider: &Provider) -> bool {
-    let Some(env) = provider
-        .settings_config
-        .get("env")
-        .and_then(|value| value.as_object())
-    else {
-        return true;
-    };
-
-    [
-        "ANTHROPIC_MODEL",
-        "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-        "ANTHROPIC_DEFAULT_SONNET_MODEL",
-        "ANTHROPIC_DEFAULT_OPUS_MODEL",
-    ]
-    .into_iter()
-    .filter_map(|key| env.get(key).and_then(|value| value.as_str()))
-    .map(str::trim)
-    .filter(|value| !value.is_empty())
-    .all(crate::claude_desktop_config::is_claude_safe_model_id)
-}
-
 #[allow(dead_code)]
 pub(crate) fn suggested_claude_desktop_routes(
     provider: &Provider,
