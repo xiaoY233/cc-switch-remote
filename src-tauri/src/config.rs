@@ -490,7 +490,7 @@ mod tests {
         std::env::set_var("CC_SWITCH_USE_PROD_DATA_IN_DEV", "1");
         assert_eq!(
             default_app_config_dir(),
-            home.path().join(APP_CONFIG_DIR_NAME)
+            get_home_dir().join(APP_CONFIG_DIR_NAME)
         );
     }
 
