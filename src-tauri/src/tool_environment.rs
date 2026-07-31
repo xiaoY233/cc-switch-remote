@@ -96,6 +96,7 @@ pub async fn run_tool_lifecycle_action(
     tools: Vec<String>,
     action: String,
     wsl_shell_by_tool: Option<HashMap<String, WslShellPreferenceInput>>,
+    outbound_proxy: Option<String>,
 ) -> Result<(), String> {
     let action = ToolLifecycleAction::from_str(&action)?;
     let requested = normalize_requested_tools(&tools);
@@ -113,7 +114,7 @@ pub async fn run_tool_lifecycle_action(
     tokio::task::spawn_blocking(move || {
         let command_line =
             build_tool_lifecycle_command(&requested, action, wsl_shell_by_tool.as_ref())?;
-        run_tool_lifecycle_silently(&command_line, label)
+        run_tool_lifecycle_silently(&command_line, label, outbound_proxy.as_deref())
     })
     .await
     .map_err(|e| format!("tool lifecycle task join error: {e}"))?
@@ -316,7 +317,11 @@ esac
 /// 后者仍保留给 provider 切换等需要交互式终端的场景）。
 /// 失败时回传 stderr/stdout 末尾若干行，供前端 toast 提示。
 #[cfg(not(target_os = "windows"))]
-fn run_tool_lifecycle_silently(command_line: &str, _label: &str) -> Result<(), String> {
+fn run_tool_lifecycle_silently(
+    command_line: &str,
+    _label: &str,
+    outbound_proxy: Option<&str>,
+) -> Result<(), String> {
     use std::process::Command;
     // command_line 是 bash 风格脚本（含 `set -e` 与多行命令）；强制用 bash 执行，
     // 避免用户默认 shell 为 fish/zsh 时 `set -e` 等语义不一致。
@@ -325,6 +330,7 @@ fn run_tool_lifecycle_silently(command_line: &str, _label: &str) -> Result<(), S
     if let Some(path) = lifecycle_execution_path_env() {
         command.env("PATH", path);
     }
+    apply_outbound_proxy_env(&mut command, outbound_proxy);
     let output = command
         .output()
         .map_err(|e| format!("启动安装进程失败: {e}"))?;
@@ -334,7 +340,11 @@ fn run_tool_lifecycle_silently(command_line: &str, _label: &str) -> Result<(), S
 /// Windows 静默执行：command_line 是 .bat 内容（@echo off + call/wsl 行，CRLF 分隔），
 /// 写临时 .bat 后用 `cmd /C` 执行，`CREATE_NO_WINDOW` 抑制 console 窗口。
 #[cfg(target_os = "windows")]
-fn run_tool_lifecycle_silently(command_line: &str, label: &str) -> Result<(), String> {
+fn run_tool_lifecycle_silently(
+    command_line: &str,
+    label: &str,
+    outbound_proxy: Option<&str>,
+) -> Result<(), String> {
     use std::os::windows::process::CommandExt;
     use std::process::Command;
 
@@ -342,14 +352,32 @@ fn run_tool_lifecycle_silently(command_line: &str, label: &str) -> Result<(), St
         std::env::temp_dir().join(format!("cc_switch_{}_{}.bat", label, std::process::id()));
     std::fs::write(&bat_file, command_line).map_err(|e| format!("写入批处理文件失败: {e}"))?;
 
-    let output = Command::new("cmd")
+    let mut command = Command::new("cmd");
+    command
         .arg("/C")
         .arg(&bat_file)
-        .creation_flags(CREATE_NO_WINDOW)
-        .output();
+        .creation_flags(CREATE_NO_WINDOW);
+    apply_outbound_proxy_env(&mut command, outbound_proxy);
+    let output = command.output();
     let _ = std::fs::remove_file(&bat_file);
 
     finish_lifecycle_output(&output.map_err(|e| format!("启动安装进程失败: {e}"))?)
+}
+
+fn apply_outbound_proxy_env(command: &mut std::process::Command, proxy_url: Option<&str>) {
+    let Some(proxy_url) = proxy_url.map(str::trim).filter(|url| !url.is_empty()) else {
+        return;
+    };
+    for key in [
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+    ] {
+        command.env(key, proxy_url);
+    }
 }
 
 /// 把子进程退出结果转成 `Result`：成功返回 `Ok`；失败提取 stderr（空则回退 stdout）
@@ -648,6 +676,20 @@ fn chain_update_commands(
         // `||` 右侧也必须显式 `call`,否则批处理会转移控制权并跳过后续工具。
         LifecycleCommandShell::WindowsBatch => format!("{primary} || call {fallback}"),
     }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn grok_native_update_command(update: String) -> String {
+    chain_update_commands(
+        update,
+        GROK_INSTALL_UNIX.to_string(),
+        LifecycleCommandShell::Posix,
+    )
+}
+
+#[cfg(target_os = "windows")]
+fn grok_native_update_command(update: String) -> String {
+    format!("{update} || {}", grok_install_windows_command())
 }
 
 fn tool_action_shell_command_for_shell(
@@ -1208,8 +1250,8 @@ fn default_flag_for_shell(shell: &str) -> &'static str {
 #[cfg(not(target_os = "windows"))]
 fn path_from_env_output(raw: &str) -> Option<OsString> {
     raw.lines()
-        .find_map(|line| line.strip_prefix("PATH="))
-        .filter(|value| !value.trim().is_empty())
+        .filter_map(|line| line.strip_prefix("PATH="))
+        .find(|value| value.starts_with('/'))
         .map(OsString::from)
 }
 
@@ -1237,7 +1279,11 @@ fn login_shell_path_env() -> Option<OsString> {
         .filter(|s| is_valid_shell(s))
         .unwrap_or_else(|| "sh".to_string());
     let flag = default_flag_for_shell(&shell);
-    let output = Command::new(shell).arg(flag).arg("env").output().ok()?;
+    let output = Command::new(shell)
+        .arg(flag)
+        .arg("/usr/bin/env")
+        .output()
+        .ok()?;
     if !output.status.success() {
         return None;
     }
@@ -2287,7 +2333,9 @@ fn anchored_command_from_paths(tool: &str, bin_path: &str, real_target: &str) ->
         return anchored_official_update_command(tool, bin_path);
     }
     if tool == "grok" && is_grok_native_install(bin_path, real_target) {
-        return anchored_official_update_command(tool, bin_path);
+        return Some(grok_native_update_command(
+            anchored_official_update_command(tool, bin_path)?,
+        ));
     }
     let package_command = package_manager_anchored_command_from_paths(tool, bin_path, real_target);
     if brew_formula_from_path(real_target).is_some() {
@@ -2367,7 +2415,9 @@ fn anchored_command_from_paths(tool: &str, bin_path: &str, real_target: &str) ->
         return anchored_official_update_command(tool, bin_path);
     }
     if tool == "grok" && is_grok_native_install(bin_path, real_target) {
-        return anchored_official_update_command(tool, bin_path);
+        return Some(grok_native_update_command(
+            anchored_official_update_command(tool, bin_path)?,
+        ));
     }
     let package_command = package_manager_anchored_command_from_paths(tool, bin_path);
     if prefers_official_update(tool, LifecycleCommandShell::WindowsBatch) {
@@ -2619,6 +2669,34 @@ mod tests {
                 "/home/me/.nvm/bin:/usr/local/bin:/usr/bin"
             ))
         );
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn path_from_env_output_skips_invalid_path_values() {
+        let raw = "SCRIPT=line1\nPATH=not-an-absolute-path\nPATH=/usr/local/bin:/usr/bin\n";
+        assert_eq!(
+            path_from_env_output(raw),
+            Some(std::ffi::OsString::from("/usr/local/bin:/usr/bin"))
+        );
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn lifecycle_subprocess_receives_configured_outbound_proxy() {
+        run_tool_lifecycle_silently(
+            concat!(
+                "test \"$http_proxy\" = \"http://127.0.0.1:7890\" && ",
+                "test \"$https_proxy\" = \"http://127.0.0.1:7890\" && ",
+                "test \"$all_proxy\" = \"http://127.0.0.1:7890\" && ",
+                "test \"$HTTP_PROXY\" = \"http://127.0.0.1:7890\" && ",
+                "test \"$HTTPS_PROXY\" = \"http://127.0.0.1:7890\" && ",
+                "test \"$ALL_PROXY\" = \"http://127.0.0.1:7890\""
+            ),
+            "proxy_env_test",
+            Some("http://127.0.0.1:7890"),
+        )
+        .expect("lifecycle command should inherit the configured outbound proxy");
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -2899,6 +2977,21 @@ mod tests {
             let cmd = anchored_command_from_paths("hermes", &bin_path, &bin_path);
             let expected = format!("{} update", expect_quoted_path(&bin_path));
             assert_eq!(cmd.as_deref(), Some(expected.as_str()));
+        }
+
+        #[test]
+        fn grok_native_windows_uses_installer_fallback() {
+            let (_dir, _sub, bin_path) = setup_sibling(".grok/bin", "grok.exe", &["npm.cmd"]);
+            let cmd = anchored_command_from_paths("grok", &bin_path, &bin_path)
+                .expect("native Grok should use an anchored update");
+            let expected = format!(
+                "{} update || {}",
+                expect_quoted_path(&bin_path),
+                grok_install_windows_command()
+            );
+            assert_eq!(cmd, expected);
+            assert!(!cmd.contains("|| call"));
+            assert!(!cmd.contains("npm"));
         }
 
         #[test]
@@ -3313,6 +3406,21 @@ mod tests {
                 "/Users/me/.local/share/claude/versions/2.1.146",
             );
             assert_eq!(cmd.as_deref(), Some("/Users/me/.local/bin/claude update"));
+        }
+
+        #[test]
+        fn grok_native_installer_uses_official_installer_fallback() {
+            let cmd = anchored_command_from_paths(
+                "grok",
+                "/Users/me/.grok/bin/grok",
+                "/Users/me/.grok/downloads/grok-macos-aarch64",
+            )
+            .expect("native Grok should use an anchored update");
+            assert_eq!(
+                cmd,
+                format!("/Users/me/.grok/bin/grok update || {GROK_INSTALL_UNIX}")
+            );
+            assert!(!cmd.contains("npm"));
         }
 
         #[test]

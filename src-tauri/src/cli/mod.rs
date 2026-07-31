@@ -20,6 +20,34 @@ pub fn run(args: &[String]) -> Value {
 mod tests {
     use super::*;
 
+    struct EnvVarGuard {
+        key: &'static str,
+        previous: Option<std::ffi::OsString>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: impl AsRef<std::ffi::OsStr>) -> Self {
+            let previous = std::env::var_os(key);
+            std::env::set_var(key, value);
+            Self { key, previous }
+        }
+
+        fn remove(key: &'static str) -> Self {
+            let previous = std::env::var_os(key);
+            std::env::remove_var(key);
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            match self.previous.take() {
+                Some(value) => std::env::set_var(self.key, value),
+                None => std::env::remove_var(self.key),
+            }
+        }
+    }
+
     #[test]
     fn parse_bool_arg_accepts_helper_wire_values() {
         assert_eq!(parse_bool_arg("true"), Ok(true));
@@ -337,6 +365,49 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
+    fn providers_ensure_official_restores_grokbuild_seed_in_helper_database() {
+        let dir = tempfile::tempdir().expect("temp test home");
+        let _home = EnvVarGuard::set("CC_SWITCH_TEST_HOME", dir.path());
+
+        let ensure = run_command(&[
+            "providers".to_string(),
+            "ensure-official".to_string(),
+            "grokbuild".to_string(),
+        ]);
+        let list = run_command(&[
+            "providers".to_string(),
+            "list".to_string(),
+            "grokbuild".to_string(),
+        ]);
+
+        assert_eq!(ensure.get("ok").and_then(Value::as_bool), Some(true));
+        assert_eq!(ensure.get("data").and_then(Value::as_bool), Some(true));
+        let provider = list
+            .pointer("/data/grokbuild-official")
+            .expect("fixed Grok Build official seed");
+        assert_eq!(
+            provider.get("id").and_then(Value::as_str),
+            Some("grokbuild-official")
+        );
+        assert_eq!(
+            provider.get("category").and_then(Value::as_str),
+            Some("official")
+        );
+        assert_eq!(
+            provider
+                .pointer("/settingsConfig/config")
+                .and_then(Value::as_str),
+            Some("")
+        );
+        assert!(
+            dir.path().join(".cc-switch-remote/cc-switch.db").exists(),
+            "helper seed restore should only write the isolated remote database"
+        );
+    }
+
+    #[test]
+    #[serial_test::serial]
     fn openclaw_scan_health_command_is_registered() {
         let dir = tempfile::tempdir().expect("temp test home");
         let previous_home = std::env::var_os("CC_SWITCH_TEST_HOME");
@@ -354,6 +425,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn codex_oauth_models_command_is_registered() {
         let dir = tempfile::tempdir().expect("temp test home");
         let previous_home = std::env::var_os("CC_SWITCH_TEST_HOME");
@@ -382,6 +454,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn copilot_models_command_is_registered() {
         let dir = tempfile::tempdir().expect("temp test home");
         let previous_home = std::env::var_os("CC_SWITCH_TEST_HOME");
@@ -410,6 +483,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn codex_oauth_quota_command_is_registered() {
         let dir = tempfile::tempdir().expect("temp test home");
         let previous_home = std::env::var_os("CC_SWITCH_TEST_HOME");
@@ -438,6 +512,36 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
+    fn xai_oauth_quota_command_is_registered() {
+        let dir = tempfile::tempdir().expect("temp test home");
+        let previous_home = std::env::var_os("CC_SWITCH_TEST_HOME");
+        std::env::set_var("CC_SWITCH_TEST_HOME", dir.path());
+
+        let response = run_command(&[
+            "auth".to_string(),
+            "quota".to_string(),
+            "xai_oauth".to_string(),
+            "__missing_xai_oauth_account__".to_string(),
+        ]);
+
+        match previous_home {
+            Some(value) => std::env::set_var("CC_SWITCH_TEST_HOME", value),
+            None => std::env::remove_var("CC_SWITCH_TEST_HOME"),
+        }
+
+        assert_eq!(response.get("ok").and_then(Value::as_bool), Some(true));
+        assert_eq!(
+            response
+                .get("data")
+                .and_then(|data| data.get("credentialStatus"))
+                .and_then(Value::as_str),
+            Some("expired")
+        );
+    }
+
+    #[test]
+    #[serial_test::serial]
     fn copilot_usage_command_is_registered() {
         let dir = tempfile::tempdir().expect("temp test home");
         let previous_home = std::env::var_os("CC_SWITCH_TEST_HOME");
@@ -515,6 +619,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn auth_status_returns_remote_managed_auth_state() {
         let dir = tempfile::tempdir().expect("temp test home");
         let previous_home = std::env::var_os("CC_SWITCH_TEST_HOME");
@@ -607,6 +712,69 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
+    fn usage_models_dev_commands_are_registered() {
+        let dir = tempfile::tempdir().expect("temp test home");
+        let previous_home = std::env::var_os("CC_SWITCH_TEST_HOME");
+        std::env::set_var("CC_SWITCH_TEST_HOME", dir.path());
+
+        let state = run_command(&["usage".to_string(), "models-dev-state".to_string()]);
+        let save = run_command(&[
+            "usage".to_string(),
+            "models-dev-save".to_string(),
+            serde_json::json!({
+                "autoSyncEnabled": true,
+                "includeCommonModels": false,
+                "selectedModelKeys": ["openai/gpt-5"],
+                "excludedCommonModelKeys": [],
+                "lastSyncAt": null,
+                "lastSyncError": null
+            })
+            .to_string(),
+        ]);
+        let batch = run_command(&[
+            "usage".to_string(),
+            "model-pricing-batch".to_string(),
+            serde_json::json!([{
+                "modelId": "gpt-5-test",
+                "displayName": "GPT-5 Test",
+                "inputCostPerMillion": "1",
+                "outputCostPerMillion": "2",
+                "cacheReadCostPerMillion": "0.1",
+                "cacheCreationCostPerMillion": "0.2"
+            }])
+            .to_string(),
+        ]);
+        let record = run_command(&[
+            "usage".to_string(),
+            "models-dev-record".to_string(),
+            serde_json::json!({
+                "syncedAt": 123,
+                "error": null
+            })
+            .to_string(),
+        ]);
+
+        match previous_home {
+            Some(value) => std::env::set_var("CC_SWITCH_TEST_HOME", value),
+            None => std::env::remove_var("CC_SWITCH_TEST_HOME"),
+        }
+
+        for response in [&state, &save, &batch, &record] {
+            assert_eq!(response.get("ok").and_then(Value::as_bool), Some(true));
+            assert!(response.get("data").is_some());
+        }
+        assert_eq!(
+            state
+                .pointer("/data/config/autoSyncEnabled")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        assert_eq!(batch.get("data").and_then(Value::as_u64), Some(1));
+    }
+
+    #[test]
+    #[serial_test::serial]
     fn usage_sync_session_returns_stable_empty_result() {
         let dir = tempfile::tempdir().expect("temp test home");
         let previous_home = std::env::var_os("CC_SWITCH_TEST_HOME");
@@ -650,6 +818,61 @@ mod tests {
             .and_then(|data| data.get("errors"))
             .and_then(Value::as_array)
             .is_some());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn usage_sync_session_imports_grok_usage_through_shared_sync() {
+        let dir = tempfile::tempdir().expect("temp test home");
+        let _home = EnvVarGuard::set("CC_SWITCH_TEST_HOME", dir.path());
+        let _xdg = EnvVarGuard::set("XDG_DATA_HOME", dir.path().join("xdg-data"));
+        let _opencode = EnvVarGuard::set("OPENCODE_DB", dir.path().join("missing-opencode.db"));
+        let _sync_enabled = EnvVarGuard::remove("CC_SWITCH_DISABLE_SESSION_SYNC_FOR_TESTS");
+        let session_dir = dir
+            .path()
+            .join(".grok/sessions/test-project/helper-session");
+        std::fs::create_dir_all(&session_dir).expect("create Grok session directory");
+        std::fs::write(
+            session_dir.join("updates.jsonl"),
+            concat!(
+                r#"{"timestamp":1000000000,"method":"_x.ai/session/update","params":{"update":{"sessionUpdate":"turn_completed","prompt_id":"helper-prompt","usage":{"modelUsage":{"grok-4.5-build":{"inputTokens":100,"outputTokens":10,"cachedReadTokens":0,"apiDurationMs":5,"costUsdTicks":1000000}}}}}}"#,
+                "\n"
+            ),
+        )
+        .expect("write Grok usage fixture");
+
+        let response = run_command(&["usage".to_string(), "sync-session".to_string()]);
+
+        assert_eq!(response.get("ok").and_then(Value::as_bool), Some(true));
+        assert_eq!(
+            response
+                .get("data")
+                .and_then(|data| data.get("imported"))
+                .and_then(Value::as_u64),
+            Some(1)
+        );
+
+        let db_path = dir.path().join(".cc-switch-remote/cc-switch.db");
+        assert!(
+            db_path.exists(),
+            "helper database should stay under the isolated remote home: {}",
+            db_path.display()
+        );
+        let conn = rusqlite::Connection::open(&db_path).expect("open helper database");
+        let (request_id, app_type, data_source): (String, String, String) = conn
+            .query_row(
+                "SELECT request_id, app_type, data_source
+                 FROM proxy_request_logs",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("query imported Grok usage");
+        assert_eq!(
+            request_id,
+            "grok_session:helper-session:helper-prompt:grok-4.5-build"
+        );
+        assert_eq!(app_type, "grokbuild");
+        assert_eq!(data_source, "grok_session");
     }
 }
 
@@ -1183,6 +1406,50 @@ pub(crate) fn run_command(args: &[String]) -> Value {
                 }
             }
         }
+        [group, cmd, entries_json] if group == "usage" && cmd == "model-pricing-batch" => {
+            match commands::usage_update_model_pricing_batch(entries_json) {
+                Ok(value) => serde_json::to_value(types::ok(value))
+                    .expect("serialize usage model pricing batch"),
+                Err(message) => serde_json::to_value(types::err::<()>(
+                    "usage_model_pricing_batch_failed",
+                    message,
+                ))
+                .expect("serialize usage model pricing batch error"),
+            }
+        }
+        [group, cmd] if group == "usage" && cmd == "models-dev-state" => {
+            match commands::usage_models_dev_state() {
+                Ok(value) => serde_json::to_value(types::ok(value))
+                    .expect("serialize models.dev sync state"),
+                Err(message) => serde_json::to_value(types::err::<()>(
+                    "usage_models_dev_state_failed",
+                    message,
+                ))
+                .expect("serialize models.dev sync state error"),
+            }
+        }
+        [group, cmd, config_json] if group == "usage" && cmd == "models-dev-save" => {
+            match commands::usage_models_dev_save(config_json) {
+                Ok(value) => serde_json::to_value(types::ok(value))
+                    .expect("serialize models.dev sync config save"),
+                Err(message) => serde_json::to_value(types::err::<()>(
+                    "usage_models_dev_save_failed",
+                    message,
+                ))
+                .expect("serialize models.dev sync config save error"),
+            }
+        }
+        [group, cmd, result_json] if group == "usage" && cmd == "models-dev-record" => {
+            match commands::usage_models_dev_record(result_json) {
+                Ok(value) => serde_json::to_value(types::ok(value))
+                    .expect("serialize models.dev sync result"),
+                Err(message) => serde_json::to_value(types::err::<()>(
+                    "usage_models_dev_record_failed",
+                    message,
+                ))
+                .expect("serialize models.dev sync result error"),
+            }
+        }
         [group, cmd, model_id, display_name, input_cost, output_cost, cache_read_cost, cache_creation_cost]
             if group == "usage" && cmd == "update-model-pricing" =>
         {
@@ -1568,6 +1835,16 @@ pub(crate) fn run_command(args: &[String]) -> Value {
                     }
                     Err(message) => serde_json::to_value(types::err::<()>(
                         "codex_oauth_quota_failed",
+                        message,
+                    ))
+                    .expect("serialize auth quota error"),
+                },
+                "xai_oauth" => match commands::get_xai_oauth_quota(auth_provider, account_id) {
+                    Ok(value) => {
+                        serde_json::to_value(types::ok(value)).expect("serialize auth quota")
+                    }
+                    Err(message) => serde_json::to_value(types::err::<()>(
+                        "xai_oauth_quota_failed",
                         message,
                     ))
                     .expect("serialize auth quota error"),

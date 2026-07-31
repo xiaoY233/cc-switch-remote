@@ -765,10 +765,14 @@ impl ProxyService {
             AppType::Claude => "Claude",
             AppType::Codex => "Codex",
             AppType::Gemini => "Gemini",
+            AppType::GrokBuild => "Grok Build",
             _ => app_type_str,
         };
 
-        if !matches!(app, AppType::Claude | AppType::Codex | AppType::Gemini) {
+        if !matches!(
+            app,
+            AppType::Claude | AppType::Codex | AppType::Gemini | AppType::GrokBuild
+        ) {
             return Ok(unsupported("该应用不支持远程路由".to_string()));
         }
 
@@ -781,6 +785,7 @@ impl ProxyService {
             AppType::Claude => self.read_claude_live().map(|_| ()),
             AppType::Codex => self.read_codex_live().map(|_| ()),
             AppType::Gemini => self.read_gemini_live().map(|_| ()),
+            AppType::GrokBuild => self.read_grok_live().map(|_| ()),
             _ => Ok(()),
         };
         if let Err(error) = live_result {
@@ -1605,8 +1610,11 @@ impl ProxyService {
     /// Grok Build live 是否具备可接管的自定义模型表。
     ///
     /// 官方态 live（Grok CLI 自带 OAuth 登录、无 `[model.*]` 表）没有注入
-    /// 占位符的落点，且官方供应商本就禁止经代理接管（封号风险），调用方
-    /// 应跳过接管或直接报错。
+    /// 占位符的落点：Grok CLI 以「config 是否为空」区分官方 OAuth / 自定义
+    /// 供应商两种模式，表达不出「官方 OAuth + 自定义 base_url」。官方供应商
+    /// 的接管能力门见 `official_provider_supports_proxy_takeover`（按应用逐个
+    /// 开，目前仅 Codex），调用方应跳过接管或直接报错。官方态的用量统计由
+    /// `session_usage_grokbuild` 从会话日志导入，不依赖代理。
     fn grok_live_config_supports_takeover(config: &Value) -> bool {
         config
             .get("config")
@@ -4214,6 +4222,37 @@ wire_api = "responses"
                 .contains("当前供应商"),
             "reason should explain missing current provider: {preflight:?}"
         );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn routing_preflight_accepts_grokbuild_with_provider_and_live_config() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+        let db = Arc::new(Database::memory().expect("init db"));
+        let service = ProxyService::new(db.clone());
+        let provider = Provider::with_id(
+            "grok-routing".to_string(),
+            "Grok Routing".to_string(),
+            grok_provider_config("https://api.example.com/v1", "grok-key"),
+            None,
+        );
+        db.save_provider("grokbuild", &provider)
+            .expect("save Grok Build provider");
+        db.set_current_provider("grokbuild", "grok-routing")
+            .expect("set Grok Build current provider");
+        crate::settings::set_current_provider(&AppType::GrokBuild, Some("grok-routing"))
+            .expect("set Grok Build current provider in settings");
+        crate::grok_config::write_grok_provider_live(&provider)
+            .expect("write Grok Build live config");
+
+        let preflight = service
+            .preflight_takeover_for_app("grokbuild")
+            .expect("preflight Grok Build routing");
+
+        assert_eq!(preflight.app_type, "grokbuild");
+        assert!(preflight.can_enable, "{:?}", preflight.reason);
+        assert!(preflight.reason.is_none());
     }
 
     #[tokio::test]

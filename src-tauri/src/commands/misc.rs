@@ -113,7 +113,7 @@ pub async fn run_tool_lifecycle_action(
         std::collections::HashMap<String, crate::tool_environment::WslShellPreferenceInput>,
     >,
 ) -> Result<(), String> {
-    crate::tool_environment::run_tool_lifecycle_action(tools, action, wsl_shell_by_tool).await
+    crate::tool_environment::run_tool_lifecycle_action(tools, action, wsl_shell_by_tool, None).await
 }
 
 #[tauri::command]

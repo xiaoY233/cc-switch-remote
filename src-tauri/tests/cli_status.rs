@@ -694,11 +694,11 @@ fn saved_invalid_global_outbound_proxy_is_cleared_on_cli_startup() {
 #[test]
 #[serial]
 fn routing_runtime_stop_clears_enabled_app_routing_configs() {
-    let (stop_response, claude_response, codex_response, gemini_response) = with_temp_home(|| {
+    let (stop_response, app_responses) = with_temp_home(|| {
         let db = cc_switch_lib::Database::init().expect("init db");
         let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
         runtime.block_on(async {
-            for app_type in ["claude", "codex", "gemini"] {
+            for app_type in ["claude", "codex", "gemini", "grokbuild"] {
                 let mut config = db
                     .get_proxy_config_for_app(app_type)
                     .await
@@ -712,34 +712,21 @@ fn routing_runtime_stop_clears_enabled_app_routing_configs() {
 
         let stop_response =
             cc_switch_lib::cli::run(&["routing-runtime".to_string(), "stop".to_string()]);
-        let claude_response = cc_switch_lib::cli::run(&[
-            "routing-config".to_string(),
-            "app".to_string(),
-            "claude".to_string(),
-        ]);
-        let codex_response = cc_switch_lib::cli::run(&[
-            "routing-config".to_string(),
-            "app".to_string(),
-            "codex".to_string(),
-        ]);
-        let gemini_response = cc_switch_lib::cli::run(&[
-            "routing-config".to_string(),
-            "app".to_string(),
-            "gemini".to_string(),
-        ]);
+        let app_responses = ["claude", "codex", "gemini", "grokbuild"].map(|app_type| {
+            cc_switch_lib::cli::run(&[
+                "routing-config".to_string(),
+                "app".to_string(),
+                app_type.to_string(),
+            ])
+        });
 
-        (
-            stop_response,
-            claude_response,
-            codex_response,
-            gemini_response,
-        )
+        (stop_response, app_responses)
     });
 
     assert_eq!(stop_response["ok"], true, "stop_response={stop_response:?}");
-    assert_eq!(claude_response["data"]["enabled"], false);
-    assert_eq!(codex_response["data"]["enabled"], false);
-    assert_eq!(gemini_response["data"]["enabled"], false);
+    for response in app_responses {
+        assert_eq!(response["data"]["enabled"], false, "response={response:?}");
+    }
 }
 
 #[test]

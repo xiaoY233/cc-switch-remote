@@ -58,6 +58,7 @@ import { useImportExport } from "@/hooks/useImportExport";
 import { useProxyStatus } from "@/hooks/useProxyStatus";
 import { useRemoteSettings } from "@/hooks/useRemoteSettings";
 import { useAppProxyConfig } from "@/lib/query/proxy";
+import { REMOTE_ROUTABLE_APPS } from "@/lib/remoteRoutingApps";
 import { remoteApi } from "@/lib/api";
 import type {
   ManagementTarget,
@@ -161,6 +162,8 @@ export function RemoteSettingsPage({
   const streamCheckCapability =
     health?.capabilities.includes("stream-check") ?? false;
   const usageCapability = health?.capabilities.includes("usage") ?? false;
+  const usageModelPricingSyncCapability =
+    health?.capabilities.includes("usage-model-pricing-sync") ?? false;
   const authCapability = health?.capabilities.includes("auth") ?? false;
   const routingCapability =
     health?.capabilities.includes("routing-config") ?? false;
@@ -650,6 +653,7 @@ export function RemoteSettingsPage({
             ) : (
               <UsageDashboard
                 target={target}
+                modelsDevSyncSupported={usageModelPricingSyncCapability}
                 refreshIntervalMs={
                   remoteSettings?.usageDashboardRefreshIntervalMs
                 }
@@ -1023,10 +1027,12 @@ function RemoteRoutingSettingsSection({
   const { data: claudeAppConfig } = useAppProxyConfig("claude", target);
   const { data: codexAppConfig } = useAppProxyConfig("codex", target);
   const { data: geminiAppConfig } = useAppProxyConfig("gemini", target);
+  const { data: grokbuildAppConfig } = useAppProxyConfig("grokbuild", target);
   const appConfigs = {
     claude: claudeAppConfig,
     codex: codexAppConfig,
     gemini: geminiAppConfig,
+    grokbuild: grokbuildAppConfig,
   };
   const disabledMessage = !helperReady
     ? t("remote.settings.environment.helperRequired", {
@@ -1155,12 +1161,14 @@ function RemoteRoutingSettingsSection({
                 </span>
               </div>
               <Tabs defaultValue="claude" className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="claude">Claude</TabsTrigger>
-                  <TabsTrigger value="codex">Codex</TabsTrigger>
-                  <TabsTrigger value="gemini">Gemini</TabsTrigger>
+                <TabsList className="grid w-full grid-cols-4">
+                  {REMOTE_ROUTABLE_APPS.map(({ id, label }) => (
+                    <TabsTrigger key={id} value={id}>
+                      {label}
+                    </TabsTrigger>
+                  ))}
                 </TabsList>
-                {(["claude", "codex", "gemini"] as const).map((appType) => {
+                {REMOTE_ROUTABLE_APPS.map(({ id: appType }) => {
                   const failoverDisabled =
                     !routingRuntimeCapability ||
                     !isRunning ||

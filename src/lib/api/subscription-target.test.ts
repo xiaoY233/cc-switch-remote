@@ -4,6 +4,7 @@ import type { ManagementTarget, RemoteHostProfile } from "./remote";
 
 const invokeMock = vi.hoisted(() => vi.fn());
 const remoteGetCodexOauthQuotaMock = vi.hoisted(() => vi.fn());
+const remoteGetXaiOauthQuotaMock = vi.hoisted(() => vi.fn());
 const remoteGetSubscriptionQuotaMock = vi.hoisted(() => vi.fn());
 const remoteGetBalanceMock = vi.hoisted(() => vi.fn());
 const remoteGetCodingPlanQuotaMock = vi.hoisted(() => vi.fn());
@@ -20,6 +21,8 @@ vi.mock("./remote", async () => {
       ...actual.remoteApi,
       getCodexOauthQuota: (...args: unknown[]) =>
         remoteGetCodexOauthQuotaMock(...args),
+      getXaiOauthQuota: (...args: unknown[]) =>
+        remoteGetXaiOauthQuotaMock(...args),
       getSubscriptionQuota: (...args: unknown[]) =>
         remoteGetSubscriptionQuotaMock(...args),
       getBalance: (...args: unknown[]) => remoteGetBalanceMock(...args),
@@ -51,6 +54,7 @@ describe("subscriptionApi.getCodexOauthQuota", () => {
   beforeEach(() => {
     invokeMock.mockReset();
     remoteGetCodexOauthQuotaMock.mockReset();
+    remoteGetXaiOauthQuotaMock.mockReset();
     remoteGetSubscriptionQuotaMock.mockReset();
     remoteGetBalanceMock.mockReset();
     remoteGetCodingPlanQuotaMock.mockReset();
@@ -89,10 +93,50 @@ describe("subscriptionApi.getCodexOauthQuota", () => {
   });
 });
 
+describe("subscriptionApi.getXaiOauthQuota", () => {
+  beforeEach(() => {
+    invokeMock.mockReset();
+    remoteGetXaiOauthQuotaMock.mockReset();
+  });
+
+  it("uses the local xAI OAuth quota command for local targets", async () => {
+    invokeMock.mockResolvedValueOnce({
+      success: false,
+      tool: "xai_oauth",
+      credentialStatus: "not_found",
+    });
+
+    await subscriptionApi.getXaiOauthQuota("local-account");
+
+    expect(invokeMock).toHaveBeenCalledWith("get_xai_oauth_quota", {
+      accountId: "local-account",
+    });
+    expect(remoteGetXaiOauthQuotaMock).not.toHaveBeenCalled();
+  });
+
+  it("uses the remote helper for remote targets", async () => {
+    remoteGetXaiOauthQuotaMock.mockResolvedValueOnce({
+      success: false,
+      tool: "xai_oauth",
+      credentialStatus: "not_found",
+    });
+
+    await subscriptionApi.getXaiOauthQuota("remote-account", remoteTarget);
+
+    expect(remoteGetXaiOauthQuotaMock).toHaveBeenCalledWith(
+      remoteProfile,
+      "remote-account",
+      remoteTarget.secret,
+    );
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("subscriptionApi.getQuota", () => {
   beforeEach(() => {
     invokeMock.mockReset();
     remoteGetCodexOauthQuotaMock.mockReset();
+    remoteGetXaiOauthQuotaMock.mockReset();
     remoteGetSubscriptionQuotaMock.mockReset();
     remoteGetBalanceMock.mockReset();
     remoteGetCodingPlanQuotaMock.mockReset();

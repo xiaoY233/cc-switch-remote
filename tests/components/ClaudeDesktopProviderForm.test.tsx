@@ -357,7 +357,7 @@ describe("ClaudeDesktopProviderForm", () => {
         model: "upstream-old",
         labelOverride: "upstream-old",
       },
-      "claude-opus-4-8": { model: "upstream-old" },
+      "claude-opus-5": { model: "upstream-old" },
       "claude-fable-5": { model: "upstream-old" },
       "claude-haiku-4-5": { model: "upstream-old" },
     });
@@ -365,7 +365,7 @@ describe("ClaudeDesktopProviderForm", () => {
       [
         "claude-fable-5",
         "claude-haiku-4-5",
-        "claude-opus-4-8",
+        "claude-opus-5",
         "claude-sonnet-5",
       ],
     );
@@ -401,7 +401,7 @@ describe("ClaudeDesktopProviderForm", () => {
       model: "deepseek-v4-pro",
       supports1m: true,
     });
-    expect(routes["claude-opus-4-8"]).toMatchObject({
+    expect(routes["claude-opus-5"]).toMatchObject({
       model: "deepseek-v4-pro",
       supports1m: true,
     });

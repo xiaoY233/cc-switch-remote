@@ -111,4 +111,42 @@ describe("RemoteAppRoutingToggle", () => {
 
     expect(screen.getByRole("switch")).toBeDisabled();
   });
+
+  it("loads Grok Build routing state from the selected remote target", () => {
+    useProxyStatusMock.mockReturnValue({
+      isRunning: true,
+      startProxyServer: vi.fn(),
+      isStarting: false,
+    });
+    useAppProxyConfigMock.mockReturnValue({
+      data: { appType: "grokbuild", enabled: true },
+      isLoading: false,
+    });
+    useRoutingAppPreflightMock.mockReturnValue({
+      data: { appType: "grokbuild", canEnable: true, reason: null },
+      isLoading: false,
+    });
+    useUpdateAppProxyConfigMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: vi.fn(),
+    });
+
+    render(
+      <RemoteAppRoutingToggle activeApp="grokbuild" target={remoteTarget} />,
+    );
+
+    expect(useAppProxyConfigMock).toHaveBeenCalledWith(
+      "grokbuild",
+      remoteTarget,
+    );
+    expect(useRoutingAppPreflightMock).toHaveBeenCalledWith(
+      "grokbuild",
+      remoteTarget,
+    );
+    expect(screen.getByRole("switch")).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByTestId("remote-app-routing-toggle")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Grok Build"),
+    );
+  });
 });

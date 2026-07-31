@@ -8,6 +8,8 @@ import type {
   RequestLog,
   LogFilters,
   ModelPricing,
+  ModelsDevSyncConfig,
+  ModelsDevSyncState,
   ProviderLimitStatus,
   PaginatedLogs,
   SessionSyncResult,
@@ -293,6 +295,59 @@ export const usageApi = {
       cacheReadCost,
       cacheCreationCost,
     });
+  },
+
+  updateModelPricingBatch: async (
+    entries: ModelPricing[],
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+  ): Promise<number> => {
+    if (target.type === "remote") {
+      return remoteApi.updateModelPricingBatch(
+        target.profile,
+        entries,
+        target.secret,
+      );
+    }
+    return invoke("update_model_pricing_batch", { entries });
+  },
+
+  getModelsDevSyncConfig: async (
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+  ): Promise<ModelsDevSyncState> => {
+    if (target.type === "remote") {
+      return remoteApi.getModelsDevSyncConfig(target.profile, target.secret);
+    }
+    return invoke("get_models_dev_sync_config");
+  },
+
+  saveModelsDevSyncConfig: async (
+    config: ModelsDevSyncConfig,
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+  ): Promise<void> => {
+    if (target.type === "remote") {
+      return remoteApi.saveModelsDevSyncConfig(
+        target.profile,
+        config,
+        target.secret,
+      );
+    }
+    return invoke("save_models_dev_sync_config", { config });
+  },
+
+  recordModelsDevSyncResult: async (
+    syncedAt: number | null,
+    error: string | null,
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+  ): Promise<void> => {
+    if (target.type === "remote") {
+      return remoteApi.recordModelsDevSyncResult(
+        target.profile,
+        syncedAt,
+        error,
+        target.secret,
+      );
+    }
+    return invoke("record_models_dev_sync_result", { syncedAt, error });
   },
 
   deleteModelPricing: async (

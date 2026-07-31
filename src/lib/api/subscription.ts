@@ -31,6 +31,20 @@ export const subscriptionApi = {
 
     return invoke("get_codex_oauth_quota", { accountId });
   },
+  getXaiOauthQuota: (
+    accountId: string | null,
+    target: ManagementTarget = { type: "local" },
+  ): Promise<SubscriptionQuota> => {
+    if (target.type === "remote") {
+      return remoteApi.getXaiOauthQuota(
+        target.profile,
+        accountId,
+        target.secret,
+      );
+    }
+
+    return invoke("get_xai_oauth_quota", { accountId });
+  },
   getCodingPlanQuota: (
     baseUrl: string,
     apiKey: string,

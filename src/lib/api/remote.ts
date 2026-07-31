@@ -66,6 +66,8 @@ import type {
   DataSourceSummary,
   LogFilters,
   ModelPricing,
+  ModelsDevSyncConfig,
+  ModelsDevSyncState,
   ModelStats,
   PaginatedLogs,
   ProviderStats,
@@ -1285,6 +1287,18 @@ export const remoteApi = {
     });
   },
 
+  getXaiOauthQuota(
+    profile: RemoteHostProfile,
+    accountId?: string | null,
+    secret?: RemoteConnectionSecret,
+  ): Promise<SubscriptionQuota> {
+    return invoke<SubscriptionQuota>("remote_get_xai_oauth_quota", {
+      profile,
+      accountId: accountId || null,
+      secret,
+    });
+  },
+
   getSubscriptionQuota(
     profile: RemoteHostProfile,
     tool: string,
@@ -1483,6 +1497,54 @@ export const remoteApi = {
       outputCost,
       cacheReadCost,
       cacheCreationCost,
+      secret,
+    });
+  },
+
+  updateModelPricingBatch(
+    profile: RemoteHostProfile,
+    entries: ModelPricing[],
+    secret?: RemoteConnectionSecret,
+  ): Promise<number> {
+    return invoke<number>("remote_update_model_pricing_batch", {
+      profile,
+      entries,
+      secret,
+    });
+  },
+
+  getModelsDevSyncConfig(
+    profile: RemoteHostProfile,
+    secret?: RemoteConnectionSecret,
+  ): Promise<ModelsDevSyncState> {
+    return invoke<ModelsDevSyncState>("remote_get_models_dev_sync_config", {
+      profile,
+      secret,
+    });
+  },
+
+  saveModelsDevSyncConfig(
+    profile: RemoteHostProfile,
+    config: ModelsDevSyncConfig,
+    secret?: RemoteConnectionSecret,
+  ): Promise<void> {
+    return invoke<void>("remote_save_models_dev_sync_config", {
+      profile,
+      config,
+      secret,
+    });
+  },
+
+  recordModelsDevSyncResult(
+    profile: RemoteHostProfile,
+    syncedAt: number | null,
+    error: string | null,
+    secret?: RemoteConnectionSecret,
+  ): Promise<void> {
+    return invoke<void>("remote_record_models_dev_sync_result", {
+      profile,
+      syncedAt,
+      error,
       secret,
     });
   },

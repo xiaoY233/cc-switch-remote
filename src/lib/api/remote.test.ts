@@ -325,6 +325,33 @@ describe("remote API invoke mappings", () => {
     });
   });
 
+  it("gets xAI OAuth quota through the remote helper command", async () => {
+    const remoteProfile = profile();
+    const secret: RemoteConnectionSecret = { password: "secret" };
+    invokeMock.mockResolvedValueOnce({
+      success: false,
+      tool: "xai_oauth",
+      credentialStatus: "not_found",
+    });
+
+    const result = await remoteApi.getXaiOauthQuota(
+      remoteProfile,
+      "xai-1",
+      secret,
+    );
+
+    expect(result).toEqual({
+      success: false,
+      tool: "xai_oauth",
+      credentialStatus: "not_found",
+    });
+    expect(invokeMock).toHaveBeenCalledWith("remote_get_xai_oauth_quota", {
+      profile: remoteProfile,
+      accountId: "xai-1",
+      secret,
+    });
+  });
+
   it("gets official subscription quota through the remote helper command", async () => {
     const remoteProfile = profile();
     const secret: RemoteConnectionSecret = { password: "secret" };
@@ -350,6 +377,69 @@ describe("remote API invoke mappings", () => {
       tool: "claude",
       secret,
     });
+  });
+
+  it("maps models.dev persistence commands to the remote helper", async () => {
+    const remoteProfile = profile();
+    const secret: RemoteConnectionSecret = { password: "secret" };
+    const entries = [
+      {
+        modelId: "gpt-5",
+        displayName: "GPT-5",
+        inputCostPerMillion: "1",
+        outputCostPerMillion: "2",
+        cacheReadCostPerMillion: "0.1",
+        cacheCreationCostPerMillion: "0.2",
+      },
+    ];
+    const config = {
+      autoSyncEnabled: true,
+      includeCommonModels: false,
+      selectedModelKeys: ["openai/gpt-5"],
+      excludedCommonModelKeys: [],
+      lastSyncAt: null,
+      lastSyncError: null,
+    };
+
+    invokeMock
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce({
+        config,
+        configPath: "/root/.cc-switch-remote/model-pricing.json",
+      })
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined);
+
+    await remoteApi.updateModelPricingBatch(remoteProfile, entries, secret);
+    await remoteApi.getModelsDevSyncConfig(remoteProfile, secret);
+    await remoteApi.saveModelsDevSyncConfig(remoteProfile, config, secret);
+    await remoteApi.recordModelsDevSyncResult(remoteProfile, 123, null, secret);
+
+    expect(invokeMock).toHaveBeenNthCalledWith(
+      1,
+      "remote_update_model_pricing_batch",
+      { profile: remoteProfile, entries, secret },
+    );
+    expect(invokeMock).toHaveBeenNthCalledWith(
+      2,
+      "remote_get_models_dev_sync_config",
+      { profile: remoteProfile, secret },
+    );
+    expect(invokeMock).toHaveBeenNthCalledWith(
+      3,
+      "remote_save_models_dev_sync_config",
+      { profile: remoteProfile, config, secret },
+    );
+    expect(invokeMock).toHaveBeenNthCalledWith(
+      4,
+      "remote_record_models_dev_sync_result",
+      {
+        profile: remoteProfile,
+        syncedAt: 123,
+        error: null,
+        secret,
+      },
+    );
   });
 
   it("queries provider usage through the remote helper command", async () => {

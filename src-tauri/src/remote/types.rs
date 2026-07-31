@@ -94,6 +94,7 @@ pub enum RemoteCapability {
     Tools,
     StreamCheck,
     Usage,
+    UsageModelPricingSync,
     Auth,
     Settings,
     SettingsAppConfigDir,

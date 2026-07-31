@@ -23,6 +23,7 @@ pub const REMOTE_HELPER_CAPABILITIES: &[&str] = &[
     "tools",
     "stream-check",
     "usage",
+    "usage-model-pricing-sync",
     "auth",
     "settings",
     "settings-app-config-dir",

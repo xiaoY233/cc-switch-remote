@@ -23,7 +23,6 @@
     "unknown": "未知",
     "enterValidValue": "请输入有效的内容",
     "clear": "清除",
-    "toggleTheme": "切换主题",
     "format": "格式化",
     "formatSuccess": "格式化成功",
     "formatError": "格式化失败：{{error}}",
@@ -40,7 +39,8 @@
     "deleting": "删除中...",
     "auto": "自动",
     "enabled": "已开启",
-    "notSet": "未设置"
+    "notSet": "未设置",
+    "toggleTheme": "切换主题"
   },
   "firstRunNotice": {
     "title": "欢迎使用 CC Switch Remote",
@@ -50,9 +50,9 @@
   },
   "apiKeyInput": {
     "placeholder": "请输入API Key",
-    "keepCurrentPlaceholder": "留空则保留当前 API Key",
     "show": "显示API Key",
-    "hide": "隐藏API Key"
+    "hide": "隐藏API Key",
+    "keepCurrentPlaceholder": "留空则保留当前 API Key"
   },
   "jsonEditor": {
     "mustBeObject": "配置必须是JSON对象，不能是数组或其他类型",
@@ -174,7 +174,8 @@
         "oauthHint": "Google 官方使用 OAuth 个人认证，无需填写 API Key。首次使用时会自动打开浏览器进行登录。",
         "apiKeyPlaceholder": "请输入 Gemini API Key"
       }
-    }
+    },
+    "duplicateLiveIdsLoadFailed": "读取配置中的供应商标识失败，请先修复配置后再试"
   },
   "claudeCode": {
     "needsRouting": "需要路由",
@@ -223,7 +224,8 @@
       "tooltip": {
         "active": "Claude Desktop 本地路由已开启 - {{address}}:{{port}}",
         "inactive": "开启 Claude Desktop 本地路由，用于需要模型映射或格式转换的供应商。当前配置地址：{{address}}:{{port}}"
-      }
+      },
+      "stopBlockedByTakeover": "其它应用正在使用代理接管。请先在设置中关闭对应应用接管，再停止本地路由。"
     }
   },
   "notifications": {
@@ -272,8 +274,9 @@
     "backfillWarning": "切换成功，但旧供应商配置回填失败，您手动修改的配置可能未保存",
     "windowControlFailed": "窗口控制失败：{{error}}",
     "officialBlockedByProxy": "本地路由模式下不能切换到官方供应商，使用路由访问官方 API 可能导致账号被封禁",
-    "officialBlockedByRemoteRouting": "远程应用路由启用时不能切换到官方供应商，使用远程路由访问官方 API 可能导致账号被封禁",
-    "proxyOfficialWarning": "当前供应商 {{name}} 是官方供应商，建议切换到第三方供应商后再使用本地路由"
+    "proxyOfficialWarning": "当前供应商 {{name}} 是官方供应商，建议切换到第三方供应商后再使用本地路由",
+    "proxyReasonClaudeDesktop": "使用 Claude Desktop 本地路由模式",
+    "officialBlockedByRemoteRouting": "远程应用路由启用时不能切换到官方供应商，使用远程路由访问官方 API 可能导致账号被封禁"
   },
   "confirm": {
     "deleteProvider": "删除供应商",
@@ -376,10 +379,6 @@
         "title": "云同步",
         "description": "通过 WebDAV 在多设备间同步数据"
       },
-      "modelTest": {
-        "title": "模型测试",
-        "description": "配置模型连通性测试参数"
-      },
       "rectifier": {
         "title": "整流器",
         "description": "自动修复 API 请求中的兼容性问题",
@@ -427,6 +426,10 @@
           "debug": "详细信息，包含 SSE 流和请求/响应详情",
           "trace": "全部日志，最详细"
         }
+      },
+      "modelTest": {
+        "title": "模型测试",
+        "description": "配置模型连通性测试参数"
       }
     },
     "language": "界面语言",
@@ -453,26 +456,6 @@
     "selectFileFailed": "请选择有效的 SQL 备份文件",
     "configCorrupted": "SQL 文件可能已损坏或格式不正确",
     "backupId": "备份ID",
-    "remoteRestorePreflight": {
-      "title": "远程恢复预检",
-      "description": "导入到远程主机前，检测到备份里包含本机路径、桌面运行时或本机代理地址。这些内容直接恢复到远程 Linux 主机上可能不可用。",
-      "modeHint": "便携恢复会保留供应商、模型、API 地址和安全的 HTTP/SSE MCP 配置，并跳过 Codex 桌面插件、node_repl、本机路径和桌面外观等本机专属字段。精确恢复会原样导入。",
-      "riskToast": "检测到跨平台恢复风险，请选择精确恢复或便携恢复。",
-      "exactRestore": "精确恢复",
-      "portableRestore": "便携恢复",
-      "noRisks": "未发现需要处理的跨平台风险。",
-      "moreRisks": "还有 {{count}} 条风险未显示。",
-      "riskKinds": {
-        "macos-path": "macOS 路径",
-        "windows-path": "Windows 路径",
-        "unix-path": "Linux/Unix 路径",
-        "codex-desktop-runtime": "Codex 桌面运行时",
-        "local-proxy-url": "本机代理地址",
-        "desktop-only-config": "桌面端配置",
-        "malformed-toml": "TOML 格式异常",
-        "unsupported-sql-shape": "SQL 结构不支持"
-      }
-    },
     "backupManager": {
       "title": "数据库备份",
       "description": "自动备份的数据库快照，可用于恢复到之前的状态",
@@ -821,6 +804,7 @@
     "officialWebsite": "官方网站",
     "github": "GitHub",
     "manualInstallCommands": "手动安装命令",
+    "oneClickInstall": "一键安装",
     "oneClickInstallHint": "安装或升级 Claude Code / Codex / Gemini CLI / OpenCode / OpenClaw / Hermes",
     "localEnvCheck": "本地环境检查",
     "updateAllTools": "全部升级（{{count}}）",
@@ -899,7 +883,27 @@
       "defaultCostMultiplierRequired": "默认倍率不能为空",
       "defaultCostMultiplierInvalid": "默认倍率格式不正确"
     },
-    "saveFailedGeneric": "保存失败，请重试"
+    "saveFailedGeneric": "保存失败，请重试",
+    "remoteRestorePreflight": {
+      "title": "远程恢复预检",
+      "description": "导入到远程主机前，检测到备份里包含本机路径、桌面运行时或本机代理地址。这些内容直接恢复到远程 Linux 主机上可能不可用。",
+      "modeHint": "便携恢复会保留供应商、模型、API 地址和安全的 HTTP/SSE MCP 配置，并跳过 Codex 桌面插件、node_repl、本机路径和桌面外观等本机专属字段。精确恢复会原样导入。",
+      "riskToast": "检测到跨平台恢复风险，请选择精确恢复或便携恢复。",
+      "exactRestore": "精确恢复",
+      "portableRestore": "便携恢复",
+      "noRisks": "未发现需要处理的跨平台风险。",
+      "moreRisks": "还有 {{count}} 条风险未显示。",
+      "riskKinds": {
+        "macos-path": "macOS 路径",
+        "windows-path": "Windows 路径",
+        "unix-path": "Linux/Unix 路径",
+        "codex-desktop-runtime": "Codex 桌面运行时",
+        "local-proxy-url": "本机代理地址",
+        "desktop-only-config": "桌面端配置",
+        "malformed-toml": "TOML 格式异常",
+        "unsupported-sql-shape": "SQL 结构不支持"
+      }
+    }
   },
   "apps": {
     "claude": "Claude",
@@ -1046,6 +1050,7 @@
     "providerKeyStatusLoading": "正在加载供应商标识状态，请稍后再试",
     "getApiKey": "获取 API Key",
     "partnerPromotion": {
+      "a6api": "A6API 是一家 Token 聚合站，内置实时价格排行自动筛选全网最低价，丝滑稳定不卡顿，简易操作省去比价繁琐，注册获得体验金！",
       "sudocode": "SudoCode 让 Claude Code 与 Claude Desktop 接入 Claude Opus 4.8，Codex 接入 GPT-5.6，一个 Key 统一使用。CC Switch Remote 用户注册并加入 QQ 群 726213516，联系群主领取 ¥10 试用额度。",
       "code0": "code0.ai 是面向开发者的 AI 编程服务平台，支持 Claude Code、Codex、Gemini。CC Switch Remote 用户专属福利：通过官网联系客服即可领取测试额度！",
       "nekocode": "NekoCode 为开发者提供稳定、高效、可靠的 Claude、Codex 等 AI 模型 API 中转服务，价格透明、按量计费。CC Switch Remote 用户专享 9 折：通过上方链接注册，充值时输入优惠码 cc-switch 即享 9 折优惠！",
@@ -1065,6 +1070,7 @@
       "aigocode": "AIGoCode 是 CC Switch Remote 的官方合作伙伴，使用此链接注册首次充值时可以获得10%额度奖励！",
       "rightcode": "RightCode 是 CC Switch Remote 的官方合作伙伴，使用此链接注册每次充值均可赠送5%额外额度！",
       "aicodemirror": "AICodeMirror 是 CC Switch Remote 的官方合作伙伴，使用此链接注册可享受8折优惠！",
+      "aicoding": "AI Coding 为 CC Switch Remote 的用户提供了特殊优惠，首次充值可以享受 9 折优惠！",
       "crazyrouter": "CrazyRouter 为 CC Switch Remote 的用户提供了特殊优惠，首次充值赠予 30% 额外额度！",
       "sssaicode": "SSAI Code 为 CC Switch Remote 的用户提供了特殊优惠，每次充值赠予额外 $10 额度！",
       "siliconflow": "硅基流动是 CC Switch Remote 的官方合作伙伴",
@@ -1193,7 +1199,8 @@
     "fetchModelsAuthFailed": "API Key 无效或无权限",
     "fetchModelsNotSupported": "该供应商不支持获取模型列表",
     "fetchModelsEndpointNotFound": "未找到可用的模型列表端点，请检查 Base URL 或确认供应商是否开放该接口",
-    "fetchModelsTimeout": "请求超时，请检查网络连接"
+    "fetchModelsTimeout": "请求超时，请检查网络连接",
+    "requiredFields": "请填写供应商名称、API 地址、API Key 和模型"
   },
   "copilot": {
     "authSection": "GitHub Copilot 认证",
@@ -1390,7 +1397,8 @@
     "reasoningEffortHint": "上游支持 low/high/max 等思考深度控制时启用。启用后会自动启用思考模式，并把 Codex 的 reasoning.effort 转成上游 Chat 参数。",
     "reasoningGroupTitle": "思考能力",
     "reasoningSectionHint": "预设供应商已自动配置；自定义供应商会按名称/地址自动推断。仅当自动识别不准时才需手动覆盖。",
-    "advancedSectionHint": "包含上游格式、模型映射、思考能力与自定义 User-Agent。使用 Chat Completions 协议的供应商需开启路由接管才能使用。"
+    "advancedSectionHint": "包含上游格式、模型映射、思考能力与自定义 User-Agent。使用 Chat Completions 协议的供应商需开启路由接管才能使用。",
+    "noCommonConfigToApply": "通用配置片段为空或没有可写入的内容"
   },
   "geminiConfig": {
     "envFile": "环境变量 (.env)",
@@ -1489,6 +1497,7 @@
     "totalRequests": "总请求数",
     "totalCost": "总成本",
     "cost": "成本",
+    "unpriced": "未定价",
     "perMillion": "(每百万)",
     "trends": "使用趋势",
     "rangeToday": "过去 24 小时 (按小时)",
@@ -1527,26 +1536,10 @@
       "claude": "Claude Code",
       "codex": "Codex",
       "gemini": "Gemini",
-      "opencode": "OpenCode"
+      "opencode": "OpenCode",
+      "grokbuild": "Grok Build"
     },
     "rawInputLabel": "原始",
-    "dataSources": "数据来源",
-    "dataSource": {
-      "proxy": "路由",
-      "session_log": "会话日志",
-      "codex_db": "Codex 数据库",
-      "codex_session": "Codex 会话日志",
-      "gemini_session": "Gemini 会话日志",
-      "opencode_session": "OpenCode 会话日志"
-    },
-    "sessionSync": {
-      "trigger": "同步会话日志",
-      "import": "导入会话",
-      "resync": "同步",
-      "imported": "从会话日志导入了 {{count}} 条记录",
-      "upToDate": "会话日志已是最新",
-      "failed": "会话同步失败"
-    },
     "rebuildCodex": {
       "title": "Codex 用量维护",
       "description": "从本地 rollout 日志重新构建 Codex 会话用量",
@@ -1656,8 +1649,59 @@
     "modelsDevNoResults": "没有匹配的模型",
     "modelsDevTruncated": "仅显示前 {{shown}} 条，共 {{total}} 条结果，请缩小搜索范围",
     "modelsDevDefaultHint": "默认展示最新发布的 {{shown}} 个模型（共 {{total}} 个），输入关键字可全量搜索",
+    "modelsDevAutoSync": {
+      "title": "自动同步 models.dev 定价",
+      "description": "开启后，CC Switch Remote 会在启动时定期拉取所选模型的最新价格，并保存到本地定价文件。",
+      "enabled": "已开启",
+      "disabled": "已关闭",
+      "enableConfirmTitle": "开启自动同步定价？",
+      "enableConfirmMessage": "开启后，CC Switch Remote 会在启动时定期从 models.dev 更新所选模型的价格（最多每 6 小时一次）。同一模型 ID 的软件内置价格和手动设置价格都会被覆盖。",
+      "enableConfirmAction": "开启自动同步",
+      "configure": "选择模型",
+      "configureTitle": "选择自动同步定价的模型",
+      "configureDescription": "通过搜索和供应商筛选选择需要自动更新的模型，选择结果保存在本地。",
+      "commonModels": "自动包含常用模型",
+      "commonModelsDescription": "自动选择 {{count}} 个近期 Claude、GPT、Gemini、Grok、DeepSeek、Qwen、MiMo、LongCat、Kimi、MiniMax 和 GLM 模型。",
+      "selectFiltered": "全选筛选结果（{{count}}）",
+      "clearFiltered": "清空筛选结果",
+      "selectedCount": "已选择 {{count}} 个模型",
+      "selectionHint": "归一化模型 ID 相同的选项只会导入一次。",
+      "commonBadge": "常用",
+      "selectionSaved": "自动定价同步选择已保存",
+      "syncSuccess": "定价同步完成：检查 {{imported}} 个模型，更新 {{changed}} 个",
+      "syncFailed": "定价同步失败：{{error}}",
+      "configLoadFailed": "加载本地定价配置失败：{{error}}",
+      "neverSynced": "从未同步",
+      "lastSync": "上次同步",
+      "commonStatus": "常用模型",
+      "lastError": "上次自动同步失败：{{error}}",
+      "localFile": "本地定价文件",
+      "openFolder": "打开目录",
+      "openFolderFailed": "打开本地定价文件目录失败：{{error}}",
+      "reloadLocalFile": "重新加载文件",
+      "localFileReloaded": "本地定价文件已重新加载",
+      "localFileReloadFailed": "重新加载本地定价文件失败：{{error}}",
+      "syncNow": "立即同步"
+    },
     "cacheReadCostPerMillion": "缓存读取成本 (每百万 tokens, USD)",
-    "cacheCreationCostPerMillion": "缓存写入成本 (每百万 tokens, USD)"
+    "cacheCreationCostPerMillion": "缓存写入成本 (每百万 tokens, USD)",
+    "dataSources": "数据来源",
+    "dataSource": {
+      "proxy": "路由",
+      "session_log": "会话日志",
+      "codex_db": "Codex 数据库",
+      "codex_session": "Codex 会话日志",
+      "gemini_session": "Gemini 会话日志",
+      "opencode_session": "OpenCode 会话日志"
+    },
+    "sessionSync": {
+      "trigger": "同步会话日志",
+      "import": "导入会话",
+      "resync": "同步",
+      "imported": "从会话日志导入了 {{count}} 条记录",
+      "upToDate": "会话日志已是最新",
+      "failed": "会话同步失败"
+    }
   },
   "usageScript": {
     "title": "配置用量查询",
@@ -2306,6 +2350,9 @@
       "skillDirNotFound": "技能目录不存在：{{path}}",
       "directoryConflict": "技能目录 '{{directory}}' 已被 {{existing_repo}} 占用，无法从 {{new_repo}} 安装",
       "emptyArchive": "下载的压缩包为空",
+      "invalidRepoRef": "仓库地址不合法：{{owner}}/{{name}}",
+      "archiveTooLarge": "压缩包解压后超过 {{limit_mb}} MB 上限，已中止",
+      "archiveTooManyEntries": "压缩包条目过多（{{count}}），上限 {{limit}}",
       "downloadFailed": "下载失败：HTTP {{status}}",
       "allBranchesFailed": "所有分支下载失败，尝试了：{{branches}}",
       "httpError": "HTTP 错误 {{status}}",
@@ -2469,7 +2516,11 @@
       "title": "批量导入 MCP Servers",
       "targetApps": "目标应用",
       "serverCount": "MCP Servers ({{count}} 个)",
-      "enabledWarning": "导入后将立即写入所有指定应用的配置文件"
+      "enabledWarning": "导入后将立即写入所有指定应用的配置文件",
+      "command": "命令",
+      "args": "参数",
+      "env": "环境",
+      "url": "地址"
     },
     "prompt": {
       "title": "导入系统提示词",
@@ -2491,10 +2542,17 @@
     "usageScript": "用量查询",
     "usageScriptEnabled": "已启用",
     "usageScriptDisabled": "未启用",
+    "usageScriptCode": "脚本代码",
+    "usageScriptWarning": "这是一段 JavaScript 代码，启用后会在查询用量时执行。请确认来源可信后再导入。",
     "usageApiKey": "用量 API Key",
     "usageBaseUrl": "用量查询地址",
     "usageAutoInterval": "自动查询",
-    "usageAutoIntervalValue": "每 {{minutes}} 分钟"
+    "usageAutoIntervalValue": "每 {{minutes}} 分钟",
+    "risk": {
+      "envHijack": "该配置包含可改变进程加载行为的环境变量（如注入动态库、替换 CA 证书），请确认来源可信。",
+      "privateEndpoint": "该地址指向本机或内网。若非你自建的本地服务，请勿导入。",
+      "shellCommand": "该配置通过 shell 执行一整段命令，实际运行的内容在参数里，请逐行核对。"
+    }
   },
   "iconPicker": {
     "search": "搜索图标",
@@ -2543,7 +2601,8 @@
     },
     "tooltip": {
       "enabled": "{{app}} 故障转移已启用\n按队列优先级（P1→P2→...）选择供应商",
-      "disabled": "启用 {{app}} 故障转移\n将立即切换到队列 P1，并在失败时自动切换到下一个"
+      "disabled": "启用 {{app}} 故障转移\n将立即切换到队列 P1，并在失败时自动切换到下一个",
+      "takeoverRequired": "请先接管 {{app}}，再启用故障转移"
     }
   },
   "proxy": {
@@ -2721,7 +2780,9 @@
     },
     "server": {
       "started": "路由服务已启动 - {{address}}:{{port}}",
-      "startFailed": "启动路由服务失败: {{detail}}"
+      "startFailed": "启动路由服务失败: {{detail}}",
+      "stopped": "路由服务已停止",
+      "stopFailed": "停止路由服务失败：{{detail}}"
     },
     "stoppedWithRestore": "路由服务已关闭，已恢复所有路由配置",
     "stopWithRestoreFailed": "停止失败: {{detail}}"
@@ -2755,33 +2816,6 @@
     "streamingFirstByte": "流式首字节超时",
     "streamingIdle": "流式静默超时",
     "nonStreaming": "非流式超时"
-  },
-  "circuitBreaker": {
-    "failureThreshold": "失败阈值",
-    "successThreshold": "成功阈值",
-    "timeoutSeconds": "超时时间（秒）",
-    "errorRateThreshold": "错误率阈值 (%)",
-    "minRequests": "最小请求数",
-    "validationFailed": "以下字段超出有效范围: {{fields}}",
-    "configSaved": "熔断器配置已保存",
-    "saveFailed": "保存失败",
-    "loading": "加载中...",
-    "title": "熔断器配置",
-    "description": "调整熔断器参数以控制故障检测和恢复行为",
-    "failureThresholdHint": "连续失败多少次后打开熔断器",
-    "timeoutSecondsHint": "熔断器打开后多久尝试恢复（半开状态）",
-    "successThresholdHint": "半开状态下成功多少次后关闭熔断器",
-    "errorRateThresholdHint": "错误率超过此值时打开熔断器",
-    "minRequestsHint": "计算错误率前的最小请求数",
-    "saveConfig": "保存配置",
-    "instructionsTitle": "配置说明",
-    "instructions": {
-      "failureThreshold": "连续失败达到此次数时，熔断器打开",
-      "timeout": "熔断器打开后，等待此时间后尝试半开",
-      "successThreshold": "半开状态下，成功达到此次数时关闭熔断器",
-      "errorRate": "错误率超过此值时，熔断器打开",
-      "minRequests": "只有请求数达到此值后才计算错误率"
-    }
   },
   "universalProvider": {
     "duplicate": "复制",
@@ -3020,6 +3054,55 @@
     "suggestedDefaults": "应用建议默认配置",
     "suggestedDefaultsHint": "使用此预设推荐的默认模型配置"
   },
+  "subscription": {
+    "title": "订阅额度",
+    "fiveHour": "5小时",
+    "sevenDay": "7天",
+    "sevenDayOpus": "7天(Opus)",
+    "sevenDaySonnet": "7天(Sonnet)",
+    "thirtyDay": "30天",
+    "geminiPro": "Pro",
+    "geminiFlash": "Flash",
+    "geminiFlashLite": "Flash Lite",
+    "weeklyLimit": "每周",
+    "monthly": "每月",
+    "credits": "额度",
+    "copilotPremium": "高级请求",
+    "utilization": "{{value}}%",
+    "resetsIn": "{{time}}后重置",
+    "extraUsage": "超额用量",
+    "expired": "会话已过期",
+    "expiredHint": "请运行 {{tool}} 命令刷新登录",
+    "queryFailed": "查询失败",
+    "refresh": "刷新"
+  },
+  "circuitBreaker": {
+    "failureThreshold": "失败阈值",
+    "successThreshold": "成功阈值",
+    "timeoutSeconds": "超时时间（秒）",
+    "errorRateThreshold": "错误率阈值 (%)",
+    "minRequests": "最小请求数",
+    "validationFailed": "以下字段超出有效范围: {{fields}}",
+    "configSaved": "熔断器配置已保存",
+    "saveFailed": "保存失败",
+    "loading": "加载中...",
+    "title": "熔断器配置",
+    "description": "调整熔断器参数以控制故障检测和恢复行为",
+    "failureThresholdHint": "连续失败多少次后打开熔断器",
+    "timeoutSecondsHint": "熔断器打开后多久尝试恢复（半开状态）",
+    "successThresholdHint": "半开状态下成功多少次后关闭熔断器",
+    "errorRateThresholdHint": "错误率超过此值时打开熔断器",
+    "minRequestsHint": "计算错误率前的最小请求数",
+    "saveConfig": "保存配置",
+    "instructionsTitle": "配置说明",
+    "instructions": {
+      "failureThreshold": "连续失败达到此次数时，熔断器打开",
+      "timeout": "熔断器打开后，等待此时间后尝试半开",
+      "successThreshold": "半开状态下，成功达到此次数时关闭熔断器",
+      "errorRate": "错误率超过此值时，熔断器打开",
+      "minRequests": "只有请求数达到此值后才计算错误率"
+    }
+  },
   "remote": {
     "title": "远程服务器",
     "subtitle": "只保存连接信息；管理操作在现有页面按目标执行。",
@@ -3171,6 +3254,7 @@
       "importExport": "导入 / 导出",
       "cloudSync": "云同步",
       "auth": "认证管理",
+      "usageModelPricingSync": "模型定价同步",
       "settings": "通用设置",
       "settingsAppConfigDir": "CC Switch Remote 配置目录",
       "plugin": "Claude 插件"
@@ -3202,26 +3286,5 @@
         "title": "远程路由服务"
       }
     }
-  },
-  "subscription": {
-    "title": "订阅额度",
-    "fiveHour": "5小时",
-    "sevenDay": "7天",
-    "sevenDayOpus": "7天(Opus)",
-    "sevenDaySonnet": "7天(Sonnet)",
-    "thirtyDay": "30天",
-    "geminiPro": "Pro",
-    "geminiFlash": "Flash",
-    "geminiFlashLite": "Flash Lite",
-    "weeklyLimit": "每周",
-    "monthly": "每月",
-    "copilotPremium": "高级请求",
-    "utilization": "{{value}}%",
-    "resetsIn": "{{time}}后重置",
-    "extraUsage": "超额用量",
-    "expired": "会话已过期",
-    "expiredHint": "请运行 {{tool}} 命令刷新登录",
-    "queryFailed": "查询失败",
-    "refresh": "刷新"
   }
 }

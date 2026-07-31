@@ -9,9 +9,11 @@ import {
 import type { ComponentProps } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { UsageDashboard } from "@/components/usage/UsageDashboard";
+import type { ManagementTarget } from "@/lib/api/remote";
 
 const useProviderStatsMock = vi.hoisted(() => vi.fn());
 const useModelStatsMock = vi.hoisted(() => vi.fn());
+const syncModelsDevPricingMock = vi.hoisted(() => vi.fn());
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -45,6 +47,15 @@ vi.mock("@/lib/query/usage", async () => {
   };
 });
 
+vi.mock("@/lib/modelsDevAutoSync", () => ({
+  modelsDevSyncConfigKey: (target: ManagementTarget = { type: "local" }) => [
+    "models-dev-sync-config",
+    target.type === "remote" ? `remote:${target.profile.id}` : "local",
+  ],
+  syncModelsDevPricing: (...args: unknown[]) =>
+    syncModelsDevPricingMock(...args),
+}));
+
 vi.mock("@/components/usage/UsageHero", () => ({
   UsageHero: () => <div data-testid="usage-hero" />,
 }));
@@ -63,6 +74,10 @@ vi.mock("@/components/usage/ProviderStatsTable", () => ({
 
 vi.mock("@/components/usage/ModelStatsTable", () => ({
   ModelStatsTable: () => <div data-testid="model-stats-table" />,
+}));
+
+vi.mock("@/components/usage/DataSourceBar", () => ({
+  DataSourceBar: () => <div data-testid="data-source-bar" />,
 }));
 
 vi.mock("@/components/usage/PricingConfigPanel", () => ({
@@ -111,6 +126,14 @@ describe("UsageDashboard", () => {
     useModelStatsMock.mockReset();
     useProviderStatsMock.mockReturnValue({ data: [] });
     useModelStatsMock.mockReturnValue({ data: [] });
+    syncModelsDevPricingMock.mockReset();
+    syncModelsDevPricingMock.mockResolvedValue({
+      skipped: true,
+      selected: 0,
+      imported: 0,
+      changed: 0,
+      syncedAt: null,
+    });
   });
 
   it("uses the saved refresh interval when mounted", () => {
@@ -151,5 +174,56 @@ describe("UsageDashboard", () => {
     await waitFor(() =>
       expect(screen.getByTestId("select-30000")).toBeInTheDocument(),
     );
+  });
+
+  it("checks models.dev synchronization for the selected remote host", async () => {
+    const remoteTarget: ManagementTarget = {
+      type: "remote",
+      profile: {
+        id: "remote-a",
+        name: "Remote A",
+        host: "remote-a.example.com",
+        port: 22,
+        username: "root",
+        authMethod: { type: "sshAgent" },
+        helperPath: "~/.local/bin/cc-switch-remote-helper",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    };
+
+    renderDashboard({
+      target: remoteTarget,
+      modelsDevSyncSupported: true,
+    });
+
+    await waitFor(() =>
+      expect(syncModelsDevPricingMock).toHaveBeenCalledWith(remoteTarget),
+    );
+  });
+
+  it("does not start models.dev synchronization for an older helper", async () => {
+    const remoteTarget: ManagementTarget = {
+      type: "remote",
+      profile: {
+        id: "remote-a",
+        name: "Remote A",
+        host: "remote-a.example.com",
+        port: 22,
+        username: "root",
+        authMethod: { type: "sshAgent" },
+        helperPath: "~/.local/bin/cc-switch-remote-helper",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    };
+
+    renderDashboard({
+      target: remoteTarget,
+      modelsDevSyncSupported: false,
+    });
+
+    await Promise.resolve();
+    expect(syncModelsDevPricingMock).not.toHaveBeenCalled();
   });
 });

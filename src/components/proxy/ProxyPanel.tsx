@@ -15,12 +15,12 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { ToggleRow } from "@/components/ui/toggle-row";
-import { useProxyStatus } from "@/hooks/useProxyStatus";
 import { toast } from "sonner";
 import { useFailoverQueue } from "@/lib/query/failover";
 import { ProviderHealthBadge } from "@/components/providers/ProviderHealthBadge";
 import { useProviderHealth } from "@/lib/query/failover";
 import {
+  useProxyStatusQuery,
   useProxyTakeoverStatus,
   useSetProxyTakeoverForApp,
   useGlobalProxyConfig,
@@ -53,7 +53,8 @@ export function ProxyPanel({
 }: ProxyPanelProps) {
   const { t } = useTranslation();
   const isLocalTarget = target.type === "local";
-  const { status, isRunning } = useProxyStatus(target);
+  const { data: status } = useProxyStatusQuery(target);
+  const isRunning = status?.running ?? false;
 
   // 获取应用接管状态
   const { data: takeoverStatus } = useProxyTakeoverStatus(target);

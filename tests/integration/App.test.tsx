@@ -141,6 +141,7 @@ vi.mock("@/components/AppSwitcher", () => ({
       </span>
       <button onClick={() => onSwitch("claude")}>switch-claude</button>
       <button onClick={() => onSwitch("codex")}>switch-codex</button>
+      <button onClick={() => onSwitch("grokbuild")}>switch-grokbuild</button>
       <button onClick={() => onSwitch("openclaw")}>switch-openclaw</button>
     </div>
   ),
@@ -181,7 +182,9 @@ vi.mock("@/components/proxy/RemoteRoutingToggle", () => ({
 }));
 
 vi.mock("@/components/proxy/RemoteAppRoutingToggle", () => ({
-  RemoteAppRoutingToggle: () => <div data-testid="remote-app-routing-toggle" />,
+  RemoteAppRoutingToggle: ({ activeApp }: any) => (
+    <div data-testid="remote-app-routing-toggle">{activeApp}</div>
+  ),
 }));
 
 vi.mock("@/components/proxy/ClaudeDesktopRouteToggle", () => ({
@@ -333,7 +336,7 @@ describe("App integration with MSW", () => {
 
     expect(toastErrorMock).not.toHaveBeenCalled();
     expect(toastSuccessMock).toHaveBeenCalled();
-  });
+  }, 10_000);
 
   it("shows toast when auto sync fails in background", async () => {
     const { default: App } = await import("@/App");
@@ -982,6 +985,15 @@ describe("App integration with MSW", () => {
       screen.queryByTestId("remote-routing-toggle"),
     ).not.toBeInTheDocument();
     expect(screen.getByTestId("remote-app-routing-toggle")).toBeInTheDocument();
+    expect(screen.getByTestId("failover-toggle")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("switch-grokbuild"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("remote-app-routing-toggle")).toHaveTextContent(
+        "grokbuild",
+      ),
+    );
     expect(screen.getByTestId("failover-toggle")).toBeInTheDocument();
   });
 

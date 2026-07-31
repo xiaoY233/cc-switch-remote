@@ -63,9 +63,6 @@ mod prompt_files;
 #[path = "../provider.rs"]
 #[cfg(not(feature = "desktop"))]
 mod provider;
-#[path = "../provider_defaults.rs"]
-#[cfg(not(feature = "desktop"))]
-mod provider_defaults;
 #[path = "../proxy/mod.rs"]
 #[cfg(not(feature = "desktop"))]
 mod proxy;

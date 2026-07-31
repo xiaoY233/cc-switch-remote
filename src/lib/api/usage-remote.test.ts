@@ -15,6 +15,10 @@ const remoteGetRequestDetailMock = vi.fn();
 const remoteGetDataSourceBreakdownMock = vi.fn();
 const remoteGetModelPricingMock = vi.fn();
 const remoteUpdateModelPricingMock = vi.fn();
+const remoteUpdateModelPricingBatchMock = vi.fn();
+const remoteGetModelsDevSyncConfigMock = vi.fn();
+const remoteSaveModelsDevSyncConfigMock = vi.fn();
+const remoteRecordModelsDevSyncResultMock = vi.fn();
 const remoteDeleteModelPricingMock = vi.fn();
 const remoteSyncSessionUsageMock = vi.fn();
 
@@ -42,6 +46,14 @@ vi.mock("./remote", () => ({
     getModelPricing: (...args: unknown[]) => remoteGetModelPricingMock(...args),
     updateModelPricing: (...args: unknown[]) =>
       remoteUpdateModelPricingMock(...args),
+    updateModelPricingBatch: (...args: unknown[]) =>
+      remoteUpdateModelPricingBatchMock(...args),
+    getModelsDevSyncConfig: (...args: unknown[]) =>
+      remoteGetModelsDevSyncConfigMock(...args),
+    saveModelsDevSyncConfig: (...args: unknown[]) =>
+      remoteSaveModelsDevSyncConfigMock(...args),
+    recordModelsDevSyncResult: (...args: unknown[]) =>
+      remoteRecordModelsDevSyncResultMock(...args),
     deleteModelPricing: (...args: unknown[]) =>
       remoteDeleteModelPricingMock(...args),
     syncSessionUsage: (...args: unknown[]) =>
@@ -82,6 +94,10 @@ describe("remote usage API", () => {
     remoteGetDataSourceBreakdownMock.mockReset();
     remoteGetModelPricingMock.mockReset();
     remoteUpdateModelPricingMock.mockReset();
+    remoteUpdateModelPricingBatchMock.mockReset();
+    remoteGetModelsDevSyncConfigMock.mockReset();
+    remoteSaveModelsDevSyncConfigMock.mockReset();
+    remoteRecordModelsDevSyncResultMock.mockReset();
     remoteDeleteModelPricingMock.mockReset();
     remoteSyncSessionUsageMock.mockReset();
   });
@@ -304,6 +320,62 @@ describe("remote usage API", () => {
     expect(remoteDeleteModelPricingMock).toHaveBeenCalledWith(
       profile,
       "gpt-5",
+      remoteTarget.secret,
+    );
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it("routes models.dev persistence to the selected remote target", async () => {
+    const { usageApi } = await import("./usage");
+    const entries = [
+      {
+        modelId: "gpt-5",
+        displayName: "GPT-5",
+        inputCostPerMillion: "1",
+        outputCostPerMillion: "2",
+        cacheReadCostPerMillion: "0.1",
+        cacheCreationCostPerMillion: "0.2",
+      },
+    ];
+    const config = {
+      autoSyncEnabled: true,
+      includeCommonModels: false,
+      selectedModelKeys: ["openai/gpt-5"],
+      excludedCommonModelKeys: [],
+      lastSyncAt: null,
+      lastSyncError: null,
+    };
+    remoteUpdateModelPricingBatchMock.mockResolvedValue(1);
+    remoteGetModelsDevSyncConfigMock.mockResolvedValue({
+      config,
+      configPath: "/root/.cc-switch-remote/model-pricing.json",
+    });
+    remoteSaveModelsDevSyncConfigMock.mockResolvedValue(undefined);
+    remoteRecordModelsDevSyncResultMock.mockResolvedValue(undefined);
+
+    await usageApi.updateModelPricingBatch(entries, remoteTarget);
+    await usageApi.getModelsDevSyncConfig(remoteTarget);
+    await usageApi.saveModelsDevSyncConfig(config, remoteTarget);
+    await usageApi.recordModelsDevSyncResult(123, null, remoteTarget);
+
+    expect(remoteUpdateModelPricingBatchMock).toHaveBeenCalledWith(
+      profile,
+      entries,
+      remoteTarget.secret,
+    );
+    expect(remoteGetModelsDevSyncConfigMock).toHaveBeenCalledWith(
+      profile,
+      remoteTarget.secret,
+    );
+    expect(remoteSaveModelsDevSyncConfigMock).toHaveBeenCalledWith(
+      profile,
+      config,
+      remoteTarget.secret,
+    );
+    expect(remoteRecordModelsDevSyncResultMock).toHaveBeenCalledWith(
+      profile,
+      123,
+      null,
       remoteTarget.secret,
     );
     expect(invokeMock).not.toHaveBeenCalled();

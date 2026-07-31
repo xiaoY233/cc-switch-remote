@@ -10,10 +10,8 @@ const getProxyStatusMock = vi.fn();
 const startProxyServerMock = vi.fn();
 const stopProxyWithRestoreMock = vi.fn();
 
-vi.mock("@/lib/api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/api")>();
+vi.mock("@/lib/api/proxy", () => {
   return {
-    ...actual,
     proxyApi: {
       getProxyStatus: (...args: unknown[]) => getProxyStatusMock(...args),
       startProxyServer: (...args: unknown[]) => startProxyServerMock(...args),
@@ -60,6 +58,9 @@ function createWrapper(queryClient: QueryClient) {
 
 describe("useProxyStatus remote routing cache", () => {
   beforeEach(() => {
+    getProxyStatusMock.mockReset();
+    startProxyServerMock.mockReset();
+    stopProxyWithRestoreMock.mockReset();
     getProxyStatusMock.mockResolvedValue({
       running: false,
       address: "127.0.0.1",
@@ -86,7 +87,7 @@ describe("useProxyStatus remote routing cache", () => {
     });
     const targetKey = getManagementTargetKey(remoteTarget);
 
-    for (const appType of ["claude", "codex", "gemini"] as const) {
+    for (const appType of ["claude", "codex", "gemini", "grokbuild"] as const) {
       queryClient.setQueryData(["appProxyConfig", targetKey, appType], {
         appType,
         enabled: true,
@@ -102,7 +103,7 @@ describe("useProxyStatus remote routing cache", () => {
     });
 
     expect(stopProxyWithRestoreMock).toHaveBeenCalledWith(remoteTarget);
-    for (const appType of ["claude", "codex", "gemini"] as const) {
+    for (const appType of ["claude", "codex", "gemini", "grokbuild"] as const) {
       expect(
         queryClient.getQueryState(["appProxyConfig", targetKey, appType])
           ?.isInvalidated,
@@ -119,7 +120,7 @@ describe("useProxyStatus remote routing cache", () => {
     });
     const targetKey = getManagementTargetKey(remoteTarget);
 
-    for (const appType of ["claude", "codex", "gemini"] as const) {
+    for (const appType of ["claude", "codex", "gemini", "grokbuild"] as const) {
       queryClient.setQueryData(["appProxyConfig", targetKey, appType], {
         appType,
         enabled: true,
@@ -135,7 +136,7 @@ describe("useProxyStatus remote routing cache", () => {
     });
 
     expect(stopProxyWithRestoreMock).toHaveBeenCalledWith(remoteTarget);
-    for (const appType of ["claude", "codex", "gemini"] as const) {
+    for (const appType of ["claude", "codex", "gemini", "grokbuild"] as const) {
       expect(
         queryClient.getQueryState(["appProxyConfig", targetKey, appType])
           ?.isInvalidated,

@@ -1503,6 +1503,7 @@ fn parse_remote_capability(value: &str) -> Option<RemoteCapability> {
         "tools" => Some(RemoteCapability::Tools),
         "stream-check" => Some(RemoteCapability::StreamCheck),
         "usage" => Some(RemoteCapability::Usage),
+        "usage-model-pricing-sync" => Some(RemoteCapability::UsageModelPricingSync),
         "auth" => Some(RemoteCapability::Auth),
         "settings" => Some(RemoteCapability::Settings),
         "settings-app-config-dir" => Some(RemoteCapability::SettingsAppConfigDir),
@@ -1821,12 +1822,95 @@ pub async fn remote_rebuild_codex_usage(
 pub async fn remote_get_model_pricing(
     profile: RemoteHostProfile,
     secret: Option<RemoteConnectionSecret>,
-) -> Result<Vec<crate::services::usage_pricing::ModelPricingInfo>, String> {
+) -> Result<Vec<crate::services::model_pricing::ModelPricingInfo>, String> {
     run_remote_helper_json(
         profile,
         vec!["usage".to_string(), "model-pricing".to_string()],
         secret,
         "Remote usage model pricing",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_update_model_pricing_batch(
+    profile: RemoteHostProfile,
+    entries: Vec<crate::services::model_pricing::ModelPricingInfo>,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<usize, String> {
+    let entries_json = serde_json::to_string(&entries)
+        .map_err(|error| format!("Failed to serialize model pricing batch: {error}"))?;
+    run_remote_helper_json(
+        profile,
+        vec![
+            "usage".to_string(),
+            "model-pricing-batch".to_string(),
+            entries_json,
+        ],
+        secret,
+        "Remote usage model pricing batch update",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_get_models_dev_sync_config(
+    profile: RemoteHostProfile,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<crate::services::model_pricing::ModelsDevSyncState, String> {
+    run_remote_helper_json(
+        profile,
+        vec!["usage".to_string(), "models-dev-state".to_string()],
+        secret,
+        "Remote models.dev sync config",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_save_models_dev_sync_config(
+    profile: RemoteHostProfile,
+    config: crate::services::model_pricing::ModelsDevSyncConfig,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<(), String> {
+    let config_json = serde_json::to_string(&config)
+        .map_err(|error| format!("Failed to serialize models.dev sync config: {error}"))?;
+    run_remote_helper_json(
+        profile,
+        vec![
+            "usage".to_string(),
+            "models-dev-save".to_string(),
+            config_json,
+        ],
+        secret,
+        "Remote models.dev sync config save",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn remote_record_models_dev_sync_result(
+    profile: RemoteHostProfile,
+    synced_at: Option<i64>,
+    error: Option<String>,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<(), String> {
+    let result_json = serde_json::to_string(&json!({
+        "syncedAt": synced_at,
+        "error": error,
+    }))
+    .map_err(|serialize_error| {
+        format!("Failed to serialize models.dev sync result: {serialize_error}")
+    })?;
+    run_remote_helper_json(
+        profile,
+        vec![
+            "usage".to_string(),
+            "models-dev-record".to_string(),
+            result_json,
+        ],
+        secret,
+        "Remote models.dev sync result",
     )
     .await
 }
@@ -2301,6 +2385,26 @@ pub async fn remote_get_codex_oauth_quota(
         ],
         secret,
         "Remote Codex OAuth quota",
+    )
+    .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn remote_get_xai_oauth_quota(
+    profile: RemoteHostProfile,
+    account_id: Option<String>,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<crate::services::subscription::SubscriptionQuota, String> {
+    run_remote_helper_json(
+        profile,
+        vec![
+            "auth".to_string(),
+            "quota".to_string(),
+            "xai_oauth".to_string(),
+            account_id.unwrap_or_else(|| "-".to_string()),
+        ],
+        secret,
+        "Remote xAI OAuth quota",
     )
     .await
 }
@@ -4048,6 +4152,10 @@ mod tests {
         assert_eq!(
             parse_remote_capability("stream-check"),
             Some(RemoteCapability::StreamCheck)
+        );
+        assert_eq!(
+            parse_remote_capability("usage-model-pricing-sync"),
+            Some(RemoteCapability::UsageModelPricingSync)
         );
     }
 

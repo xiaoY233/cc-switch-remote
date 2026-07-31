@@ -31,6 +31,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { Provider, Settings as AppSettings, VisibleApps } from "@/types";
 import type { EnvConflict } from "@/types/env";
 import {
+  proxyKeys,
   useProvidersQuery,
   useRemoteSessionStatus,
   useSettingsQuery,
@@ -51,7 +52,6 @@ import { openclawKeys, useOpenClawHealth } from "@/hooks/useOpenClaw";
 import { hermesKeys, useOpenHermesWebUI } from "@/hooks/useHermes";
 import { hermesApi } from "@/lib/api/hermes";
 import { useProxyStatus } from "@/hooks/useProxyStatus";
-import { useAutoCompact } from "@/hooks/useAutoCompact";
 import { useUsageCacheBridge } from "@/hooks/useUsageCacheBridge";
 import { useTauriEvent } from "@/hooks/useTauriEvent";
 import { useLastValidValue } from "@/hooks/useLastValidValue";
@@ -66,6 +66,7 @@ import { cn } from "@/lib/utils";
 import {
   getManagementTargetKey,
   isRemoteSafeView,
+  LOCAL_MANAGEMENT_TARGET,
 } from "@/lib/managementTarget";
 import {
   isWindows,
@@ -87,6 +88,7 @@ import { ProxyToggle } from "@/components/proxy/ProxyToggle";
 import { ClaudeDesktopRouteToggle } from "@/components/proxy/ClaudeDesktopRouteToggle";
 import { FailoverToggle } from "@/components/proxy/FailoverToggle";
 import { RemoteAppRoutingToggle } from "@/components/proxy/RemoteAppRoutingToggle";
+import { isRemoteRoutableApp } from "@/lib/remoteRoutingApps";
 import { useAppProxyConfig } from "@/lib/query/proxy";
 import UsageScriptModal from "@/components/UsageScriptModal";
 import UnifiedMcpPanel from "@/components/mcp/UnifiedMcpPanel";
@@ -453,9 +455,6 @@ function App() {
   const effectiveEditingProvider = useLastValidValue(editingProvider);
   const effectiveUsageProvider = useLastValidValue(usageProvider);
 
-  const toolbarRef = useRef<HTMLDivElement>(null);
-  const isToolbarCompact = useAutoCompact(toolbarRef);
-
   useUsageCacheBridge();
 
   const promptPanelRef = useRef<any>(null);
@@ -475,10 +474,9 @@ function App() {
     status: proxyStatus,
   } = useProxyStatus(managementTarget);
   const isCurrentAppTakeoverActive = takeoverStatus?.[activeApp] || false;
-  const remoteRoutableActiveApp =
-    activeApp === "claude" || activeApp === "codex" || activeApp === "gemini"
-      ? activeApp
-      : null;
+  const remoteRoutableActiveApp = isRemoteRoutableApp(activeApp)
+    ? activeApp
+    : null;
   const { data: activeRemoteAppProxyConfig } = useAppProxyConfig(
     remoteRoutableActiveApp ?? "claude",
     managementTarget,
@@ -655,8 +653,12 @@ function App() {
     await queryClient.invalidateQueries({ queryKey: ["profiles"] });
     await queryClient.invalidateQueries({ queryKey: ["mcp", "all"] });
     await queryClient.invalidateQueries({ queryKey: ["skills"] });
-    await queryClient.invalidateQueries({ queryKey: ["proxyTakeoverStatus"] });
-    await queryClient.invalidateQueries({ queryKey: ["proxyStatus"] });
+    await queryClient.invalidateQueries({
+      queryKey: proxyKeys.takeoverStatus(LOCAL_MANAGEMENT_TARGET),
+    });
+    await queryClient.invalidateQueries({
+      queryKey: proxyKeys.status(LOCAL_MANAGEMENT_TARGET),
+    });
     await queryClient.invalidateQueries({
       queryKey: ["providers", "claude-desktop"],
     });
@@ -1680,10 +1682,7 @@ function App() {
                   )}
                 </div>
               )}
-            <div
-              ref={toolbarRef}
-              className="flex flex-1 min-w-0 overflow-x-hidden items-center py-4 pr-2"
-            >
+            <div className="flex flex-1 min-w-0 overflow-x-hidden items-center py-4 pr-2">
               <div
                 className="flex shrink-0 items-center gap-1.5 ml-auto"
                 style={{ WebkitAppRegion: "no-drag" } as any}
@@ -1815,7 +1814,6 @@ function App() {
                       activeApp={activeApp}
                       onSwitch={setActiveApp}
                       visibleApps={visibleApps}
-                      compact={isToolbarCompact}
                     />
 
                     <div className="flex items-center gap-1 p-1 bg-muted rounded-xl">

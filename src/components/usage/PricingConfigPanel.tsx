@@ -34,6 +34,7 @@ import { isNonNegativeDecimalString, type ModelPricing } from "@/types/usage";
 import { Plus, Pencil, Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { proxyApi } from "@/lib/api/proxy";
+import { ModelsDevAutoSyncPanel } from "./ModelsDevAutoSyncPanel";
 
 const PRICING_APPS = ["claude", "codex", "gemini", "grokbuild"] as const;
 type PricingApp = (typeof PRICING_APPS)[number];
@@ -48,10 +49,12 @@ type AppConfigState = Record<PricingApp, AppConfig>;
 
 interface PricingConfigPanelProps {
   target?: ManagementTarget;
+  modelsDevSyncSupported?: boolean;
 }
 
 export function PricingConfigPanel({
   target = LOCAL_MANAGEMENT_TARGET,
+  modelsDevSyncSupported = true,
 }: PricingConfigPanelProps) {
   const { t } = useTranslation();
   const { data: pricing, isLoading, error } = useModelPricing(target);
@@ -350,6 +353,8 @@ export function PricingConfigPanel({
 
       {/* 模型定价配置 */}
       <div className="space-y-4">
+        {modelsDevSyncSupported && <ModelsDevAutoSyncPanel target={target} />}
+
         <div className="flex items-center justify-between">
           <h4 className="text-sm font-medium text-muted-foreground">
             {t("usage.modelPricingDesc")} {t("usage.perMillion")}

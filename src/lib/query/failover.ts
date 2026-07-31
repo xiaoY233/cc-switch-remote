@@ -9,6 +9,7 @@ import {
   LOCAL_MANAGEMENT_TARGET,
 } from "@/lib/managementTarget";
 import type { QueryClient } from "@tanstack/react-query";
+import { proxyKeys } from "@/lib/query/proxy";
 
 function invalidateProvidersForTarget(
   queryClient: QueryClient,
@@ -29,10 +30,9 @@ function invalidateProvidersForTarget(
 function invalidateProxyStatusForTarget(
   queryClient: QueryClient,
   target: ManagementTarget,
-  targetKey: string,
 ) {
   queryClient.invalidateQueries({
-    queryKey: ["proxyStatus", targetKey],
+    queryKey: proxyKeys.status(target),
   });
   if (target.type === "local") {
     queryClient.invalidateQueries({
@@ -154,7 +154,7 @@ export function useResetCircuitBreaker(
         variables.appType,
       );
       // 刷新代理状态（更新 active_targets）
-      invalidateProxyStatusForTarget(queryClient, target, targetKey);
+      invalidateProxyStatusForTarget(queryClient, target);
     },
   });
 }
@@ -477,7 +477,7 @@ export function useSetAutoFailoverEnabled(
         targetKey,
         variables.appType,
       );
-      invalidateProxyStatusForTarget(queryClient, target, targetKey);
+      invalidateProxyStatusForTarget(queryClient, target);
     },
   });
 }

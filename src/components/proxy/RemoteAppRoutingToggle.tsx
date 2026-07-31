@@ -7,19 +7,21 @@ import {
   useRoutingAppPreflight,
   useUpdateAppProxyConfig,
 } from "@/lib/query/proxy";
-import type { AppId, ManagementTarget } from "@/lib/api";
+import type { ManagementTarget } from "@/lib/api";
+import {
+  REMOTE_ROUTABLE_APPS,
+  type RemoteRoutableApp,
+} from "@/lib/remoteRoutingApps";
 import { cn } from "@/lib/utils";
 
 interface RemoteAppRoutingToggleProps {
   className?: string;
-  activeApp: Extract<AppId, "claude" | "codex" | "gemini">;
+  activeApp: RemoteRoutableApp;
   target: Extract<ManagementTarget, { type: "remote" }>;
 }
 
-function appLabel(app: string): string {
-  if (app === "claude") return "Claude";
-  if (app === "codex") return "Codex";
-  return "Gemini";
+function appLabel(app: RemoteRoutableApp): string {
+  return REMOTE_ROUTABLE_APPS.find(({ id }) => id === app)?.label ?? app;
 }
 
 export function RemoteAppRoutingToggle({

@@ -69,6 +69,11 @@ export const EXPECTED_REMOTE_CAPABILITIES = [
     defaultLabel: "认证管理",
   },
   {
+    id: "usage-model-pricing-sync",
+    labelKey: "remote.capabilities.usageModelPricingSync",
+    defaultLabel: "模型定价同步",
+  },
+  {
     id: "settings",
     labelKey: "remote.capabilities.settings",
     defaultLabel: "通用设置",

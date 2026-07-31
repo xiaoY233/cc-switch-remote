@@ -2,48 +2,45 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { proxyApi } from "@/lib/api/proxy";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
-import type { GlobalProxyConfig, AppProxyConfig } from "@/types/proxy";
+import type {
+  GlobalProxyConfig,
+  AppProxyConfig,
+  ProxyTakeoverStatus,
+} from "@/types/proxy";
 import type { ManagementTarget } from "@/lib/api/remote";
 import {
   getManagementTargetKey,
   LOCAL_MANAGEMENT_TARGET,
 } from "@/lib/managementTarget";
 
+export const proxyKeys = {
+  status: (target: ManagementTarget = LOCAL_MANAGEMENT_TARGET) =>
+    ["proxyStatus", getManagementTargetKey(target)] as const,
+  takeoverStatus: (target: ManagementTarget = LOCAL_MANAGEMENT_TARGET) =>
+    ["proxyTakeoverStatus", getManagementTargetKey(target)] as const,
+  globalConfig: (target: ManagementTarget = LOCAL_MANAGEMENT_TARGET) =>
+    ["globalProxyConfig", getManagementTargetKey(target)] as const,
+  appConfig: (
+    appType: string,
+    target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+  ) => ["appProxyConfig", getManagementTargetKey(target), appType] as const,
+};
+
 // ========== 代理服务器状态 Hooks ==========
 
 /**
  * 获取代理服务器状态
  */
-export function useProxyStatus(
+export function useProxyStatusQuery(
   target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
 ) {
-  const targetKey = getManagementTargetKey(target);
   return useQuery({
-    queryKey: ["proxyStatus", targetKey],
+    queryKey: proxyKeys.status(target),
     queryFn: () => proxyApi.getProxyStatus(target),
-    refetchInterval: 5000, // 每 5 秒刷新一次
-  });
-}
-
-/**
- * 检查代理服务器是否运行
- */
-export function useIsProxyRunning() {
-  return useQuery({
-    queryKey: ["proxyRunning"],
-    queryFn: () => proxyApi.isProxyRunning(),
-    refetchInterval: 2000,
-  });
-}
-
-/**
- * 检查是否处于接管模式
- */
-export function useIsLiveTakeoverActive() {
-  return useQuery({
-    queryKey: ["liveTakeoverActive"],
-    queryFn: () => proxyApi.isLiveTakeoverActive(),
-    refetchInterval: 2000,
+    // 仅在服务运行时轮询
+    refetchInterval: (query) => (query.state.data?.running ? 2000 : false),
+    // 保持之前的数据，避免闪烁
+    placeholderData: (previousData) => previousData,
   });
 }
 
@@ -52,61 +49,23 @@ export function useIsLiveTakeoverActive() {
  */
 export function useProxyTakeoverStatus(
   target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
+  poll = true,
 ) {
-  const targetKey = getManagementTargetKey(target);
   return useQuery({
-    queryKey: ["proxyTakeoverStatus", targetKey],
+    queryKey: proxyKeys.takeoverStatus(target),
     queryFn: () => proxyApi.getProxyTakeoverStatus(),
     enabled: target.type === "local",
-    refetchInterval: 2000,
+    refetchInterval: poll ? 2000 : false,
+    ...(poll
+      ? {}
+      : {
+          placeholderData: (previousData: ProxyTakeoverStatus | undefined) =>
+            previousData,
+        }),
   });
 }
 
 // ========== 代理服务器控制 Hooks ==========
-
-/**
- * 启动代理服务器
- */
-export function useStartProxyServer(
-  target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
-) {
-  const queryClient = useQueryClient();
-  const targetKey = getManagementTargetKey(target);
-
-  return useMutation({
-    mutationFn: () => proxyApi.startProxyServer(target),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["proxyStatus", targetKey] });
-      if (target.type === "local") {
-        queryClient.invalidateQueries({ queryKey: ["proxyRunning"] });
-        queryClient.invalidateQueries({ queryKey: ["liveTakeoverActive"] });
-        queryClient.invalidateQueries({ queryKey: ["proxyTakeoverStatus"] });
-      }
-    },
-  });
-}
-
-/**
- * 停止代理服务器
- */
-export function useStopProxyServer(
-  target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
-) {
-  const queryClient = useQueryClient();
-  const targetKey = getManagementTargetKey(target);
-
-  return useMutation({
-    mutationFn: () => proxyApi.stopProxyWithRestore(target),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["proxyStatus", targetKey] });
-      if (target.type === "local") {
-        queryClient.invalidateQueries({ queryKey: ["proxyRunning"] });
-        queryClient.invalidateQueries({ queryKey: ["liveTakeoverActive"] });
-        queryClient.invalidateQueries({ queryKey: ["proxyTakeoverStatus"] });
-      }
-    },
-  });
-}
 
 /**
  * 设置应用接管状态
@@ -118,73 +77,11 @@ export function useSetProxyTakeoverForApp() {
     mutationFn: ({ appType, enabled }: { appType: string; enabled: boolean }) =>
       proxyApi.setProxyTakeoverForApp(appType, enabled),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["proxyTakeoverStatus"] });
-      queryClient.invalidateQueries({ queryKey: ["liveTakeoverActive"] });
-    },
-  });
-}
-
-/**
- * 代理模式下切换供应商
- */
-export function useSwitchProxyProvider() {
-  const queryClient = useQueryClient();
-  const { t } = useTranslation();
-
-  return useMutation({
-    mutationFn: ({
-      appType,
-      providerId,
-    }: {
-      appType: string;
-      providerId: string;
-    }) => proxyApi.switchProxyProvider(appType, providerId),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["proxyStatus"] });
       queryClient.invalidateQueries({
-        queryKey: ["providers", variables.appType],
+        queryKey: proxyKeys.takeoverStatus(),
       });
     },
-    onError: (error: Error) => {
-      toast.error(t("proxy.switchFailed", { error: error.message }));
-    },
   });
-}
-
-// ========== Legacy 代理配置 Hooks (兼容) ==========
-
-/**
- * 获取代理配置（旧版）
- */
-export function useProxyConfig() {
-  const queryClient = useQueryClient();
-  const { t } = useTranslation();
-
-  const { data: config, isLoading } = useQuery({
-    queryKey: ["proxyConfig"],
-    queryFn: () => proxyApi.getProxyConfig(),
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: proxyApi.updateProxyConfig,
-    onSuccess: () => {
-      toast.success(t("proxy.settings.toast.saved"), { closeButton: true });
-      queryClient.invalidateQueries({ queryKey: ["proxyConfig"] });
-      queryClient.invalidateQueries({ queryKey: ["proxyStatus"] });
-    },
-    onError: (error: Error) => {
-      toast.error(
-        t("proxy.settings.toast.saveFailed", { error: error.message }),
-      );
-    },
-  });
-
-  return {
-    config,
-    isLoading,
-    updateConfig: updateMutation.mutateAsync,
-    isUpdating: updateMutation.isPending,
-  };
 }
 
 // ========== v3+ 全局/应用级配置 Hooks ==========
@@ -195,9 +92,8 @@ export function useProxyConfig() {
 export function useGlobalProxyConfig(
   target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
 ) {
-  const targetKey = getManagementTargetKey(target);
   return useQuery({
-    queryKey: ["globalProxyConfig", targetKey],
+    queryKey: proxyKeys.globalConfig(target),
     queryFn: () => proxyApi.getGlobalProxyConfig(target),
   });
 }
@@ -210,7 +106,6 @@ export function useUpdateGlobalProxyConfig(
 ) {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
-  const targetKey = getManagementTargetKey(target);
 
   return useMutation({
     mutationFn: (config: GlobalProxyConfig) =>
@@ -218,7 +113,10 @@ export function useUpdateGlobalProxyConfig(
     onSuccess: () => {
       toast.success(t("proxy.settings.toast.saved"), { closeButton: true });
       queryClient.invalidateQueries({
-        queryKey: ["globalProxyConfig", targetKey],
+        queryKey: proxyKeys.globalConfig(target),
+      });
+      queryClient.invalidateQueries({
+        queryKey: proxyKeys.status(target),
       });
       if (target.type === "local") {
         queryClient.invalidateQueries({ queryKey: ["proxyConfig"] });
@@ -241,9 +139,8 @@ export function useAppProxyConfig(
   target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
   enabled = true,
 ) {
-  const targetKey = getManagementTargetKey(target);
   return useQuery({
-    queryKey: ["appProxyConfig", targetKey, appType],
+    queryKey: proxyKeys.appConfig(appType, target),
     queryFn: () => proxyApi.getProxyConfigForApp(appType, target),
     enabled: enabled && !!appType,
   });
@@ -282,13 +179,13 @@ export function useUpdateAppProxyConfig(
     onSuccess: (_, variables) => {
       toast.success(t("proxy.settings.toast.saved"), { closeButton: true });
       queryClient.invalidateQueries({
-        queryKey: ["appProxyConfig", targetKey, variables.appType],
+        queryKey: proxyKeys.appConfig(variables.appType, target),
       });
       queryClient.invalidateQueries({
         queryKey: ["routingAppPreflight", targetKey, variables.appType],
       });
       queryClient.invalidateQueries({
-        queryKey: ["proxyStatus", targetKey],
+        queryKey: proxyKeys.status(target),
       });
       queryClient.invalidateQueries({
         queryKey: ["autoFailoverEnabled", targetKey, variables.appType],

@@ -46,12 +46,19 @@ import { getLocaleFromLanguage } from "./format";
 import { getUsageRangePresetLabel, resolveUsageRange } from "@/lib/usageRange";
 import { UsageDateRangePicker } from "./UsageDateRangePicker";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
+import {
+  getManagementTargetKey,
+  LOCAL_MANAGEMENT_TARGET,
+} from "@/lib/managementTarget";
 import type { ManagementTarget } from "@/lib/api/remote";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { usageApi } from "@/lib/api/usage";
 import { toast } from "sonner";
+import {
+  modelsDevSyncConfigKey,
+  syncModelsDevPricing,
+} from "@/lib/modelsDevAutoSync";
 
 const APP_FILTER_OPTIONS: AppTypeFilter[] = ["all", ...KNOWN_APP_TYPES];
 
@@ -85,19 +92,45 @@ const decodeOptionValue = (value: string) =>
 
 interface UsageDashboardProps {
   target?: ManagementTarget;
+  modelsDevSyncSupported?: boolean;
   refreshIntervalMs?: number;
   onRefreshIntervalChange?: (next: number) => Promise<boolean> | boolean | void;
 }
 
 export function UsageDashboard({
   target = LOCAL_MANAGEMENT_TARGET,
+  modelsDevSyncSupported = true,
   refreshIntervalMs: savedRefreshIntervalMs,
   onRefreshIntervalChange,
 }: UsageDashboardProps = {}) {
   const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
+  const targetKey = getManagementTargetKey(target);
   const [range, setRange] = useState<UsageRangeSelection>({ preset: "today" });
   const [appType, setAppType] = useState<AppTypeFilter>("all");
+
+  useEffect(() => {
+    if (target.type !== "remote" || !modelsDevSyncSupported) return;
+
+    let active = true;
+    void syncModelsDevPricing(target)
+      .then((result) => {
+        if (!active || result.skipped) return;
+        return Promise.all([
+          queryClient.invalidateQueries({ queryKey: usageKeys.all(target) }),
+          queryClient.invalidateQueries({
+            queryKey: modelsDevSyncConfigKey(target),
+          }),
+        ]);
+      })
+      .catch((error) => {
+        console.warn("[models.dev] Remote startup sync failed", error);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [modelsDevSyncSupported, queryClient, target, targetKey]);
   const [providerName, setProviderName] = useState<string | undefined>(
     undefined,
   );
@@ -476,7 +509,10 @@ export function UsageDashboard({
             </div>
           </AccordionTrigger>
           <AccordionContent className="px-6 pb-6 pt-4 border-t border-border/50">
-            <PricingConfigPanel target={target} />
+            <PricingConfigPanel
+              target={target}
+              modelsDevSyncSupported={modelsDevSyncSupported}
+            />
           </AccordionContent>
         </AccordionItem>
         <AccordionItem

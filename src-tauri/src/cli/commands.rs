@@ -500,6 +500,50 @@ pub fn get_codex_oauth_quota(
     })
 }
 
+pub fn get_xai_oauth_quota(
+    auth_provider: &str,
+    account_id: Option<&str>,
+) -> Result<crate::services::subscription::SubscriptionQuota, String> {
+    if ensure_auth_provider(auth_provider)? != AUTH_PROVIDER_XAI_OAUTH {
+        return Err(format!(
+            "Quota is only supported for {AUTH_PROVIDER_XAI_OAUTH}"
+        ));
+    }
+
+    auth_runtime()?.block_on(async {
+        let resolved = match account_id
+            .map(str::trim)
+            .filter(|id| !id.is_empty() && *id != "-")
+        {
+            Some(id) => Some(id.to_string()),
+            None => XAI_OAUTH_MANAGER.default_account_id().await,
+        };
+        let Some(id) = resolved else {
+            return Ok(crate::services::subscription::SubscriptionQuota::not_found(
+                AUTH_PROVIDER_XAI_OAUTH,
+            ));
+        };
+
+        let token = match XAI_OAUTH_MANAGER.get_valid_token_for_account(&id).await {
+            Ok(token) => token,
+            Err(e) => {
+                return Ok(crate::services::subscription::SubscriptionQuota::error(
+                    AUTH_PROVIDER_XAI_OAUTH,
+                    crate::services::subscription::CredentialStatus::Expired,
+                    format!("xAI OAuth token unavailable: {e}"),
+                ));
+            }
+        };
+
+        crate::services::subscription_grok::query_grok_quota(
+            &token,
+            AUTH_PROVIDER_XAI_OAUTH,
+            "Please re-login via cc-switch.",
+        )
+        .await
+    })
+}
+
 pub fn get_subscription_quota(
     tool: &str,
 ) -> Result<crate::services::subscription::SubscriptionQuota, String> {
@@ -1132,8 +1176,11 @@ async fn wait_for_routing_status(
 }
 
 #[cfg(feature = "proxy-runtime")]
+const REMOTE_ROUTING_APP_TYPES: [&str; 4] = ["claude", "codex", "gemini", "grokbuild"];
+
+#[cfg(feature = "proxy-runtime")]
 async fn repair_enabled_routing_takeovers(state: &AppState) -> Result<(), String> {
-    for app_type in ["claude", "codex", "gemini"] {
+    for app_type in REMOTE_ROUTING_APP_TYPES {
         let config = state
             .db
             .get_proxy_config_for_app(app_type)
@@ -1151,7 +1198,7 @@ async fn repair_enabled_routing_takeovers(state: &AppState) -> Result<(), String
 
 #[cfg(feature = "proxy-runtime")]
 async fn disable_enabled_routing_takeovers(state: &AppState) -> Result<(), String> {
-    for app_type in ["claude", "codex", "gemini"] {
+    for app_type in REMOTE_ROUTING_APP_TYPES {
         state
             .proxy_service
             .set_takeover_for_app(app_type, false)
@@ -1902,11 +1949,14 @@ pub fn run_tool_lifecycle_action(tools_json: &str, action: &str) -> Result<(), S
     } else {
         serde_json::from_str(tools_json).map_err(|e| e.to_string())?
     };
+    let db = Database::init().map_err(|e| e.to_string())?;
+    let outbound_proxy = db.get_global_proxy_url().map_err(|e| e.to_string())?;
     let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
     runtime.block_on(crate::tool_environment::run_tool_lifecycle_action(
         tools.clone(),
         action.to_string(),
         None,
+        outbound_proxy,
     ))?;
 
     if action == "install" {
@@ -2304,10 +2354,10 @@ pub fn usage_rebuild_codex() -> Result<crate::services::session_usage::SessionSy
     })
 }
 
-pub fn usage_model_pricing() -> Result<Vec<crate::services::usage_pricing::ModelPricingInfo>, String>
+pub fn usage_model_pricing() -> Result<Vec<crate::services::model_pricing::ModelPricingInfo>, String>
 {
     let db = Database::init().map_err(|e| e.to_string())?;
-    crate::services::usage_pricing::get_model_pricing(&db).map_err(|e| e.to_string())
+    crate::services::model_pricing::get_model_pricing(&db).map_err(|e| e.to_string())
 }
 
 pub fn usage_update_model_pricing(
@@ -2319,22 +2369,65 @@ pub fn usage_update_model_pricing(
     cache_creation_cost: &str,
 ) -> Result<(), String> {
     let db = Database::init().map_err(|e| e.to_string())?;
-    crate::services::usage_pricing::update_model_pricing(
+    crate::services::model_pricing::update_model_pricing(
         &db,
-        model_id.to_string(),
-        display_name.to_string(),
-        input_cost.to_string(),
-        output_cost.to_string(),
-        cache_read_cost.to_string(),
-        cache_creation_cost.to_string(),
+        crate::services::model_pricing::ModelPricingInfo {
+            model_id: model_id.to_string(),
+            display_name: display_name.to_string(),
+            input_cost_per_million: input_cost.to_string(),
+            output_cost_per_million: output_cost.to_string(),
+            cache_read_cost_per_million: cache_read_cost.to_string(),
+            cache_creation_cost_per_million: cache_creation_cost.to_string(),
+        },
     )
+    .map(|_| ())
     .map_err(|e| e.to_string())
 }
 
 pub fn usage_delete_model_pricing(model_id: &str) -> Result<(), String> {
     let db = Database::init().map_err(|e| e.to_string())?;
-    crate::services::usage_pricing::delete_model_pricing(&db, model_id.to_string())
+    crate::services::model_pricing::delete_model_pricing(&db, model_id).map_err(|e| e.to_string())
+}
+
+pub fn usage_update_model_pricing_batch(entries_json: &str) -> Result<usize, String> {
+    let entries: Vec<crate::services::model_pricing::ModelPricingInfo> =
+        serde_json::from_str(entries_json).map_err(|e| e.to_string())?;
+    let db = Database::init().map_err(|e| e.to_string())?;
+    crate::services::model_pricing::update_model_pricing_batch(&db, entries)
         .map_err(|e| e.to_string())
+}
+
+pub fn usage_models_dev_state() -> Result<crate::services::model_pricing::ModelsDevSyncState, String>
+{
+    let db = Database::init().map_err(|e| e.to_string())?;
+    crate::services::model_pricing::get_models_dev_sync_state(&db).map_err(|e| e.to_string())
+}
+
+pub fn usage_models_dev_save(config_json: &str) -> Result<(), String> {
+    let config: crate::services::model_pricing::ModelsDevSyncConfig =
+        serde_json::from_str(config_json).map_err(|e| e.to_string())?;
+    let db = Database::init().map_err(|e| e.to_string())?;
+    crate::services::model_pricing::save_models_dev_sync_config(&db, config)
+        .map_err(|e| e.to_string())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ModelsDevSyncResultInput {
+    synced_at: Option<i64>,
+    error: Option<String>,
+}
+
+pub fn usage_models_dev_record(result_json: &str) -> Result<(), String> {
+    let result: ModelsDevSyncResultInput =
+        serde_json::from_str(result_json).map_err(|e| e.to_string())?;
+    let db = Database::init().map_err(|e| e.to_string())?;
+    crate::services::model_pricing::record_models_dev_sync_result(
+        &db,
+        result.synced_at,
+        result.error,
+    )
+    .map_err(|e| e.to_string())
 }
 
 pub fn save_log_config(config_json: &str) -> Result<bool, String> {

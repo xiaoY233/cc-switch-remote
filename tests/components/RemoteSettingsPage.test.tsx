@@ -267,6 +267,7 @@ describe("RemoteSettingsPage", () => {
       }),
     );
 
+    expect(screen.getByRole("tab", { name: "Grok Build" })).toBeInTheDocument();
     expect(
       screen.getByText("在主页面显示远程故障转移开关"),
     ).toBeInTheDocument();

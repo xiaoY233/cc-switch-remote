@@ -3,11 +3,14 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useProxyStatus } from "@/hooks/useProxyStatus";
+import { proxyKeys } from "@/lib/query/proxy";
 import { createTestQueryClient } from "../utils/testQueryClient";
 
 const toastSuccessMock = vi.fn();
 const toastErrorMock = vi.fn();
 const invokeMock = vi.fn();
+const getRoutingRuntimeStatusMock = vi.fn();
+const stopRoutingRuntimeMock = vi.fn();
 
 vi.mock("sonner", () => ({
   toast: {
@@ -18,6 +21,14 @@ vi.mock("sonner", () => ({
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (...args: unknown[]) => invokeMock(...args),
+}));
+
+vi.mock("@/lib/api/remote", () => ({
+  remoteApi: {
+    getRoutingRuntimeStatus: (...args: unknown[]) =>
+      getRoutingRuntimeStatusMock(...args),
+    stopRoutingRuntime: (...args: unknown[]) => stopRoutingRuntimeMock(...args),
+  },
 }));
 
 vi.mock("react-i18next", () => ({
@@ -55,6 +66,25 @@ describe("useProxyStatus", () => {
     invokeMock.mockReset();
     toastSuccessMock.mockReset();
     toastErrorMock.mockReset();
+    getRoutingRuntimeStatusMock.mockReset();
+    stopRoutingRuntimeMock.mockReset();
+    getRoutingRuntimeStatusMock.mockResolvedValue({
+      running: false,
+      address: "127.0.0.1",
+      port: 15721,
+      active_connections: 0,
+      total_requests: 0,
+      success_requests: 0,
+      failed_requests: 0,
+      success_rate: 0,
+      uptime_seconds: 0,
+      current_provider: null,
+      current_provider_id: null,
+      last_request_at: null,
+      last_error: null,
+      failover_count: 0,
+    });
+    stopRoutingRuntimeMock.mockResolvedValue(undefined);
 
     invokeMock.mockImplementation((command: string) => {
       if (command === "get_proxy_status") {
@@ -99,12 +129,26 @@ describe("useProxyStatus", () => {
     });
   });
 
+  it("keeps the established proxy query key shapes", () => {
+    expect(proxyKeys.status()).toEqual(["proxyStatus", "local"]);
+    expect(proxyKeys.takeoverStatus()).toEqual([
+      "proxyTakeoverStatus",
+      "local",
+    ]);
+    expect(proxyKeys.globalConfig()).toEqual(["globalProxyConfig", "local"]);
+    expect(proxyKeys.appConfig("claude")).toEqual([
+      "appProxyConfig",
+      "local",
+      "claude",
+    ]);
+  });
+
   it("shows interpolated address and port after proxy server starts", async () => {
     const { wrapper } = createWrapper();
     const { result } = renderHook(() => useProxyStatus(), { wrapper });
 
     await waitFor(() => {
-      expect(result.current.isLoading).toBe(false);
+      expect(result.current.status).toBeDefined();
     });
 
     await act(async () => {
@@ -115,5 +159,51 @@ describe("useProxyStatus", () => {
       "代理服务已启动 - 127.0.0.1:15721",
       { closeButton: true },
     );
+
+    await act(async () => {
+      await result.current.stopProxyServer();
+    });
+
+    expect(invokeMock).toHaveBeenCalledWith("start_proxy_server");
+    expect(invokeMock).toHaveBeenCalledWith("stop_proxy_server");
+  });
+
+  it("refreshes all remote app routing configs after the remote runtime stops", async () => {
+    const { wrapper, queryClient } = createWrapper();
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+    const target = {
+      type: "remote" as const,
+      profile: {
+        id: "remote-1",
+        name: "Remote 1",
+        host: "192.168.1.20",
+        port: 22,
+        username: "root",
+        authMethod: { type: "sshAgent" as const },
+        helperPath: "~/.local/bin/cc-switch-remote-helper",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      secret: {},
+    };
+    const { result } = renderHook(() => useProxyStatus(target), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.status).toBeDefined();
+    });
+
+    await act(async () => {
+      await result.current.stopProxyServer();
+    });
+
+    expect(stopRoutingRuntimeMock).toHaveBeenCalledWith(
+      target.profile,
+      target.secret,
+    );
+    for (const appType of ["claude", "codex", "gemini", "grokbuild"]) {
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: proxyKeys.appConfig(appType, target),
+      });
+    }
   });
 });

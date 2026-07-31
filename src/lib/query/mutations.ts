@@ -15,6 +15,7 @@ import { extractErrorMessage } from "@/utils/errorUtils";
 import { generateUUID } from "@/utils/uuid";
 import { openclawKeys } from "@/hooks/useOpenClaw";
 import { invalidateHermesProviderCaches } from "@/hooks/useHermes";
+import { proxyKeys } from "@/lib/query/proxy";
 import { usageKeys } from "@/lib/query/usage";
 import { omoKeys, omoSlimKeys } from "@/lib/query/omo";
 import {
@@ -73,10 +74,7 @@ export const useAddProviderMutation = (
         ...rest
       } = providerInput;
 
-      if (
-        appId === "claude-desktop" &&
-        ensureClaudeDesktopOfficialSeed
-      ) {
+      if (appId === "claude-desktop" && ensureClaudeDesktopOfficialSeed) {
         await providersApi.ensureClaudeDesktopOfficialProvider(target);
         const providers = await providersApi.getAll(appId, target);
         const officialProvider = providers["claude-desktop-official"];
@@ -96,10 +94,7 @@ export const useAddProviderMutation = (
         return officialProvider;
       }
 
-      if (
-        appId === "grokbuild" &&
-        ensureGrokBuildOfficialSeed
-      ) {
+      if (appId === "grokbuild" && ensureGrokBuildOfficialSeed) {
         await providersApi.ensureGrokBuildOfficialProvider(target);
         const providers = await providersApi.getAll(appId, target);
         const officialProvider = providers[GROKBUILD_OFFICIAL_PROVIDER_ID];
@@ -326,10 +321,14 @@ export const useSwitchProviderMutation = (
         queryKey: providerQueryKey(appId, target),
       });
       if (appId === "claude-desktop") {
-        await queryClient.invalidateQueries({ queryKey: ["proxyStatus"] });
         await queryClient.invalidateQueries({
-          queryKey: ["claudeDesktopStatus"],
+          queryKey: proxyKeys.status(target),
         });
+        if (target.type === "local") {
+          await queryClient.invalidateQueries({
+            queryKey: ["claudeDesktopStatus"],
+          });
+        }
       }
 
       // OpenCode/OpenClaw: also invalidate live provider IDs cache to update button state
