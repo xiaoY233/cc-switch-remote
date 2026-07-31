@@ -29,7 +29,7 @@ CC Switch Remote is a remote-management focused fork of CC Switch. It keeps the 
 
 CC Switch Remote provides a single desktop UI for managing multiple AI coding tools:
 
-- Provider presets and provider switching for Claude Code, Claude Desktop, Codex, Gemini CLI, Grok Build, OpenCode and OpenClaw
+- Provider presets and provider switching for Claude Code, Claude Desktop, Codex, Gemini CLI, Grok Build, OpenCode, OpenClaw and Hermes Agent
 - MCP server management
 - Prompt and instruction file management
 - Skill management and synchronization

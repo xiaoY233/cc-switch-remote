@@ -3191,12 +3191,10 @@ impl ProviderService {
                     is_app_taken_over,
                     live_taken_over
                 );
-                futures::executor::block_on(
-                    state
-                        .proxy_service
-                        .disable_takeover_for_app_inner(&app_type),
-                )
-                .map_err(|e| AppError::Message(format!("清理接管残留失败: {e}")))?;
+                state
+                    .proxy_service
+                    .disable_takeover_for_app_sync(&app_type)
+                    .map_err(|e| AppError::Message(format!("清理接管残留失败: {e}")))?;
 
                 is_app_taken_over =
                     futures::executor::block_on(state.db.get_live_backup(app_type.as_str()))
@@ -3330,11 +3328,21 @@ impl ProviderService {
 
         // Additive mode apps skip setting is_current (no such concept)
         if !app_type.is_additive_mode() {
+            let previous_local_provider_id = crate::settings::get_current_provider(&app_type);
+
             // Update local settings (device-level, takes priority)
             crate::settings::set_current_provider(&app_type, Some(id))?;
 
             // Update database is_current (as default for new devices)
-            state.db.set_current_provider(app_type.as_str(), id)?;
+            if let Err(error) = state.db.set_current_provider(app_type.as_str(), id) {
+                if let Err(rollback_error) = crate::settings::set_current_provider(
+                    &app_type,
+                    previous_local_provider_id.as_deref(),
+                ) {
+                    log::error!("数据库切换失败后恢复本地当前供应商失败: {rollback_error}");
+                }
+                return Err(error);
+            }
         }
 
         // Sync to live (write_gemini_live handles security flag internally for Gemini)

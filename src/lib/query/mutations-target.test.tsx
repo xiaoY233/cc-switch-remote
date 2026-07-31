@@ -14,9 +14,7 @@ const providersApiMock = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/api", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/api")>(
-    "@/lib/api",
-  );
+  const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
   return {
     ...actual,
     providersApi: providersApiMock,
@@ -71,7 +69,10 @@ describe("provider mutations target routing", () => {
 
   it("restores the fixed Grok Build official seed on the remote target instead of adding a random provider", async () => {
     const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
     });
     providersApiMock.ensureGrokBuildOfficialProvider.mockResolvedValueOnce(
       true,
@@ -99,9 +100,9 @@ describe("provider mutations target routing", () => {
       });
     });
 
-    expect(providersApiMock.ensureGrokBuildOfficialProvider).toHaveBeenCalledWith(
-      remoteTarget,
-    );
+    expect(
+      providersApiMock.ensureGrokBuildOfficialProvider,
+    ).toHaveBeenCalledWith(remoteTarget);
     expect(providersApiMock.getAll).toHaveBeenCalledWith(
       "grokbuild",
       remoteTarget,
