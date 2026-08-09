@@ -819,28 +819,41 @@ pub(crate) fn save_settings_with_state(
                 "统一 Codex 会话历史开关未生效（live 配置重写失败）: {err}"
             ));
         }
-
-        if unify_codex_enabled {
-            std::thread::spawn(|| {
-                match crate::codex_history_migration::maybe_migrate_codex_official_history_to_unified_bucket() {
-                    Ok(outcome) => {
-                        if let Some(reason) = outcome.skipped_reason {
-                            log::debug!("○ Codex official history unify migration skipped: {reason}");
-                        } else {
-                            log::info!(
-                                "✓ Codex official history unify migration completed: jsonl_files={}, state_rows={}",
-                                outcome.migrated_jsonl_files,
-                                outcome.migrated_state_rows
-                            );
-                        }
-                    }
-                    Err(e) => log::warn!("✗ Codex official history unify migration failed: {e}"),
-                }
-            });
-        }
     }
     drop(transaction);
+    if unify_codex_changed && unify_codex_enabled {
+        retry_pending_codex_history_migration()
+            .map_err(|error| format!("设置已保存，但 Codex 历史迁移仍待重试: {error}"))?;
+    }
     Ok(true)
+}
+
+fn retry_pending_codex_history_migration_with<F>(runner: F) -> Result<(), AppError>
+where
+    F: FnOnce() -> Result<(), AppError>,
+{
+    if !unify_codex_session_history() || !unify_codex_migrate_existing_requested() {
+        return Ok(());
+    }
+    runner()
+}
+
+pub(crate) fn retry_pending_codex_history_migration() -> Result<(), AppError> {
+    retry_pending_codex_history_migration_with(|| {
+        let outcome =
+            crate::codex_history_migration::maybe_migrate_codex_official_history_to_unified_bucket(
+            )?;
+        if let Some(reason) = outcome.skipped_reason {
+            log::debug!("○ Codex official history unify migration skipped: {reason}");
+        } else {
+            log::info!(
+                "✓ Codex official history unify migration completed: jsonl_files={}, state_rows={}",
+                outcome.migrated_jsonl_files,
+                outcome.migrated_state_rows
+            );
+        }
+        Ok(())
+    })
 }
 
 pub fn update_settings(new_settings: AppSettings) -> Result<(), AppError> {
@@ -1407,6 +1420,63 @@ mod tests {
                 .migrated_provider_ids,
             vec!["backend-marker"]
         );
+    }
+
+    #[test]
+    #[serial]
+    fn pending_codex_history_migration_runner_is_synchronous() {
+        let home = tempfile::tempdir().expect("temporary home");
+        let _guard = TestHomeGuard::set(home.path());
+        let mut settings = AppSettings::default();
+        settings.unify_codex_session_history = true;
+        settings.unify_codex_migrate_existing = Some(true);
+        update_settings(settings).expect("seed pending migration");
+
+        let (started_tx, started_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let (finished_tx, finished_rx) = mpsc::channel();
+        let task = std::thread::spawn(move || {
+            let result = retry_pending_codex_history_migration_with(|| {
+                started_tx.send(()).expect("signal migration start");
+                release_rx.recv().expect("wait for migration release");
+                Ok(())
+            });
+            finished_tx.send(result).expect("signal migration finish");
+        });
+
+        started_rx.recv().expect("migration started");
+        assert!(
+            finished_rx.recv_timeout(Duration::from_millis(50)).is_err(),
+            "one-shot helper save must not detach a pending migration"
+        );
+        release_tx.send(()).expect("release migration");
+        assert!(finished_rx.recv().expect("migration result").is_ok());
+        task.join().expect("migration task");
+    }
+
+    #[test]
+    #[serial]
+    fn failed_pending_codex_history_migration_remains_retryable() {
+        let home = tempfile::tempdir().expect("temporary home");
+        let _guard = TestHomeGuard::set(home.path());
+        let mut settings = AppSettings::default();
+        settings.unify_codex_session_history = true;
+        settings.unify_codex_migrate_existing = Some(true);
+        update_settings(settings).expect("seed pending migration");
+
+        let failed = retry_pending_codex_history_migration_with(|| {
+            Err(AppError::Message("injected migration failure".to_string()))
+        });
+        assert!(failed.is_err());
+        assert!(unify_codex_migrate_existing_requested());
+
+        let attempts = std::sync::atomic::AtomicUsize::new(0);
+        assert!(retry_pending_codex_history_migration_with(|| {
+            attempts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        })
+        .is_ok());
+        assert_eq!(attempts.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 
     #[test]

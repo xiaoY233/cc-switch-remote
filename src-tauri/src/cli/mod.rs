@@ -1052,9 +1052,59 @@ mod tests {
         assert_eq!(response.data, Some(Value::Null));
         assert!(response.error.is_none());
     }
+
+    #[test]
+    #[serial_test::serial]
+    fn one_shot_and_serve_run_the_shared_pending_migration_retry_at_startup() {
+        let dir = tempfile::tempdir().expect("temp test home");
+        let _home = EnvVarGuard::set("CC_SWITCH_TEST_HOME", dir.path());
+        let one_shot_attempts = std::sync::atomic::AtomicUsize::new(0);
+        let one_shot = run_entry_with_hooks(
+            &["status".to_string()],
+            || {
+                one_shot_attempts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            },
+            || unreachable!("one-shot must not enter serve"),
+        );
+        assert!(matches!(one_shot, CliRunResult::Json(_)));
+        assert_eq!(
+            one_shot_attempts.load(std::sync::atomic::Ordering::SeqCst),
+            1
+        );
+
+        let serve_attempts = std::sync::atomic::AtomicUsize::new(0);
+        let serve_calls = std::sync::atomic::AtomicUsize::new(0);
+        let served = run_entry_with_hooks(
+            &["serve".to_string()],
+            || {
+                serve_attempts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            },
+            || {
+                serve_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            },
+        );
+        assert!(matches!(served, CliRunResult::Served));
+        assert_eq!(serve_attempts.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(serve_calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
 }
 
 pub fn run_entry(args: &[String]) -> CliRunResult {
+    run_entry_with_hooks(
+        args,
+        crate::settings::retry_pending_codex_history_migration,
+        serve::run_stdio,
+    )
+}
+
+fn run_entry_with_hooks<M, S>(args: &[String], migration_retry: M, serve_runner: S) -> CliRunResult
+where
+    M: FnOnce() -> Result<(), crate::error::AppError>,
+    S: FnOnce() -> std::io::Result<()>,
+{
     if let Err(error) = crate::config::ensure_remote_app_config_dir_initialized() {
         return CliRunResult::Json(
             serde_json::to_value(types::err::<()>(
@@ -1063,6 +1113,9 @@ pub fn run_entry(args: &[String]) -> CliRunResult {
             ))
             .expect("serialize app config dir init error"),
         );
+    }
+    if let Err(error) = migration_retry() {
+        log::warn!("Codex history migration remains pending for helper startup retry: {error}");
     }
     if let Err(error) = commands::init_global_outbound_proxy_from_db() {
         return CliRunResult::Json(
@@ -1073,7 +1126,7 @@ pub fn run_entry(args: &[String]) -> CliRunResult {
 
     let args = normalize_args(args);
     if args == ["serve"] {
-        return match serve::run_stdio() {
+        return match serve_runner() {
             Ok(()) => CliRunResult::Served,
             Err(error) => CliRunResult::Json(
                 serde_json::to_value(types::err::<()>("serve_failed", error.to_string()))
