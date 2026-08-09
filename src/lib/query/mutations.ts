@@ -17,7 +17,11 @@ import { openclawKeys } from "@/hooks/useOpenClaw";
 import { invalidateHermesProviderCaches } from "@/hooks/useHermes";
 import { proxyKeys } from "@/lib/query/proxy";
 import { usageKeys } from "@/lib/query/usage";
-import { omoKeys, omoSlimKeys } from "@/lib/query/omo";
+import {
+  omoKeys,
+  omoSlimKeys,
+  openCodeRuntimeModelsQueryKey,
+} from "@/lib/query/omo";
 import {
   CODEX_OFFICIAL_PROVIDER_ID,
   GROKBUILD_OFFICIAL_PROVIDER_ID,
@@ -41,7 +45,7 @@ const invalidateOpenCodeDerivedState = async (
     queryKey: ["opencodeLiveProviderIds", key],
   });
   await queryClient.invalidateQueries({
-    queryKey: ["opencode", "runtime-models", key],
+    queryKey: openCodeRuntimeModelsQueryKey(target),
   });
   await queryClient.invalidateQueries({
     queryKey: omoKeys.currentProviderId(key),
@@ -449,7 +453,7 @@ export const useSaveSettingsMutation = () => {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["settings"] });
       await queryClient.invalidateQueries({
-        queryKey: ["opencode", "runtime-models", "local"],
+        queryKey: openCodeRuntimeModelsQueryKey({ type: "local" }),
       });
     },
   });

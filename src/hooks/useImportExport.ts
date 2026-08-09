@@ -1,7 +1,9 @@
 import { useCallback, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { remoteApi, settingsApi } from "@/lib/api";
+import { openCodeRuntimeModelsQueryKey } from "@/lib/query/omo";
 import type {
   ManagementTarget,
   RestoreMode,
@@ -42,6 +44,7 @@ export function useImportExport(
   options: UseImportExportOptions = {},
 ): UseImportExportResult {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const { onImportSuccess, target = { type: "local" } } = options;
 
   const [selectedFile, setSelectedFile] = useState("");
@@ -102,6 +105,11 @@ export function useImportExport(
       }
 
       setBackupId(result.backupId ?? null);
+      if (target.type === "remote") {
+        await queryClient.invalidateQueries({
+          queryKey: openCodeRuntimeModelsQueryKey(target),
+        });
+      }
       void onImportSuccess?.();
 
       const syncResult =
@@ -130,7 +138,7 @@ export function useImportExport(
         );
       }
     },
-    [onImportSuccess, t, target.type],
+    [onImportSuccess, queryClient, t, target],
   );
 
   const executeImport = useCallback(

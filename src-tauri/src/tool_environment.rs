@@ -2052,24 +2052,12 @@ fn wait_child_output(
     mut child: std::process::Child,
     deadline: Option<CommandDeadline>,
 ) -> Result<std::process::Output, String> {
-    use std::io::Read;
-
     let stdout_pipe = child.stdout.take();
     let stderr_pipe = child.stderr.take();
-    let stdout_handle = stdout_pipe.map(|mut pipe| {
-        std::thread::spawn(move || {
-            let mut buf = Vec::new();
-            let _ = pipe.read_to_end(&mut buf);
-            buf
-        })
-    });
-    let stderr_handle = stderr_pipe.map(|mut pipe| {
-        std::thread::spawn(move || {
-            let mut buf = Vec::new();
-            let _ = pipe.read_to_end(&mut buf);
-            buf
-        })
-    });
+    let stdout_handle = stdout_pipe
+        .map(|pipe| std::thread::spawn(move || read_command_pipe_bounded(pipe, "stdout")));
+    let stderr_handle = stderr_pipe
+        .map(|pipe| std::thread::spawn(move || read_command_pipe_bounded(pipe, "stderr")));
 
     let status = match deadline {
         None => child
@@ -2130,10 +2118,20 @@ fn wait_child_output(
     }
 
     let stdout = stdout_handle
-        .map(|handle| handle.join().unwrap_or_default())
+        .map(|handle| {
+            handle
+                .join()
+                .map_err(|_| "Command stdout reader thread panicked".to_string())?
+        })
+        .transpose()?
         .unwrap_or_default();
     let stderr = stderr_handle
-        .map(|handle| handle.join().unwrap_or_default())
+        .map(|handle| {
+            handle
+                .join()
+                .map_err(|_| "Command stderr reader thread panicked".to_string())?
+        })
+        .transpose()?
         .unwrap_or_default();
 
     Ok(std::process::Output {
@@ -2141,6 +2139,27 @@ fn wait_child_output(
         stdout,
         stderr,
     })
+}
+
+const COMMAND_OUTPUT_MAX_BYTES: usize = 1024 * 1024;
+
+fn read_command_pipe_bounded(
+    mut pipe: impl std::io::Read,
+    stream_name: &str,
+) -> Result<Vec<u8>, String> {
+    use std::io::Read;
+
+    let mut output = Vec::with_capacity(8192);
+    pipe.by_ref()
+        .take((COMMAND_OUTPUT_MAX_BYTES + 1) as u64)
+        .read_to_end(&mut output)
+        .map_err(|error| format!("Failed to read command {stream_name}: {error}"))?;
+    if output.len() > COMMAND_OUTPUT_MAX_BYTES {
+        return Err(format!(
+            "Command {stream_name} exceeded {COMMAND_OUTPUT_MAX_BYTES} bytes"
+        ));
+    }
+    Ok(output)
 }
 
 fn apply_extra_env(cmd: &mut std::process::Command, extra_env: &[(&str, String)]) {
@@ -3089,6 +3108,63 @@ fn wsl_distro_from_path(path: &Path) -> Option<String> {
 mod tests {
     use super::*;
     use std::path::{Path, PathBuf};
+
+    #[test]
+    fn command_pipe_capture_accepts_the_byte_limit() {
+        let input = vec![b'x'; COMMAND_OUTPUT_MAX_BYTES];
+        assert_eq!(
+            read_command_pipe_bounded(std::io::Cursor::new(input), "stdout")
+                .unwrap()
+                .len(),
+            COMMAND_OUTPUT_MAX_BYTES
+        );
+    }
+
+    #[test]
+    fn command_pipe_capture_rejects_one_byte_over_the_limit() {
+        let input = vec![b'x'; COMMAND_OUTPUT_MAX_BYTES + 1];
+        assert_eq!(
+            read_command_pipe_bounded(std::io::Cursor::new(input), "stderr").unwrap_err(),
+            format!("Command stderr exceeded {COMMAND_OUTPUT_MAX_BYTES} bytes")
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn wsl_env_allows_spaces_in_unc_config_path() {
+        let extra_env = [
+            (
+                "OPENCODE_CONFIG_DIR",
+                r"\\wsl$\Ubuntu\home\Jane Doe\.config\opencode".to_string(),
+            ),
+            ("OPENCODE_DISABLE_PROJECT_CONFIG", "true".to_string()),
+        ];
+
+        assert_eq!(
+            build_wsl_env_argv(&extra_env).unwrap(),
+            vec![
+                "OPENCODE_CONFIG_DIR=/home/Jane Doe/.config/opencode".to_string(),
+                "OPENCODE_DISABLE_PROJECT_CONFIG=true".to_string(),
+            ]
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn wsl_env_skips_host_config_path() {
+        let extra_env = [
+            (
+                "OPENCODE_CONFIG_DIR",
+                r"C:\Users\Jane Doe\.config\opencode".to_string(),
+            ),
+            ("OPENCODE_DISABLE_PROJECT_CONFIG", "true".to_string()),
+        ];
+
+        assert_eq!(
+            build_wsl_env_argv(&extra_env).unwrap(),
+            vec!["OPENCODE_DISABLE_PROJECT_CONFIG=true".to_string()]
+        );
+    }
     #[test]
     fn test_extract_version() {
         assert_eq!(extract_version("claude 1.0.20"), "1.0.20");

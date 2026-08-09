@@ -16,6 +16,9 @@ function createOmoQueryKeys(prefix: string) {
   };
 }
 
+export const openCodeRuntimeModelsQueryKey = (target: ManagementTarget) =>
+  ["opencode", "runtime-models", getManagementTargetKey(target)] as const;
+
 function createOmoQueryHooks(
   variant: "omo" | "omo-slim",
   api: typeof omoApi | typeof omoSlimApi,

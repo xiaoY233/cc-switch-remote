@@ -1,7 +1,9 @@
 import { useCallback, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { remoteApi, type ManagementTarget } from "@/lib/api";
+import { openCodeRuntimeModelsQueryKey } from "@/lib/query/omo";
 import type { MigrationResult } from "@/lib/api/skills";
 import type { Settings, SkillStorageLocation } from "@/types";
 import { extractErrorMessage } from "@/utils/errorUtils";
@@ -18,6 +20,7 @@ export function useRemoteSettings({
   onSettingsSaved,
 }: UseRemoteSettingsOptions) {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const [settings, setSettings] = useState<Settings | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -133,6 +136,9 @@ export function useRemoteSettings({
         );
         await syncClaudePluginIfChanged(nextSettings, settings);
         await syncClaudeOnboardingIfChanged(nextSettings, settings);
+        await queryClient.invalidateQueries({
+          queryKey: openCodeRuntimeModelsQueryKey(target),
+        });
         return true;
       } catch (error) {
         setSettings(previousSettings);
@@ -152,6 +158,7 @@ export function useRemoteSettings({
     },
     [
       onSettingsSaved,
+      queryClient,
       settings,
       syncClaudeOnboardingIfChanged,
       syncClaudePluginIfChanged,

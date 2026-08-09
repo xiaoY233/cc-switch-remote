@@ -18,6 +18,8 @@ pub struct OpenCodeModelRef {
 }
 
 const OPENCODE_MODELS_TIMEOUT: Duration = Duration::from_secs(20);
+const OPENCODE_MODEL_MAX_LINE_BYTES: usize = 16 * 1024;
+const OPENCODE_MODEL_MAX_COUNT: usize = 10_000;
 
 pub async fn get_opencode_models() -> Result<Vec<OpenCodeModelRef>, String> {
     tokio::task::spawn_blocking(|| {
@@ -49,39 +51,51 @@ pub async fn get_opencode_models() -> Result<Vec<OpenCodeModelRef>, String> {
             });
         }
 
-        Ok(parse_opencode_models(
-            &crate::tool_environment::decode_command_output(&output.stdout),
+        parse_opencode_models(&crate::tool_environment::decode_command_output(
+            &output.stdout,
         ))
     })
     .await
     .map_err(|e| format!("OpenCode model discovery task failed: {e}"))?
 }
 
-fn parse_opencode_models(output: &str) -> Vec<OpenCodeModelRef> {
-    output
-        .lines()
-        .filter_map(|line| {
-            let (provider_id, model_id) = line.trim().split_once('/')?;
-            if provider_id.is_empty()
-                || model_id.is_empty()
-                || !provider_id
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
-                || model_id
-                    .chars()
-                    .any(|c| c.is_whitespace() || c.is_control())
-            {
-                return None;
-            }
-            Some((provider_id.to_string(), model_id.to_string()))
-        })
-        .collect::<BTreeSet<_>>()
+fn parse_opencode_models(output: &str) -> Result<Vec<OpenCodeModelRef>, String> {
+    let mut models = BTreeSet::new();
+    for raw_line in output.lines() {
+        if raw_line.len() > OPENCODE_MODEL_MAX_LINE_BYTES {
+            return Err(format!(
+                "OpenCode model output line exceeds {OPENCODE_MODEL_MAX_LINE_BYTES} bytes"
+            ));
+        }
+        let Some((provider_id, model_id)) = raw_line.trim().split_once('/') else {
+            continue;
+        };
+        if provider_id.is_empty()
+            || model_id.is_empty()
+            || !provider_id
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+            || model_id
+                .chars()
+                .any(|c| c.is_whitespace() || c.is_control())
+        {
+            continue;
+        }
+        let model = (provider_id.to_string(), model_id.to_string());
+        if !models.contains(&model) && models.len() >= OPENCODE_MODEL_MAX_COUNT {
+            return Err(format!(
+                "OpenCode model output exceeds {OPENCODE_MODEL_MAX_COUNT} models"
+            ));
+        }
+        models.insert(model);
+    }
+    Ok(models
         .into_iter()
         .map(|(provider_id, model_id)| OpenCodeModelRef {
             provider_id,
             model_id,
         })
-        .collect()
+        .collect())
 }
 
 /// 获取到的模型信息
@@ -559,7 +573,8 @@ mod tests {
         assert_eq!(
             parse_opencode_models(
                 "openrouter/vendor/model\nopencode/free-model\ninvalid\nopencode/free-model\n"
-            ),
+            )
+            .unwrap(),
             vec![
                 OpenCodeModelRef {
                     provider_id: "opencode".to_string(),
@@ -578,6 +593,28 @@ mod tests {
         assert!(parse_opencode_models(
             "notice: loading models\n/model\nprovider/\nbad provider/model\nprovider/bad model\nprovider/bad\u{1b}[0m\n"
         )
+        .unwrap()
         .is_empty());
+    }
+
+    #[test]
+    fn rejects_overlong_opencode_runtime_model_lines() {
+        let output = format!("provider/{}", "x".repeat(OPENCODE_MODEL_MAX_LINE_BYTES));
+        assert_eq!(
+            parse_opencode_models(&output).unwrap_err(),
+            format!("OpenCode model output line exceeds {OPENCODE_MODEL_MAX_LINE_BYTES} bytes")
+        );
+    }
+
+    #[test]
+    fn rejects_opencode_runtime_model_count_overflow() {
+        let output = (0..=OPENCODE_MODEL_MAX_COUNT)
+            .map(|index| format!("provider/model-{index}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_eq!(
+            parse_opencode_models(&output).unwrap_err(),
+            format!("OpenCode model output exceeds {OPENCODE_MODEL_MAX_COUNT} models")
+        );
     }
 }

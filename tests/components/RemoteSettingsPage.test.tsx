@@ -15,6 +15,14 @@ const stopWithRestoreMock = vi.fn();
 const hasCodexUnifyHistoryBackupMock = vi.fn();
 const restoreCodexUnifiedHistoryMock = vi.fn();
 
+vi.mock("@tanstack/react-query", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@tanstack/react-query")>();
+  return {
+    ...actual,
+    useQueryClient: () => ({ invalidateQueries: vi.fn() }),
+  };
+});
+
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;

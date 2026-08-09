@@ -22,6 +22,15 @@ const syncCurrentProvidersLiveMock = vi.fn();
 const remoteImportConfigMock = vi.fn();
 const remoteExportConfigMock = vi.fn();
 const remotePreflightConfigFileMock = vi.fn();
+const invalidateQueriesMock = vi.fn();
+
+vi.mock("@tanstack/react-query", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@tanstack/react-query")>();
+  return {
+    ...actual,
+    useQueryClient: () => ({ invalidateQueries: invalidateQueriesMock }),
+  };
+});
 
 vi.mock("@/lib/api", () => ({
   settingsApi: {
@@ -49,6 +58,7 @@ beforeEach(() => {
   remoteImportConfigMock.mockReset();
   remoteExportConfigMock.mockReset();
   remotePreflightConfigFileMock.mockReset();
+  invalidateQueriesMock.mockReset();
   toastSuccessMock.mockReset();
   toastErrorMock.mockReset();
   toastWarningMock.mockReset();
@@ -244,6 +254,25 @@ describe("useImportExport Hook", () => {
     expect(syncCurrentProvidersLiveMock).not.toHaveBeenCalled();
     expect(result.current.status).toBe("success");
     expect(result.current.backupId).toBe("remote-backup-1");
+    expect(invalidateQueriesMock).toHaveBeenCalledWith({
+      queryKey: ["opencode", "runtime-models", "remote:host-1"],
+    });
+  });
+
+  it("does not invalidate a remote runtime-model cache after a local import", async () => {
+    openFileDialogMock.mockResolvedValue("/config.sql");
+    importConfigMock.mockResolvedValue({ success: true, backupId: "local-1" });
+
+    const { result } = renderHook(() => useImportExport());
+
+    await act(async () => {
+      await result.current.selectImportFile();
+    });
+    await act(async () => {
+      await result.current.importConfig();
+    });
+
+    expect(invalidateQueriesMock).not.toHaveBeenCalled();
   });
 
   it("should export the remote target database to a local file path", async () => {

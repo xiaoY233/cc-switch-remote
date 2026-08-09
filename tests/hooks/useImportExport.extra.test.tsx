@@ -20,6 +20,14 @@ const saveFileDialogMock = vi.fn();
 const exportConfigMock = vi.fn();
 const syncCurrentProvidersLiveMock = vi.fn();
 
+vi.mock("@tanstack/react-query", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@tanstack/react-query")>();
+  return {
+    ...actual,
+    useQueryClient: () => ({ invalidateQueries: vi.fn() }),
+  };
+});
+
 vi.mock("@/lib/api", () => ({
   settingsApi: {
     openFileDialog: (...args: unknown[]) => openFileDialogMock(...args),

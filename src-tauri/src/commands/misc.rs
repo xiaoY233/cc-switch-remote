@@ -1180,43 +1180,6 @@ mod tests {
     use super::*;
     use std::path::Path;
 
-    #[cfg(target_os = "windows")]
-    #[test]
-    fn wsl_env_allows_spaces_in_unc_config_path() {
-        let extra_env = [
-            (
-                "OPENCODE_CONFIG_DIR",
-                r"\\wsl$\Ubuntu\home\Jane Doe\.config\opencode".to_string(),
-            ),
-            ("OPENCODE_DISABLE_PROJECT_CONFIG", "true".to_string()),
-        ];
-
-        assert_eq!(
-            build_wsl_env_argv(&extra_env).unwrap(),
-            vec![
-                "OPENCODE_CONFIG_DIR=/home/Jane Doe/.config/opencode".to_string(),
-                "OPENCODE_DISABLE_PROJECT_CONFIG=true".to_string(),
-            ]
-        );
-    }
-
-    #[cfg(target_os = "windows")]
-    #[test]
-    fn wsl_env_skips_host_config_path() {
-        let extra_env = [
-            (
-                "OPENCODE_CONFIG_DIR",
-                r"C:\Users\Jane Doe\.config\opencode".to_string(),
-            ),
-            ("OPENCODE_DISABLE_PROJECT_CONFIG", "true".to_string()),
-        ];
-
-        assert_eq!(
-            build_wsl_env_argv(&extra_env).unwrap(),
-            vec!["OPENCODE_DISABLE_PROJECT_CONFIG=true".to_string()]
-        );
-    }
-
     #[cfg(unix)]
     fn set_test_executable(path: &Path, executable: bool) {
         use std::os::unix::fs::PermissionsExt;

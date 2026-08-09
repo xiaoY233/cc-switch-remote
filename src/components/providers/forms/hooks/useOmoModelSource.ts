@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { providersApi, type ManagementTarget } from "@/lib/api";
 import { getOpenCodeModels } from "@/lib/api/model-fetch";
 import { useProvidersQuery } from "@/lib/query/queries";
+import { openCodeRuntimeModelsQueryKey } from "@/lib/query/omo";
 import {
   getManagementTargetKey,
   LOCAL_MANAGEMENT_TARGET,
@@ -62,7 +63,7 @@ export function useOmoModelSource({
     isError: runtimeModelsFailed,
     error: runtimeModelsError,
   } = useQuery({
-    queryKey: ["opencode", "runtime-models", targetKey],
+    queryKey: openCodeRuntimeModelsQueryKey(target),
     queryFn: () => getOpenCodeModels(target),
     enabled: isOmoCategory,
     staleTime: 5 * 60 * 1000,
