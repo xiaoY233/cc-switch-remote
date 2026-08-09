@@ -101,15 +101,17 @@ pub fn build_session_request_line(
         .map_err(|error| RemoteSessionError::InvalidJson(error.to_string()))
 }
 
-#[derive(Default)]
 pub struct RemoteSessionManager {
     sessions: Arc<Mutex<HashMap<String, ManagedRemoteSession>>>,
+    starter: Arc<dyn RemoteSessionStarter>,
 }
 
 struct ManagedRemoteSession {
     identity: Option<RemoteSessionIdentity>,
+    generation: u64,
     status: RemoteSessionStatus,
     executor: Option<Arc<dyn RemoteSessionExecutor>>,
+    pending: Option<Arc<tokio::sync::Notify>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -149,7 +151,54 @@ trait RemoteSessionExecutor: Send + Sync {
     fn close<'a>(&'a self) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>>;
 }
 
+trait RemoteSessionStarter: Send + Sync {
+    fn start<'a>(
+        &'a self,
+        profile: &'a RemoteHostProfile,
+        secret: Option<&'a RemoteConnectionSecret>,
+    ) -> Pin<Box<dyn Future<Output = Result<Arc<dyn RemoteSessionExecutor>, AppError>> + Send + 'a>>;
+}
+
+struct ProcessSessionStarter;
+
+impl RemoteSessionStarter for ProcessSessionStarter {
+    fn start<'a>(
+        &'a self,
+        profile: &'a RemoteHostProfile,
+        secret: Option<&'a RemoteConnectionSecret>,
+    ) -> Pin<Box<dyn Future<Output = Result<Arc<dyn RemoteSessionExecutor>, AppError>> + Send + 'a>>
+    {
+        Box::pin(async move {
+            let process = RemoteSessionProcess::start(profile, secret).await?;
+            let executor: Arc<dyn RemoteSessionExecutor> = Arc::new(Mutex::new(process));
+            Ok(executor)
+        })
+    }
+}
+
+impl Default for RemoteSessionManager {
+    fn default() -> Self {
+        Self {
+            sessions: Arc::new(Mutex::new(HashMap::new())),
+            starter: Arc::new(ProcessSessionStarter),
+        }
+    }
+}
+
+struct RemoteSessionLease {
+    executor: Arc<dyn RemoteSessionExecutor>,
+    generation: u64,
+}
+
 impl RemoteSessionManager {
+    #[cfg(test)]
+    fn with_starter(starter: Arc<dyn RemoteSessionStarter>) -> Self {
+        Self {
+            sessions: Arc::new(Mutex::new(HashMap::new())),
+            starter,
+        }
+    }
+
     pub async fn status(&self, profile_id: &str) -> RemoteSessionStatus {
         self.sessions
             .lock()
@@ -172,15 +221,47 @@ impl RemoteSessionManager {
             .and_modify(|session| session.status = status.clone())
             .or_insert(ManagedRemoteSession {
                 identity: None,
+                generation: 0,
                 status,
                 executor: None,
+                pending: None,
             });
     }
 
+    async fn set_status_if_generation(
+        &self,
+        profile_id: &str,
+        generation: u64,
+        status: RemoteSessionStatus,
+    ) {
+        let mut sessions = self.sessions.lock().await;
+        if let Some(session) = sessions.get_mut(profile_id) {
+            if session.generation == generation {
+                session.status = status;
+            }
+        }
+    }
+
     pub async fn close(&self, profile_id: &str) -> bool {
-        let session = self.sessions.lock().await.remove(profile_id);
-        if let Some(session) = session {
-            if let Some(executor) = session.executor {
+        let session = {
+            let mut sessions = self.sessions.lock().await;
+            let Some(session) = sessions.get_mut(profile_id) else {
+                return false;
+            };
+            let existed = session.identity.is_some() || session.executor.is_some();
+            session.generation = session.generation.saturating_add(1);
+            session.identity = None;
+            session.pending.take().map(|notify| notify.notify_waiters());
+            session.status = RemoteSessionStatus {
+                profile_id: profile_id.to_string(),
+                state: RemoteSessionState::Idle,
+                last_error: None,
+                active_request_id: None,
+            };
+            (existed, session.executor.take())
+        };
+        if session.0 {
+            if let Some(executor) = session.1 {
                 executor.close().await;
             }
             true
@@ -211,40 +292,40 @@ impl RemoteSessionManager {
         helper_args: Vec<String>,
     ) -> Result<Value, AppError> {
         let request_id = uuid::Uuid::new_v4().to_string();
-        self.set_status(RemoteSessionStatus {
-            profile_id: profile.id.clone(),
-            state: RemoteSessionState::Connecting,
-            last_error: None,
-            active_request_id: Some(request_id.clone()),
-        })
-        .await;
-
-        let executor = self
+        let lease = self
             .get_or_start_executor(&profile, secret.as_ref())
             .await?;
-        self.set_status(RemoteSessionStatus {
-            profile_id: profile.id.clone(),
-            state: RemoteSessionState::Busy,
-            last_error: None,
-            active_request_id: Some(request_id.clone()),
-        })
+        self.set_status_if_generation(
+            &profile.id,
+            lease.generation,
+            RemoteSessionStatus {
+                profile_id: profile.id.clone(),
+                state: RemoteSessionState::Busy,
+                last_error: None,
+                active_request_id: Some(request_id.clone()),
+            },
+        )
         .await;
 
         let session_result = tokio::time::timeout(
             REMOTE_SESSION_REQUEST_TIMEOUT,
-            executor.execute(&request_id, &helper_args),
+            lease.executor.execute(&request_id, &helper_args),
         )
         .await
         .unwrap_or(Err(RemoteSessionError::Timeout));
 
         match &session_result {
             Ok(_) => {
-                self.set_status(RemoteSessionStatus {
-                    profile_id: profile.id.clone(),
-                    state: RemoteSessionState::Ready,
-                    last_error: None,
-                    active_request_id: None,
-                })
+                self.set_status_if_generation(
+                    &profile.id,
+                    lease.generation,
+                    RemoteSessionStatus {
+                        profile_id: profile.id.clone(),
+                        state: RemoteSessionState::Ready,
+                        last_error: None,
+                        active_request_id: None,
+                    },
+                )
                 .await;
             }
             Err(error) => {
@@ -257,16 +338,15 @@ impl RemoteSessionManager {
 
                 if should_drop_executor_after_error(error) {
                     let mut sessions = self.sessions.lock().await;
-                    sessions.insert(
-                        profile.id.clone(),
-                        ManagedRemoteSession {
-                            identity: Some(RemoteSessionIdentity::new(&profile, secret.as_ref())),
-                            status: failed_status,
-                            executor: None,
-                        },
-                    );
+                    if let Some(session) = sessions.get_mut(&profile.id) {
+                        if session.generation == lease.generation {
+                            session.status = failed_status;
+                            session.executor = None;
+                        }
+                    }
                 } else {
-                    self.set_status(failed_status).await;
+                    self.set_status_if_generation(&profile.id, lease.generation, failed_status)
+                        .await;
                 }
             }
         }
@@ -278,37 +358,188 @@ impl RemoteSessionManager {
         &self,
         profile: &RemoteHostProfile,
         secret: Option<&RemoteConnectionSecret>,
-    ) -> Result<Arc<dyn RemoteSessionExecutor>, AppError> {
+    ) -> Result<RemoteSessionLease, AppError> {
         let identity = RemoteSessionIdentity::new(profile, secret);
-        if let Some(executor) = self.take_reusable_executor(&identity).await {
-            return Ok(executor);
-        }
-
-        self.set_status(RemoteSessionStatus {
-            profile_id: profile.id.clone(),
-            state: RemoteSessionState::Connecting,
-            last_error: None,
-            active_request_id: None,
-        })
-        .await;
-
-        let process = RemoteSessionProcess::start(profile, secret).await?;
-        let executor: Arc<dyn RemoteSessionExecutor> = Arc::new(Mutex::new(process));
-        let mut sessions = self.sessions.lock().await;
-        sessions.insert(
-            profile.id.clone(),
-            ManagedRemoteSession {
-                identity: Some(identity),
-                status: RemoteSessionStatus {
-                    profile_id: profile.id.clone(),
-                    state: RemoteSessionState::Ready,
-                    last_error: None,
-                    active_request_id: None,
+        loop {
+            enum StartAction {
+                Reuse(RemoteSessionLease),
+                Wait {
+                    generation: u64,
+                    waiter: Pin<Box<dyn Future<Output = ()> + Send>>,
                 },
-                executor: Some(executor.clone()),
-            },
-        );
-        Ok(executor)
+                Start {
+                    generation: u64,
+                    stale_executor: Option<Arc<dyn RemoteSessionExecutor>>,
+                    stale_pending: Option<Arc<tokio::sync::Notify>>,
+                    pending: Arc<tokio::sync::Notify>,
+                },
+            }
+
+            let action = {
+                let mut sessions = self.sessions.lock().await;
+                if let Some(session) = sessions.get(&identity.profile_id) {
+                    if session.identity.as_ref() == Some(&identity) {
+                        if let Some(executor) = &session.executor {
+                            StartAction::Reuse(RemoteSessionLease {
+                                executor: executor.clone(),
+                                generation: session.generation,
+                            })
+                        } else if let Some(pending) = &session.pending {
+                            StartAction::Wait {
+                                generation: session.generation,
+                                waiter: Box::pin(pending.clone().notified_owned()),
+                            }
+                        } else {
+                            unreachable!("identity without executor or pending start")
+                        }
+                    } else {
+                        let previous = sessions.remove(&identity.profile_id);
+                        let generation = previous
+                            .as_ref()
+                            .map(|session| session.generation.saturating_add(1))
+                            .unwrap_or(1);
+                        let pending = Arc::new(tokio::sync::Notify::new());
+                        let stale_executor = previous
+                            .as_ref()
+                            .and_then(|session| session.executor.clone());
+                        let stale_pending = previous.and_then(|session| session.pending);
+                        sessions.insert(
+                            identity.profile_id.clone(),
+                            ManagedRemoteSession {
+                                identity: Some(identity.clone()),
+                                generation,
+                                status: RemoteSessionStatus {
+                                    profile_id: identity.profile_id.clone(),
+                                    state: RemoteSessionState::Connecting,
+                                    last_error: None,
+                                    active_request_id: None,
+                                },
+                                executor: None,
+                                pending: Some(pending.clone()),
+                            },
+                        );
+                        StartAction::Start {
+                            generation,
+                            stale_executor,
+                            stale_pending,
+                            pending,
+                        }
+                    }
+                } else {
+                    let pending = Arc::new(tokio::sync::Notify::new());
+                    sessions.insert(
+                        identity.profile_id.clone(),
+                        ManagedRemoteSession {
+                            identity: Some(identity.clone()),
+                            generation: 1,
+                            status: RemoteSessionStatus {
+                                profile_id: identity.profile_id.clone(),
+                                state: RemoteSessionState::Connecting,
+                                last_error: None,
+                                active_request_id: None,
+                            },
+                            executor: None,
+                            pending: Some(pending.clone()),
+                        },
+                    );
+                    StartAction::Start {
+                        generation: 1,
+                        stale_executor: None,
+                        stale_pending: None,
+                        pending,
+                    }
+                }
+            };
+
+            match action {
+                StartAction::Reuse(lease) => return Ok(lease),
+                StartAction::Wait { generation, waiter } => {
+                    waiter.await;
+                    let remains_current = self
+                        .sessions
+                        .lock()
+                        .await
+                        .get(&identity.profile_id)
+                        .is_some_and(|session| {
+                            session.generation == generation
+                                && session.identity.as_ref() == Some(&identity)
+                        });
+                    if !remains_current {
+                        return Err(AppError::Message(
+                            "Remote session start superseded by newer connection identity"
+                                .to_string(),
+                        ));
+                    }
+                }
+                StartAction::Start {
+                    generation,
+                    stale_executor,
+                    stale_pending,
+                    pending,
+                } => {
+                    if let Some(notify) = stale_pending {
+                        notify.notify_waiters();
+                    }
+                    if let Some(executor) = stale_executor {
+                        executor.close().await;
+                    }
+                    let started = self.starter.start(profile, secret).await;
+                    match started {
+                        Ok(executor) => {
+                            let published = {
+                                let mut sessions = self.sessions.lock().await;
+                                match sessions.get_mut(&identity.profile_id) {
+                                    Some(session)
+                                        if session.generation == generation
+                                            && session.identity.as_ref() == Some(&identity) =>
+                                    {
+                                        session.executor = Some(executor.clone());
+                                        session.pending = None;
+                                        session.status = RemoteSessionStatus {
+                                            profile_id: identity.profile_id.clone(),
+                                            state: RemoteSessionState::Ready,
+                                            last_error: None,
+                                            active_request_id: None,
+                                        };
+                                        true
+                                    }
+                                    _ => false,
+                                }
+                            };
+                            pending.notify_waiters();
+                            if published {
+                                return Ok(RemoteSessionLease {
+                                    executor,
+                                    generation,
+                                });
+                            }
+                            executor.close().await;
+                            return Err(AppError::Message(
+                                "Remote session start superseded by newer connection identity"
+                                    .to_string(),
+                            ));
+                        }
+                        Err(error) => {
+                            let mut sessions = self.sessions.lock().await;
+                            if let Some(session) = sessions.get_mut(&identity.profile_id) {
+                                if session.generation == generation {
+                                    session.pending = None;
+                                    session.identity = None;
+                                    session.status = RemoteSessionStatus {
+                                        profile_id: identity.profile_id.clone(),
+                                        state: RemoteSessionState::Failed,
+                                        last_error: Some(error.to_string()),
+                                        active_request_id: None,
+                                    };
+                                }
+                            }
+                            pending.notify_waiters();
+                            return Err(error);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     async fn take_reusable_executor(
@@ -479,6 +710,7 @@ impl RemoteSessionExecutor for Mutex<RemoteSessionProcess> {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use tokio::sync::Notify;
 
     struct FakeExecutor {
         response: Result<Value, RemoteSessionError>,
@@ -523,6 +755,49 @@ mod tests {
         }
     }
 
+    struct BarrierStarter {
+        starts: AtomicUsize,
+        slow_started: Notify,
+        release_slow: Notify,
+        slow_executor: Arc<FakeExecutor>,
+        fast_executor: Arc<FakeExecutor>,
+    }
+
+    impl BarrierStarter {
+        fn new() -> Arc<Self> {
+            Arc::new(Self {
+                starts: AtomicUsize::new(0),
+                slow_started: Notify::new(),
+                release_slow: Notify::new(),
+                slow_executor: Arc::new(FakeExecutor::new(serde_json::json!({"host": "a"}))),
+                fast_executor: Arc::new(FakeExecutor::new(serde_json::json!({"host": "b"}))),
+            })
+        }
+    }
+
+    impl RemoteSessionStarter for BarrierStarter {
+        fn start<'a>(
+            &'a self,
+            profile: &'a RemoteHostProfile,
+            _secret: Option<&'a RemoteConnectionSecret>,
+        ) -> Pin<
+            Box<dyn Future<Output = Result<Arc<dyn RemoteSessionExecutor>, AppError>> + Send + 'a>,
+        > {
+            Box::pin(async move {
+                self.starts.fetch_add(1, Ordering::SeqCst);
+                if profile.host == "slow.example.com" {
+                    self.slow_started.notify_waiters();
+                    self.release_slow.notified().await;
+                    let executor: Arc<dyn RemoteSessionExecutor> = self.slow_executor.clone();
+                    Ok(executor)
+                } else {
+                    let executor: Arc<dyn RemoteSessionExecutor> = self.fast_executor.clone();
+                    Ok(executor)
+                }
+            })
+        }
+    }
+
     fn profile() -> RemoteHostProfile {
         RemoteHostProfile {
             id: "prod".to_string(),
@@ -535,6 +810,89 @@ mod tests {
             created_at: 1,
             updated_at: 1,
         }
+    }
+
+    #[tokio::test]
+    async fn concurrent_first_use_starts_only_one_executor_for_the_same_identity() {
+        let starter = BarrierStarter::new();
+        let manager = Arc::new(RemoteSessionManager::with_starter(starter.clone()));
+        let slow_profile = RemoteHostProfile {
+            host: "slow.example.com".to_string(),
+            ..profile()
+        };
+
+        let first = tokio::spawn({
+            let manager = manager.clone();
+            let profile = slow_profile.clone();
+            async move {
+                manager
+                    .execute_json::<Value>(profile, None, vec!["status".to_string()])
+                    .await
+            }
+        });
+        starter.slow_started.notified().await;
+        let second = tokio::spawn({
+            let manager = manager.clone();
+            async move {
+                manager
+                    .execute_json::<Value>(slow_profile, None, vec!["status".to_string()])
+                    .await
+            }
+        });
+        tokio::task::yield_now().await;
+
+        assert_eq!(starter.starts.load(Ordering::SeqCst), 1);
+        starter.release_slow.notify_waiters();
+        assert!(first.await.expect("first task").is_ok());
+        assert!(second.await.expect("second task").is_ok());
+        assert_eq!(starter.starts.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn late_superseded_start_is_closed_without_overwriting_new_identity_or_status() {
+        let starter = BarrierStarter::new();
+        let manager = Arc::new(RemoteSessionManager::with_starter(starter.clone()));
+        let old_profile = RemoteHostProfile {
+            host: "slow.example.com".to_string(),
+            ..profile()
+        };
+        let new_profile = RemoteHostProfile {
+            host: "fast.example.com".to_string(),
+            ..profile()
+        };
+
+        let old = tokio::spawn({
+            let manager = manager.clone();
+            async move {
+                manager
+                    .execute_json::<Value>(old_profile, None, vec!["old".to_string()])
+                    .await
+            }
+        });
+        starter.slow_started.notified().await;
+        let new_value = manager
+            .execute_json::<Value>(new_profile.clone(), None, vec!["new".to_string()])
+            .await
+            .expect("new identity must publish while old start is blocked");
+        assert_eq!(new_value, serde_json::json!({"host": "b"}));
+
+        starter.release_slow.notify_waiters();
+        assert!(old.await.expect("old task").is_err());
+        assert!(starter.slow_executor.closed.load(Ordering::SeqCst));
+        assert!(!starter.fast_executor.closed.load(Ordering::SeqCst));
+        assert_eq!(
+            manager.status("prod").await.state,
+            RemoteSessionState::Ready
+        );
+
+        let reused = manager
+            .get_or_start_executor(&new_profile, None)
+            .await
+            .expect("new executor remains published");
+        assert!(Arc::ptr_eq(
+            &reused.executor,
+            &(starter.fast_executor.clone() as Arc<_>)
+        ));
     }
 
     #[test]
@@ -552,6 +910,7 @@ mod tests {
             "prod".to_string(),
             ManagedRemoteSession {
                 identity: Some(RemoteSessionIdentity::new(&profile(), None)),
+                generation: 1,
                 status: RemoteSessionStatus {
                     profile_id: "prod".to_string(),
                     state: RemoteSessionState::Ready,
@@ -559,6 +918,7 @@ mod tests {
                     active_request_id: None,
                 },
                 executor: Some(executor.clone()),
+                pending: None,
             },
         );
 
@@ -583,6 +943,7 @@ mod tests {
             "prod".to_string(),
             ManagedRemoteSession {
                 identity: Some(RemoteSessionIdentity::new(&profile(), None)),
+                generation: 1,
                 status: RemoteSessionStatus {
                     profile_id: "prod".to_string(),
                     state: RemoteSessionState::Ready,
@@ -590,6 +951,7 @@ mod tests {
                     active_request_id: None,
                 },
                 executor: Some(executor.clone()),
+                pending: None,
             },
         );
 
@@ -621,6 +983,7 @@ mod tests {
             "prod".to_string(),
             ManagedRemoteSession {
                 identity: Some(RemoteSessionIdentity::new(&profile(), None)),
+                generation: 1,
                 status: RemoteSessionStatus {
                     profile_id: "prod".to_string(),
                     state: RemoteSessionState::Ready,
@@ -628,6 +991,7 @@ mod tests {
                     active_request_id: None,
                 },
                 executor: Some(executor.clone()),
+                pending: None,
             },
         );
 
@@ -649,6 +1013,7 @@ mod tests {
             "prod".to_string(),
             ManagedRemoteSession {
                 identity: Some(RemoteSessionIdentity::new(&profile(), None)),
+                generation: 1,
                 status: RemoteSessionStatus {
                     profile_id: "prod".to_string(),
                     state: RemoteSessionState::Ready,
@@ -656,6 +1021,7 @@ mod tests {
                     active_request_id: None,
                 },
                 executor: Some(executor.clone()),
+                pending: None,
             },
         );
 
@@ -741,6 +1107,7 @@ mod tests {
             original_profile.id.clone(),
             ManagedRemoteSession {
                 identity: Some(RemoteSessionIdentity::new(&original_profile, None)),
+                generation: 1,
                 status: RemoteSessionStatus {
                     profile_id: original_profile.id.clone(),
                     state: RemoteSessionState::Ready,
@@ -748,6 +1115,7 @@ mod tests {
                     active_request_id: None,
                 },
                 executor: Some(executor.clone()),
+                pending: None,
             },
         );
         let changed_profile = RemoteHostProfile {
@@ -773,6 +1141,7 @@ mod tests {
             original_profile.id.clone(),
             ManagedRemoteSession {
                 identity: Some(RemoteSessionIdentity::new(&original_profile, None)),
+                generation: 1,
                 status: RemoteSessionStatus {
                     profile_id: original_profile.id.clone(),
                     state: RemoteSessionState::Ready,
@@ -780,6 +1149,7 @@ mod tests {
                     active_request_id: None,
                 },
                 executor: Some(executor.clone()),
+                pending: None,
             },
         );
         let equivalent_profile = RemoteHostProfile {
