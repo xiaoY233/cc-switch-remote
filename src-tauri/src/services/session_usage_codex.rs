@@ -2665,6 +2665,104 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
+    fn test_two_sessions_keep_independent_deltas_and_persisted_cursors() -> Result<(), AppError> {
+        clear_codex_replay_caches();
+        let db = Database::memory()?;
+        let temp = tempdir().unwrap();
+        let session_a = rollout_path(temp.path(), CHILD_A_ID);
+        let session_b = rollout_path(temp.path(), CHILD_B_ID);
+
+        // Timestamps interleave across the two rollouts while each file keeps
+        // its own cumulative counter. A process-global baseline would make
+        // session A borrow session B's larger cursor (or vice versa).
+        write_jsonl(
+            &session_a,
+            &[
+                session_meta(CHILD_A_ID),
+                turn_context_for_model_at("model-a", "2026-07-10T03:00:01Z"),
+                token_count_at(100, 40, 10, "2026-07-10T03:00:02Z"),
+                token_count_at(150, 60, 15, "2026-07-10T03:00:04Z"),
+            ],
+        );
+        write_jsonl(
+            &session_b,
+            &[
+                session_meta(CHILD_B_ID),
+                turn_context_for_model_at("model-b", "2026-07-10T03:00:01Z"),
+                token_count_at(1_000, 400, 100, "2026-07-10T03:00:03Z"),
+                token_count_at(1_300, 520, 130, "2026-07-10T03:00:05Z"),
+            ],
+        );
+
+        let files = vec![session_a.clone(), session_b.clone()];
+        let rollout_index = build_rollout_index(&files);
+        let mut first_pass = CodexSyncPass::load(&db)?;
+        let first_a = sync_single_codex_file(&db, &session_a, &rollout_index, &mut first_pass)?;
+        let first_b = sync_single_codex_file(&db, &session_b, &rollout_index, &mut first_pass)?;
+        assert_eq!((first_a.imported, first_b.imported), (2, 2));
+
+        let conn = lock_conn!(db.conn);
+        let rows = conn
+            .prepare(
+                "SELECT session_id, input_tokens, cache_read_tokens, output_tokens
+                 FROM proxy_request_logs
+                 WHERE data_source = 'codex_session'
+                 ORDER BY session_id, request_id",
+            )?
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, i64>(3)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        assert_eq!(
+            rows,
+            vec![
+                (CHILD_A_ID.to_string(), 100, 40, 10),
+                (CHILD_A_ID.to_string(), 50, 20, 5),
+                (CHILD_B_ID.to_string(), 1_000, 400, 100),
+                (CHILD_B_ID.to_string(), 300, 120, 30),
+            ],
+            "cumulative deltas must remain scoped to their rollout session"
+        );
+        drop(conn);
+
+        let cursor_a = get_sync_state(&db, &session_a.to_string_lossy())?;
+        let cursor_b = get_sync_state(&db, &session_b.to_string_lossy())?;
+        assert_eq!((cursor_a.1, cursor_b.1), (4, 4));
+
+        // A fresh pass must load the persisted cursor snapshot. Unchanged
+        // files should return before parsing committed lines, not merely rely
+        // on request-id deduplication after a rescan.
+        let mut second_pass = CodexSyncPass::load(&db)?;
+        let second_a = sync_single_codex_file(&db, &session_a, &rollout_index, &mut second_pass)?;
+        let second_b = sync_single_codex_file(&db, &session_b, &rollout_index, &mut second_pass)?;
+        assert_eq!(
+            (
+                second_a.imported,
+                second_a.skipped,
+                second_b.imported,
+                second_b.skipped,
+            ),
+            (0, 0, 0, 0),
+            "steady sync must use persisted cursors instead of rescanning into dedup"
+        );
+
+        let conn = lock_conn!(db.conn);
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM proxy_request_logs WHERE data_source = 'codex_session'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(count, 4, "a second sync must not insert duplicates");
+        Ok(())
+    }
+
+    #[test]
     fn test_archived_log_inherits_cursor_and_only_imports_appended_usage() -> Result<(), AppError> {
         let db = Database::memory()?;
         let temp = tempdir().unwrap();

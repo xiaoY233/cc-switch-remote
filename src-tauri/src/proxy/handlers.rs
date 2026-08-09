@@ -2456,6 +2456,7 @@ fn chat_sse_to_response_value(body: &str) -> Result<Value, ProxyError> {
     // tool_use）；缺 id/name 的按原始 index 回填合成值（对齐 streaming.rs 的
     // tool_call_{idx}/unknown_tool）——空 id 会破坏 Claude 的 tool_use_id ↔
     // tool_result 回程
+    let collected_tool_call_count = tool_calls.len();
     let tool_calls: Vec<Value> = tool_calls
         .into_iter()
         .filter(|(_, tc)| {
@@ -2477,6 +2478,11 @@ fn chat_sse_to_response_value(body: &str) -> Result<Value, ProxyError> {
             tc
         })
         .collect();
+    if collected_tool_call_count > 0 && tool_calls.is_empty() {
+        return Err(ProxyError::TransformError(format!(
+            "All {collected_tool_call_count} upstream Chat tool call(s) were dropped because they contained no usable id, name, or arguments"
+        )));
+    }
 
     let mut message = serde_json::Map::new();
     message.insert("role".to_string(), json!("assistant"));
@@ -2881,6 +2887,21 @@ data: {\"id\":\"c1\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant
         assert_eq!(tool_calls.len(), 1, "index 0 的空壳应被丢弃");
         assert_eq!(tool_calls[0]["id"], "tool_call_1");
         assert_eq!(tool_calls[0]["function"]["name"], "f2");
+    }
+
+    #[test]
+    fn chat_sse_to_response_value_reports_dropped_tool_calls_as_error() {
+        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0}]},\"finish_reason\":\"tool_calls\"}]}\n\n";
+
+        let error = chat_sse_to_response_value(sse)
+            .expect_err("a tool_calls finish without a usable call must not look successful");
+        match error {
+            ProxyError::TransformError(message) => {
+                assert!(message.contains("tool call"), "unexpected error: {message}");
+                assert!(message.contains("dropped"), "unexpected error: {message}");
+            }
+            other => panic!("expected TransformError, got {other:?}"),
+        }
     }
 
     #[test]

@@ -1162,11 +1162,12 @@ impl SkillService {
         let (new_name, new_description) = Self::read_skill_name_desc(&skill_md, &skill.directory);
 
         // 更新 readme_url
-        let doc_path = skill
-            .readme_url
-            .as_deref()
-            .and_then(Self::extract_doc_path_from_url)
-            .unwrap_or_else(|| format!("{}/SKILL.md", skill.directory.trim_end_matches('/')));
+        let doc_path = Self::choose_update_doc_path(
+            temp_dir,
+            &source,
+            skill.readme_url.as_deref(),
+            &skill.directory,
+        );
         let readme_url = Self::build_skill_doc_url(&owner, &name, &used_branch, &doc_path);
 
         let updated_metadata = InstalledSkill {
@@ -2480,6 +2481,21 @@ impl SkillService {
             return format!("{}/SKILL.md", path.trim_end_matches('/'));
         }
         format!("{}/SKILL.md", directory.trim_end_matches('/'))
+    }
+
+    /// Build update metadata from the resolved SKILL.md anchor so older rows
+    /// with a bare or stale readme URL self-heal after an update.
+    fn choose_update_doc_path(
+        repo_root: &Path,
+        source: &Path,
+        readme_url: Option<&str>,
+        directory: &str,
+    ) -> String {
+        Self::choose_doc_path(
+            Self::doc_path_for_source(repo_root, source),
+            readme_url,
+            directory,
+        )
     }
 
     /// 去重技能列表（基于完整 key，不同仓库的同名 skill 分开显示）
@@ -4697,6 +4713,80 @@ mod tests {
         // 两者都没有时按 directory 拼接
         let doc_path = SkillService::choose_doc_path(None, None, "skills/foo");
         assert_eq!(doc_path, "skills/foo/SKILL.md");
+    }
+
+    #[test]
+    fn update_doc_path_uses_nested_skill_md_anchor_not_frontmatter_name() {
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+
+        let mut bytes = Vec::new();
+        {
+            let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut bytes));
+            zip.start_file(
+                "repo-main/catalog/agents/directory-anchor/SKILL.md",
+                SimpleFileOptions::default(),
+            )
+            .expect("start nested SKILL.md");
+            zip.write_all(b"---\nname: Frontmatter Display Name\ndescription: Test skill\n---\n")
+                .expect("write nested SKILL.md");
+            zip.finish().expect("finish repository archive");
+        }
+
+        let temp = tempdir().expect("tempdir");
+        let archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).expect("archive parses");
+        SkillService::extract_repo_archive(archive, temp.path()).expect("extract repository");
+        let nested = temp.path().join("catalog/agents/directory-anchor");
+
+        let source = SkillService::resolve_skill_source_dir(temp.path(), "directory-anchor")
+            .expect("update must resolve the directory containing SKILL.md");
+        assert_eq!(source, nested);
+
+        let doc_path = SkillService::choose_update_doc_path(
+            temp.path(),
+            &source,
+            Some("https://github.com/owner/repo"),
+            "directory-anchor",
+        );
+        assert_eq!(doc_path, "catalog/agents/directory-anchor/SKILL.md");
+
+        let readme_url = SkillService::build_skill_doc_url("owner", "repo", "main", &doc_path)
+            .expect("valid repository coordinates");
+        assert!(
+            readme_url.ends_with("/catalog/agents/directory-anchor/SKILL.md"),
+            "resolved documentation URL must point at the anchored SKILL.md: {readme_url}"
+        );
+
+        let db = Arc::new(Database::memory().expect("memory database"));
+        let mut installed = poisoned_skill("owner/repo:directory-anchor", "directory-anchor");
+        installed.name = "Old display name".to_string();
+        installed.repo_owner = Some("owner".to_string());
+        installed.repo_name = Some("repo".to_string());
+        installed.repo_branch = Some("main".to_string());
+        installed.readme_url = Some("https://github.com/owner/repo".to_string());
+        db.save_skill(&installed).expect("seed installed skill");
+
+        let (name, description) =
+            SkillService::read_skill_name_desc(&source.join("SKILL.md"), &installed.directory);
+        let mut updated = installed.clone();
+        updated.name = name;
+        updated.description = description;
+        updated.readme_url = Some(readme_url);
+        updated.updated_at = 42;
+        SkillService::persist_updated_skill_metadata(&db, &updated)
+            .expect("persist update metadata");
+
+        let persisted = db
+            .get_installed_skill(&installed.id)
+            .expect("query updated skill")
+            .expect("updated skill remains installed");
+        assert_eq!(persisted.name, "Frontmatter Display Name");
+        assert_eq!(
+            persisted.readme_url.as_deref(),
+            Some(
+                "https://github.com/owner/repo/blob/main/catalog/agents/directory-anchor/SKILL.md"
+            )
+        );
     }
 
     #[test]

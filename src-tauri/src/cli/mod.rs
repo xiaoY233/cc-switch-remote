@@ -905,6 +905,153 @@ mod tests {
         assert_eq!(app_type, "grokbuild");
         assert_eq!(data_source, "grok_session");
     }
+
+    #[test]
+    #[serial_test::serial]
+    fn usage_sync_session_imports_codex_rollouts_idempotently_through_shared_sync() {
+        let dir = tempfile::tempdir().expect("temp test home");
+        let _home = EnvVarGuard::set("CC_SWITCH_TEST_HOME", dir.path());
+        let _xdg = EnvVarGuard::set("XDG_DATA_HOME", dir.path().join("xdg-data"));
+        let _opencode = EnvVarGuard::set("OPENCODE_DB", dir.path().join("missing-opencode.db"));
+        let _sync_enabled = EnvVarGuard::remove("CC_SWITCH_DISABLE_SESSION_SYNC_FOR_TESTS");
+        let sessions = dir.path().join(".codex/sessions/2026/08/10");
+        std::fs::create_dir_all(&sessions).expect("create Codex session directory");
+
+        let session_a = "00000000-0000-4000-8000-0000000000a1";
+        let session_b = "00000000-0000-4000-8000-0000000000b2";
+        let write_rollout = |session_id: &str, first: u64, second: u64| {
+            let path = sessions.join(format!("rollout-2026-08-10T03-00-00-{session_id}.jsonl"));
+            let lines = [
+                serde_json::json!({
+                    "timestamp": "2026-08-10T03:00:00Z",
+                    "type": "session_meta",
+                    "payload": { "id": session_id, "source": "cli" }
+                }),
+                serde_json::json!({
+                    "timestamp": "2026-08-10T03:00:01Z",
+                    "type": "turn_context",
+                    "payload": { "model": "gpt-5.6-sol" }
+                }),
+                serde_json::json!({
+                    "timestamp": "2026-08-10T03:00:02Z",
+                    "type": "event_msg",
+                    "payload": { "type": "token_count", "info": {
+                        "total_token_usage": {
+                            "input_tokens": first,
+                            "cached_input_tokens": first / 2,
+                            "output_tokens": first / 10,
+                            "total_tokens": first + first / 10
+                        }
+                    }}
+                }),
+                serde_json::json!({
+                    "timestamp": "2026-08-10T03:00:04Z",
+                    "type": "event_msg",
+                    "payload": { "type": "token_count", "info": {
+                        "total_token_usage": {
+                            "input_tokens": second,
+                            "cached_input_tokens": second / 2,
+                            "output_tokens": second / 10,
+                            "total_tokens": second + second / 10
+                        }
+                    }}
+                }),
+            ]
+            .into_iter()
+            .map(|value| value.to_string())
+            .collect::<Vec<_>>()
+            .join("\n")
+                + "\n";
+            std::fs::write(path, lines).expect("write Codex rollout");
+        };
+        write_rollout(session_a, 100, 150);
+        write_rollout(session_b, 1_000, 1_300);
+
+        let command = ["usage".to_string(), "sync-session".to_string()];
+        let first = run_command(&command);
+        let second = run_command(&command);
+
+        assert_eq!(first.get("ok").and_then(Value::as_bool), Some(true));
+        assert_eq!(
+            first.pointer("/data/imported").and_then(Value::as_u64),
+            Some(4)
+        );
+        assert_eq!(second.get("ok").and_then(Value::as_bool), Some(true));
+        assert_eq!(
+            second.pointer("/data/imported").and_then(Value::as_u64),
+            Some(0)
+        );
+        assert_eq!(
+            second.pointer("/data/skipped").and_then(Value::as_u64),
+            Some(0)
+        );
+
+        let db_path = dir.path().join(".cc-switch-remote/cc-switch.db");
+        let conn = rusqlite::Connection::open(&db_path).expect("open helper database");
+        let rows = conn
+            .prepare(
+                "SELECT session_id, input_tokens FROM proxy_request_logs
+                 WHERE data_source = 'codex_session'
+                 ORDER BY session_id, request_id",
+            )
+            .expect("prepare usage query")
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })
+            .expect("query helper usage")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect helper usage");
+        assert_eq!(
+            rows,
+            vec![
+                (session_a.to_string(), 100),
+                (session_a.to_string(), 50),
+                (session_b.to_string(), 1_000),
+                (session_b.to_string(), 300),
+            ],
+            "the helper must expose the shared per-session delta behavior"
+        );
+        let cursor_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM session_log_sync WHERE last_line_offset = 4",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query persisted helper cursors");
+        assert_eq!(cursor_count, 2);
+    }
+
+    #[test]
+    fn serve_command_error_does_not_poison_the_next_request() {
+        let failed = serve::handle_line(r#"{"id":"bad","command":["missing"]}"#);
+        assert!(!failed.ok);
+        assert_eq!(failed.id, "bad");
+
+        // `run_stdio` writes each command response and continues its input
+        // loop. Exercising the next dispatch after a command-level error
+        // guards the helper protocol contract: only transport/IO failures end
+        // a long-lived session.
+        let next = serve::handle_line(r#"{"id":"next","command":["status"]}"#);
+        assert!(next.ok, "command errors must not tear down helper dispatch");
+        assert_eq!(next.id, "next");
+        assert!(next.data.is_some());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn serve_accepts_unit_success_without_data_payload() {
+        let dir = tempfile::tempdir().expect("temp test home");
+        let _home = EnvVarGuard::set("CC_SWITCH_TEST_HOME", dir.path());
+
+        let response = serve::handle_line(
+            r#"{"id":"unit","command":["routing-config","set-global-outbound","-"]}"#,
+        );
+
+        assert!(response.ok, "unit-returning helper commands are successful");
+        assert_eq!(response.id, "unit");
+        assert_eq!(response.data, Some(Value::Null));
+        assert!(response.error.is_none());
+    }
 }
 
 pub fn run_entry(args: &[String]) -> CliRunResult {
