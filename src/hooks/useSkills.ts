@@ -18,6 +18,7 @@ import type { AppId } from "@/lib/api/types";
 import type { ManagementTarget } from "@/lib/api/remote";
 import { mergeImportedSkills } from "@/hooks/useSkills.helpers";
 import { runSequentialBulkAction } from "@/lib/utils/sequentialBulkAction";
+import { useTargetQueryIdentityReset } from "@/hooks/useTargetQueryIdentityReset";
 
 const LOCAL_TARGET: ManagementTarget = { type: "local" };
 
@@ -31,20 +32,24 @@ const getTargetKey = (target: ManagementTarget) =>
  */
 export function useInstalledSkills(target: ManagementTarget = LOCAL_TARGET) {
   const targetKey = getTargetKey(target);
-  return useQuery({
+  const query = useQuery({
     queryKey: ["skills", "installed", targetKey],
     queryFn: () => skillsApi.getInstalled(target),
     staleTime: Infinity,
   });
+  useTargetQueryIdentityReset("skills", target, targetKey);
+  return query;
 }
 
 export function useSkillBackups(target: ManagementTarget = LOCAL_TARGET) {
   const targetKey = getTargetKey(target);
-  return useQuery({
+  const query = useQuery({
     queryKey: ["skills", "backups", targetKey],
     queryFn: () => skillsApi.getBackups(target),
     enabled: false,
   });
+  useTargetQueryIdentityReset("skills", target, targetKey);
+  return query;
 }
 
 export function useDeleteSkillBackup(target: ManagementTarget = LOCAL_TARGET) {
@@ -72,11 +77,13 @@ export function useDeleteSkillBackup(target: ManagementTarget = LOCAL_TARGET) {
  */
 export function useDiscoverableSkills(target: ManagementTarget = LOCAL_TARGET) {
   const targetKey = getTargetKey(target);
-  return useQuery({
+  const query = useQuery({
     queryKey: ["skills", "discoverable", targetKey],
     queryFn: () => skillsApi.discoverAvailable(target),
     staleTime: Infinity,
   });
+  useTargetQueryIdentityReset("skills", target, targetKey);
+  return query;
 }
 
 /**
@@ -272,12 +279,14 @@ export function useScanUnmanagedSkills(
   options?: { enabled?: boolean },
 ) {
   const targetKey = getTargetKey(target);
-  return useQuery({
+  const query = useQuery({
     queryKey: ["skills", "unmanaged", targetKey],
     queryFn: () => skillsApi.scanUnmanaged(target),
     enabled: options?.enabled ?? false,
     staleTime: 30 * 1000,
   });
+  useTargetQueryIdentityReset("skills", target, targetKey);
+  return query;
 }
 
 /**
@@ -322,10 +331,12 @@ export function useImportSkillsFromApps(
  */
 export function useSkillRepos(target: ManagementTarget = LOCAL_TARGET) {
   const targetKey = getTargetKey(target);
-  return useQuery({
+  const query = useQuery({
     queryKey: ["skills", "repos", targetKey],
     queryFn: () => skillsApi.getRepos(target),
   });
+  useTargetQueryIdentityReset("skills", target, targetKey);
+  return query;
 }
 
 /**
@@ -409,12 +420,14 @@ export function useInstallSkillsFromZip() {
  */
 export function useCheckSkillUpdates(target: ManagementTarget = LOCAL_TARGET) {
   const targetKey = getTargetKey(target);
-  return useQuery({
+  const query = useQuery({
     queryKey: ["skills", "updates", targetKey],
     queryFn: () => skillsApi.checkUpdates(target),
     enabled: false,
     staleTime: 5 * 60 * 1000,
   });
+  useTargetQueryIdentityReset("skills", target, targetKey);
+  return query;
 }
 
 /**

@@ -277,6 +277,32 @@ vi.mock("@/components/mcp/UnifiedMcpPanel", async () => {
   };
 });
 
+vi.mock("@/components/skills/UnifiedSkillsPanel", async () => {
+  const React = await vi.importActual<typeof import("react")>("react");
+  return {
+    default: React.forwardRef(function UnifiedSkillsPanelMock(
+      { target, onInteractionBlockedChange, onNavigationBlockedChange }: any,
+      _ref,
+    ) {
+      return (
+        <div data-testid="unified-skills-panel">
+          <span data-testid="skills-management-target">
+            {target?.type === "remote" ? target.profile.id : "local"}
+          </span>
+          <button
+            onClick={() => {
+              onInteractionBlockedChange?.(true);
+              onNavigationBlockedChange?.(false);
+            }}
+          >
+            set-skills-checking
+          </button>
+        </div>
+      );
+    }),
+  };
+});
+
 vi.mock("@/components/MarkdownEditor", () => ({
   default: ({ value, onChange }: any) => (
     <textarea
@@ -366,6 +392,39 @@ describe("App integration with MSW", () => {
     fireEvent.click(screen.getByText("manage-servers"));
 
     expect(screen.getByTestId("mcp-management-target")).toHaveTextContent(
+      "server-a",
+    );
+  });
+
+  it("keeps the selected target fixed while Skills checks for updates", async () => {
+    setSettings({ firstRunNoticeConfirmed: true });
+    setRemoteProfiles([
+      {
+        id: "server-a",
+        name: "Server A",
+        host: "192.0.2.10",
+        port: 22,
+        username: "root",
+        authMethod: { type: "sshAgent" },
+        helperPath: "~/.local/bin/cc-switch-remote-helper",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]);
+
+    const { default: App } = await import("@/App");
+    renderApp(App);
+
+    fireEvent.click(await screen.findByText("Server A"));
+    fireEvent.click(screen.getByTitle("skills.manage"));
+    expect(
+      await screen.findByTestId("skills-management-target"),
+    ).toHaveTextContent("server-a");
+
+    fireEvent.click(screen.getByText("set-skills-checking"));
+    fireEvent.click(screen.getByText("target-local"));
+
+    expect(screen.getByTestId("skills-management-target")).toHaveTextContent(
       "server-a",
     );
   });

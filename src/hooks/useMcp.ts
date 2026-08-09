@@ -4,6 +4,7 @@ import type { McpServer } from "@/types";
 import type { AppId } from "@/lib/api/types";
 import type { ManagementTarget } from "@/lib/api/remote";
 import { runSequentialBulkAction } from "@/lib/utils/sequentialBulkAction";
+import { useTargetQueryIdentityReset } from "@/hooks/useTargetQueryIdentityReset";
 
 const LOCAL_TARGET: ManagementTarget = { type: "local" };
 
@@ -15,10 +16,12 @@ const getTargetKey = (target: ManagementTarget) =>
  */
 export function useAllMcpServers(target: ManagementTarget = LOCAL_TARGET) {
   const targetKey = getTargetKey(target);
-  return useQuery({
+  const query = useQuery({
     queryKey: ["mcp", "all", targetKey],
     queryFn: () => mcpApi.getAllServers(target),
   });
+  useTargetQueryIdentityReset("mcp", target, targetKey);
+  return query;
 }
 
 /**

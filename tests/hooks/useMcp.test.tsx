@@ -101,6 +101,57 @@ describe("useMcp remote target", () => {
     expect(getAllServersMock).toHaveBeenCalledWith(remoteTarget);
   });
 
+  it("reloads a same-profile target identity and ignores the old MCP response", async () => {
+    const nextTarget: ManagementTarget = {
+      ...remoteTarget,
+      profile: {
+        ...remoteTarget.profile,
+        host: "192.168.1.21",
+        updatedAt: 2,
+      },
+      secret: { password: "new-secret" },
+    };
+    const nextServer = { ...server, id: "next", name: "Next" };
+    let resolveOld!: (value: Record<string, McpServer>) => void;
+    let resolveNext!: (value: Record<string, McpServer>) => void;
+    const oldRequest = new Promise<Record<string, McpServer>>((resolve) => {
+      resolveOld = resolve;
+    });
+    const nextRequest = new Promise<Record<string, McpServer>>((resolve) => {
+      resolveNext = resolve;
+    });
+    getAllServersMock.mockImplementation((target: ManagementTarget) =>
+      target === remoteTarget ? oldRequest : nextRequest,
+    );
+    const { wrapper } = createWrapper();
+    const { result, rerender } = renderHook(
+      ({ target }: { target: ManagementTarget }) => useAllMcpServers(target),
+      {
+        initialProps: { target: remoteTarget },
+        wrapper,
+      },
+    );
+
+    await waitFor(() => expect(getAllServersMock).toHaveBeenCalledTimes(1));
+    rerender({ target: nextTarget });
+    await waitFor(() => expect(getAllServersMock).toHaveBeenCalledTimes(2));
+
+    resolveNext({ next: nextServer });
+    await waitFor(() =>
+      expect(result.current.data).toEqual({ next: nextServer }),
+    );
+    resolveOld({ echo: server });
+    await act(async () => {
+      await oldRequest;
+    });
+
+    expect(result.current.data).toEqual({ next: nextServer });
+    expect(getAllServersMock.mock.calls).toEqual([
+      [remoteTarget],
+      [nextTarget],
+    ]);
+  });
+
   it("upserts remote MCP servers and invalidates only the remote MCP cache", async () => {
     upsertUnifiedServerMock.mockResolvedValueOnce(undefined);
     const { queryClient, wrapper } = createWrapper();

@@ -127,6 +127,59 @@ describe("useSkills remote target", () => {
     expect(getInstalledMock).toHaveBeenCalledWith(remoteTarget);
   });
 
+  it("reloads a same-profile target identity and ignores the old Skills response", async () => {
+    const nextTarget: ManagementTarget = {
+      ...remoteTarget,
+      profile: {
+        ...remoteTarget.profile,
+        host: "192.168.1.21",
+        updatedAt: 2,
+      },
+      secret: { password: "new-secret" },
+    };
+    const nextSkill = { ...installedSkill, id: "skill-2", name: "Skill 2" };
+    let resolveOld!: (value: InstalledSkill[]) => void;
+    let resolveNext!: (value: InstalledSkill[]) => void;
+    const oldRequest = new Promise<InstalledSkill[]>((resolve) => {
+      resolveOld = resolve;
+    });
+    const nextRequest = new Promise<InstalledSkill[]>((resolve) => {
+      resolveNext = resolve;
+    });
+    getInstalledMock.mockImplementation((target: ManagementTarget) =>
+      target === remoteTarget ? oldRequest : nextRequest,
+    );
+    const { queryClient, wrapper } = createWrapper();
+    queryClient.setQueryData(
+      ["skills", "discoverable", "remote:remote-1"],
+      [discoverableSkill],
+    );
+    const { result, rerender } = renderHook(
+      ({ target }: { target: ManagementTarget }) => useInstalledSkills(target),
+      {
+        initialProps: { target: remoteTarget },
+        wrapper,
+      },
+    );
+
+    await waitFor(() => expect(getInstalledMock).toHaveBeenCalledTimes(1));
+    rerender({ target: nextTarget });
+    await waitFor(() => expect(getInstalledMock).toHaveBeenCalledTimes(2));
+    expect(
+      queryClient.getQueryData(["skills", "discoverable", "remote:remote-1"]),
+    ).toBeUndefined();
+
+    resolveNext([nextSkill]);
+    await waitFor(() => expect(result.current.data).toEqual([nextSkill]));
+    resolveOld([installedSkill]);
+    await act(async () => {
+      await oldRequest;
+    });
+
+    expect(result.current.data).toEqual([nextSkill]);
+    expect(getInstalledMock.mock.calls).toEqual([[remoteTarget], [nextTarget]]);
+  });
+
   it("does not expose local Skills as remote data while the remote target loads", async () => {
     const localTarget: ManagementTarget = { type: "local" };
     getInstalledMock.mockImplementation((target: ManagementTarget) =>

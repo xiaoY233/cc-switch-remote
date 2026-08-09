@@ -255,7 +255,10 @@ function App() {
       hasSkills: false,
     });
   const managementBusy =
-    mcpManagementBusy || skillsNavigationBusy || promptNavigationBusy;
+    mcpManagementBusy ||
+    skillsManagementBusy ||
+    skillsNavigationBusy ||
+    promptNavigationBusy;
 
   useEffect(() => {
     localStorage.setItem(VIEW_STORAGE_KEY, currentView);
