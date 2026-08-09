@@ -454,6 +454,7 @@ pub(crate) enum AtomicWriteFailure {
     None,
     TempWrite,
     Rename,
+    ParentSync,
 }
 
 #[cfg(test)]
@@ -635,9 +636,28 @@ fn atomic_write_with_options(
         }
     }
     #[cfg(unix)]
-    fs::File::open(parent)
-        .and_then(|directory| directory.sync_all())
-        .map_err(|e| AppError::io(parent, e))?;
+    {
+        let sync_result = if failure == AtomicWriteFailure::ParentSync {
+            Err(std::io::Error::other(
+                "injected parent directory sync failure",
+            ))
+        } else {
+            fs::File::open(parent).and_then(|directory| directory.sync_all())
+        };
+        if let Err(error) = sync_result {
+            // The atomic rename above is the commit point: `path` already contains
+            // the new bytes and the temporary file no longer exists. Reporting an
+            // ordinary save failure here would make callers keep stale in-memory
+            // state (or roll optimistic UI back) while disk contains the new value.
+            // Treat the directory fsync failure as a committed durability warning;
+            // a later save can retry the parent-directory flush.
+            log::warn!(
+                "原子替换已提交，但同步父目录失败（保留已提交结果）: {}: {}",
+                parent.display(),
+                error
+            );
+        }
+    }
 
     Ok(())
 }
@@ -646,6 +666,33 @@ fn atomic_write_with_options(
 mod tests {
     use super::*;
     use serial_test::serial;
+
+    #[cfg(unix)]
+    #[test]
+    fn committed_parent_sync_warning_keeps_caller_and_disk_consistent() {
+        let dir = tempfile::tempdir().expect("temporary directory");
+        let path = dir.path().join("settings.json");
+        let old = b"old-settings".to_vec();
+        let new = b"new-settings".to_vec();
+        std::fs::write(&path, &old).expect("seed settings");
+        let mut in_memory = old;
+
+        let result = atomic_write_private_with_failure(
+            &path,
+            &new,
+            AtomicWriteFailure::ParentSync,
+        );
+        if result.is_ok() {
+            in_memory = new.clone();
+        }
+
+        assert!(
+            result.is_ok(),
+            "rename has committed the new bytes, so a parent fsync warning must not report the save as rolled back"
+        );
+        assert_eq!(std::fs::read(&path).expect("read committed settings"), new);
+        assert_eq!(in_memory, new);
+    }
 
     struct EnvGuard {
         key: &'static str,
