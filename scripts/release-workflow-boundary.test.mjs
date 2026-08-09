@@ -1,0 +1,23 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import test from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const releaseWorkflow = fs.readFileSync(
+  path.join(repoRoot, '.github/workflows/release.yml'),
+  'utf8',
+);
+
+test('release body uses only an explicitly fork-owned note or the fork fallback', () => {
+  const prepareStep = releaseWorkflow.match(
+    /- name: Prepare Release Notes[\s\S]*?(?=\n\s+- name:)/,
+  )?.[0];
+
+  assert.ok(prepareStep, 'Prepare Release Notes step must exist');
+  assert.match(prepareStep, /docs\/release-notes\/\$\{TAG\}-remote-zh\.md/);
+  assert.doesNotMatch(prepareStep, /docs\/release-notes\/\$\{TAG\}\.md/);
+  assert.doesNotMatch(prepareStep, /docs\/release-notes\/\$\{TAG\}-zh\.md/);
+  assert.match(prepareStep, /## CC Switch Remote \$\{TAG\}/);
+});

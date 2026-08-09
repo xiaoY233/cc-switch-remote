@@ -693,12 +693,9 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           BODY_PATH="release-body.md"
 
-          if [ -f "docs/release-notes/${TAG}.md" ]; then
-            cp "docs/release-notes/${TAG}.md" "$BODY_PATH"
-            echo "Using docs/release-notes/${TAG}.md"
-          elif [ -f "docs/release-notes/${TAG}-zh.md" ]; then
-            cp "docs/release-notes/${TAG}-zh.md" "$BODY_PATH"
-            echo "Using docs/release-notes/${TAG}-zh.md"
+          if [ -f "docs/release-notes/${TAG}-remote-zh.md" ]; then
+            cp "docs/release-notes/${TAG}-remote-zh.md" "$BODY_PATH"
+            echo "Using docs/release-notes/${TAG}-remote-zh.md"
           else
             cat > "$BODY_PATH" <<EOF
           ## CC Switch Remote ${TAG}
