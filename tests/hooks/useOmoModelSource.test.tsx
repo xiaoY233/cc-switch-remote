@@ -202,4 +202,54 @@ describe("useOmoModelSource", () => {
       });
     });
   });
+
+  it("reloads runtime models when the same remote profile gets new connection credentials", async () => {
+    vi.spyOn(providersApi, "getOpenCodeLiveProviderIds").mockResolvedValue([]);
+    const nextTarget: ManagementTarget = {
+      ...remoteTarget,
+      profile: {
+        ...remoteTarget.profile,
+        host: "192.0.2.11",
+        updatedAt: 2,
+      },
+      secret: { password: "new-secret" },
+    };
+    getOpenCodeModelsMock.mockImplementation((target: ManagementTarget) =>
+      Promise.resolve([
+        target === remoteTarget
+          ? { providerId: "old-host", modelId: "old-model" }
+          : { providerId: "new-host", modelId: "new-model" },
+      ]),
+    );
+
+    const { result, rerender } = renderHook(
+      ({ target }: { target: ManagementTarget }) =>
+        useOmoModelSource({ isOmoCategory: true, target }),
+      {
+        initialProps: { target: remoteTarget as ManagementTarget },
+        wrapper: createWrapper(),
+      },
+    );
+
+    await waitFor(() => {
+      expect(result.current.omoModelOptions).toContainEqual({
+        value: "old-host/old-model",
+        label: "old-host / old-model",
+      });
+    });
+
+    rerender({ target: nextTarget });
+
+    await waitFor(() => expect(getOpenCodeModelsMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => {
+      expect(result.current.omoModelOptions).toContainEqual({
+        value: "new-host/new-model",
+        label: "new-host / new-model",
+      });
+      expect(result.current.omoModelOptions).not.toContainEqual({
+        value: "old-host/old-model",
+        label: "old-host / old-model",
+      });
+    });
+  });
 });

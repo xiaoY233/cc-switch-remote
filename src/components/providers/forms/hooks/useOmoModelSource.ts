@@ -6,6 +6,7 @@ import { providersApi, type ManagementTarget } from "@/lib/api";
 import { getOpenCodeModels } from "@/lib/api/model-fetch";
 import { useProvidersQuery } from "@/lib/query/queries";
 import { openCodeRuntimeModelsQueryKey } from "@/lib/query/omo";
+import { useTargetQueryIdentityReset } from "@/hooks/useTargetQueryIdentityReset";
 import {
   getManagementTargetKey,
   LOCAL_MANAGEMENT_TARGET,
@@ -70,6 +71,7 @@ export function useOmoModelSource({
     refetchOnWindowFocus: false,
     retry: 1,
   });
+  useTargetQueryIdentityReset("opencode-runtime-models", target, targetKey);
 
   const { data: opencodeProvidersData } = useProvidersQuery("opencode", {
     target,

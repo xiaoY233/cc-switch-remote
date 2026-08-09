@@ -6,7 +6,7 @@ import {
 } from "@tanstack/react-query";
 import type { ManagementTarget } from "@/lib/api/remote";
 
-type TargetQueryDomain = "mcp" | "skills";
+type TargetQueryDomain = "mcp" | "skills" | "opencode-runtime-models";
 
 const TARGET_SCOPED_SKILLS_COLLECTIONS = new Set([
   "installed",
@@ -27,6 +27,13 @@ const matchesTargetQuery = (
   domain: TargetQueryDomain,
   targetKey: string,
 ) => {
+  if (domain === "opencode-runtime-models") {
+    return (
+      query.queryKey[0] === "opencode" &&
+      query.queryKey[1] === "runtime-models" &&
+      query.queryKey[2] === targetKey
+    );
+  }
   if (query.queryKey[0] !== domain) return false;
   if (domain === "skills") {
     return (
