@@ -1364,8 +1364,8 @@ pub fn get_settings() -> crate::settings::AppSettings {
 pub fn save_settings(settings_json: &str) -> Result<bool, String> {
     let settings: crate::settings::AppSettings =
         serde_json::from_str(settings_json).map_err(|e| e.to_string())?;
-    crate::settings::update_settings(settings).map_err(|e| e.to_string())?;
-    Ok(true)
+    let state = build_command_state()?;
+    crate::settings::save_settings_with_state(&state, settings)
 }
 
 pub fn get_app_config_dir() -> String {
@@ -3386,6 +3386,89 @@ pub fn remove_skill_repo(owner: &str, name: &str) -> Result<bool, String> {
 #[cfg(all(test, feature = "proxy-runtime"))]
 mod tests {
     use super::*;
+    use serial_test::serial;
+
+    struct TestHomeGuard(Option<std::ffi::OsString>);
+
+    impl TestHomeGuard {
+        fn set(path: &std::path::Path) -> Self {
+            let previous = std::env::var_os("CC_SWITCH_TEST_HOME");
+            std::env::set_var("CC_SWITCH_TEST_HOME", path);
+            Self(previous)
+        }
+    }
+
+    impl Drop for TestHomeGuard {
+        fn drop(&mut self) {
+            match self.0.take() {
+                Some(value) => std::env::set_var("CC_SWITCH_TEST_HOME", value),
+                None => std::env::remove_var("CC_SWITCH_TEST_HOME"),
+            }
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn helper_settings_save_preserves_redacted_secrets_and_backend_migrations() {
+        use crate::settings::{
+            AppSettings, CodexProviderTemplateMigration, LocalMigrations, S3SyncSettings,
+            WebDavSyncSettings,
+        };
+
+        let home = tempfile::tempdir().expect("temporary home");
+        let _guard = TestHomeGuard::set(home.path());
+        let existing = AppSettings {
+            webdav_sync: Some(WebDavSyncSettings {
+                base_url: "https://dav.example.com".to_string(),
+                username: "alice".to_string(),
+                password: "webdav-secret".to_string(),
+                ..WebDavSyncSettings::default()
+            }),
+            s3_sync: Some(S3SyncSettings {
+                bucket: "settings-test".to_string(),
+                access_key_id: "ak".to_string(),
+                secret_access_key: "s3-secret".to_string(),
+                ..S3SyncSettings::default()
+            }),
+            local_migrations: Some(LocalMigrations {
+                codex_provider_template_v1: Some(CodexProviderTemplateMigration {
+                    completed_at: "2026-08-10T00:00:00Z".to_string(),
+                    migrated_provider_ids: vec!["legacy".to_string()],
+                }),
+                ..LocalMigrations::default()
+            }),
+            ..AppSettings::default()
+        };
+        crate::settings::update_settings(existing).expect("seed settings");
+
+        let mut incoming = crate::settings::get_settings_for_frontend();
+        incoming.language = Some("zh".to_string());
+        incoming.local_migrations = None;
+        save_settings(&serde_json::to_string(&incoming).expect("settings JSON"))
+            .expect("helper settings save");
+
+        let saved = crate::settings::get_settings();
+        assert_eq!(
+            saved
+                .webdav_sync
+                .as_ref()
+                .map(|value| value.password.as_str()),
+            Some("webdav-secret")
+        );
+        assert_eq!(
+            saved
+                .s3_sync
+                .as_ref()
+                .map(|value| value.secret_access_key.as_str()),
+            Some("s3-secret")
+        );
+        assert!(saved
+            .local_migrations
+            .as_ref()
+            .and_then(|value| value.codex_provider_template_v1.as_ref())
+            .is_some());
+        assert_eq!(saved.language.as_deref(), Some("zh"));
+    }
 
     #[test]
     fn routing_daemon_service_unit_runs_current_helper_binary() {

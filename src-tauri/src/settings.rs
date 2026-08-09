@@ -565,11 +565,7 @@ impl Default for AppSettings {
 impl AppSettings {
     fn settings_path() -> Option<PathBuf> {
         // settings.json 保留用于旧版本迁移和无数据库场景
-        Some(
-            crate::config::get_home_dir()
-                .join(".cc-switch")
-                .join("settings.json"),
-        )
+        Some(crate::config::get_app_config_dir().join("settings.json"))
     }
 
     fn normalize_paths(&mut self) {
@@ -751,6 +747,88 @@ pub fn get_settings_for_frontend() -> AppSettings {
     }
     settings.webdav_backup = None;
     settings
+}
+
+pub(crate) fn merge_settings_for_save(
+    mut incoming: AppSettings,
+    existing: &AppSettings,
+) -> AppSettings {
+    match (&mut incoming.webdav_sync, &existing.webdav_sync) {
+        (None, _) => incoming.webdav_sync = existing.webdav_sync.clone(),
+        (Some(incoming_sync), Some(existing_sync))
+            if incoming_sync.password.is_empty() && !existing_sync.password.is_empty() =>
+        {
+            incoming_sync.password = existing_sync.password.clone();
+        }
+        _ => {}
+    }
+    match (&mut incoming.s3_sync, &existing.s3_sync) {
+        (None, _) => incoming.s3_sync = existing.s3_sync.clone(),
+        (Some(incoming_sync), Some(existing_sync))
+            if incoming_sync.secret_access_key.is_empty()
+                && !existing_sync.secret_access_key.is_empty() =>
+        {
+            incoming_sync.secret_access_key = existing_sync.secret_access_key.clone();
+        }
+        _ => {}
+    }
+    // Migration markers are backend-owned. A stale/redacted frontend payload
+    // must neither clear nor resurrect them.
+    incoming.local_migrations = existing.local_migrations.clone();
+    incoming
+}
+
+/// Apply a frontend/helper settings payload as one transaction, including the
+/// live Codex rewrite. The helper and desktop command must use this same path.
+pub(crate) fn save_settings_with_state(
+    state: &crate::store::AppState,
+    settings: AppSettings,
+) -> Result<bool, String> {
+    let existing = get_settings();
+    let merged = merge_settings_for_save(settings, &existing);
+    let unify_codex_changed =
+        merged.unify_codex_session_history != existing.unify_codex_session_history;
+    let unify_codex_enabled = merged.unify_codex_session_history;
+    update_settings(merged).map_err(|e| e.to_string())?;
+
+    if unify_codex_changed {
+        if let Err(err) = crate::services::provider::reapply_current_codex_official_live(state) {
+            log::warn!("统一 Codex 会话历史开关变更后重写 live 配置失败，回滚设置: {err}");
+            if let Err(rollback_err) = update_settings(existing) {
+                log::error!("回滚统一会话开关设置失败: {rollback_err}");
+            }
+            return Err(format!(
+                "统一 Codex 会话历史开关未生效（live 配置重写失败）: {err}"
+            ));
+        }
+
+        if unify_codex_enabled {
+            std::thread::spawn(|| {
+                match crate::codex_history_migration::maybe_migrate_codex_official_history_to_unified_bucket() {
+                    Ok(outcome) => {
+                        if let Some(reason) = outcome.skipped_reason {
+                            log::debug!("○ Codex official history unify migration skipped: {reason}");
+                        } else {
+                            log::info!(
+                                "✓ Codex official history unify migration completed: jsonl_files={}, state_rows={}",
+                                outcome.migrated_jsonl_files,
+                                outcome.migrated_state_rows
+                            );
+                        }
+                    }
+                    Err(e) => log::warn!("✗ Codex official history unify migration failed: {e}"),
+                }
+            });
+        } else {
+            if let Err(err) = clear_codex_official_history_unify_migration() {
+                log::warn!("清除统一会话迁移标记失败: {err}");
+            }
+            if let Err(err) = clear_codex_unify_migrate_existing() {
+                log::warn!("清除统一会话迁移意愿失败: {err}");
+            }
+        }
+    }
+    Ok(true)
 }
 
 pub fn update_settings(mut new_settings: AppSettings) -> Result<(), AppError> {
@@ -1155,6 +1233,50 @@ pub fn update_s3_sync_status(status: WebDavSyncStatus) -> Result<(), AppError> {
 mod tests {
     use super::*;
     use crate::app_config::AppType;
+    use serial_test::serial;
+
+    struct TestHomeGuard(Option<std::ffi::OsString>);
+
+    impl TestHomeGuard {
+        fn set(path: &std::path::Path) -> Self {
+            let previous = std::env::var_os("CC_SWITCH_TEST_HOME");
+            std::env::set_var("CC_SWITCH_TEST_HOME", path);
+            Self(previous)
+        }
+    }
+
+    impl Drop for TestHomeGuard {
+        fn drop(&mut self) {
+            match self.0.take() {
+                Some(value) => std::env::set_var("CC_SWITCH_TEST_HOME", value),
+                None => std::env::remove_var("CC_SWITCH_TEST_HOME"),
+            }
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn settings_file_uses_fork_config_dir_without_touching_upstream_file() {
+        let home = tempfile::tempdir().expect("temporary home");
+        let _guard = TestHomeGuard::set(home.path());
+        let upstream_path = home.path().join(".cc-switch/settings.json");
+        std::fs::create_dir_all(upstream_path.parent().expect("upstream parent"))
+            .expect("create upstream directory");
+        std::fs::write(&upstream_path, b"upstream-settings-sentinel")
+            .expect("write upstream sentinel");
+
+        assert_eq!(
+            AppSettings::settings_path(),
+            Some(home.path().join(".cc-switch-remote/settings.json"))
+        );
+        save_settings_file(&AppSettings::default()).expect("save fork settings");
+
+        assert_eq!(
+            std::fs::read(&upstream_path).expect("read upstream sentinel"),
+            b"upstream-settings-sentinel"
+        );
+        assert!(home.path().join(".cc-switch-remote/settings.json").exists());
+    }
 
     #[test]
     fn visible_apps_old_settings_default_claude_desktop_visible() {

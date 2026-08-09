@@ -18,6 +18,9 @@ mod cli;
 #[path = "../codex_config.rs"]
 #[cfg(not(feature = "desktop"))]
 mod codex_config;
+#[path = "../codex_history_migration.rs"]
+#[cfg(not(feature = "desktop"))]
+mod codex_history_migration;
 #[path = "../codex_state_db.rs"]
 #[cfg(not(feature = "desktop"))]
 mod codex_state_db;
