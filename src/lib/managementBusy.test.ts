@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { isManagementInteractionBusy } from "@/lib/managementBusy";
+import {
+  isManagementInteractionBusy,
+  isProviderTargetWorkflowOpen,
+} from "@/lib/managementBusy";
 
 describe("management interaction lock", () => {
   it("locks target navigation while a provider/auth dialog is open", () => {
@@ -27,4 +30,18 @@ describe("management interaction lock", () => {
       }),
     ).toBe(false);
   });
+
+  it.each(["add", "edit", "usage", "confirm"] as const)(
+    "locks for the %s provider workflow",
+    (workflow) => {
+      expect(
+        isProviderTargetWorkflowOpen({
+          add: workflow === "add",
+          edit: workflow === "edit",
+          usage: workflow === "usage",
+          confirm: workflow === "confirm",
+        }),
+      ).toBe(true);
+    },
+  );
 });

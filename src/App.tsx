@@ -71,7 +71,10 @@ import {
   isRemoteSafeView,
   LOCAL_MANAGEMENT_TARGET,
 } from "@/lib/managementTarget";
-import { isManagementInteractionBusy } from "@/lib/managementBusy";
+import {
+  isManagementInteractionBusy,
+  isProviderTargetWorkflowOpen,
+} from "@/lib/managementBusy";
 import {
   isWindows,
   isLinux,
@@ -246,6 +249,11 @@ function App() {
   const [forceLocalSettings, setForceLocalSettings] = useState(false);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [editingProvider, setEditingProvider] = useState<Provider | null>(null);
+  const [usageProvider, setUsageProvider] = useState<Provider | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{
+    provider: Provider;
+    action: "remove" | "delete";
+  } | null>(null);
   const [isWindowMaximized, setIsWindowMaximized] = useState(false);
   const [mcpManagementBusy, setMcpManagementBusy] = useState(false);
   const [skillsManagementBusy, setSkillsManagementBusy] = useState(false);
@@ -267,7 +275,12 @@ function App() {
     // Managed OAuth/device polling lives inside these target-scoped forms.
     // Lock target navigation for the dialog lifetime so credentials and
     // device codes cannot be completed against another server.
-    providerDialog: isAddOpen || Boolean(editingProvider),
+    providerDialog: isProviderTargetWorkflowOpen({
+      add: isAddOpen,
+      edit: Boolean(editingProvider),
+      usage: Boolean(usageProvider),
+      confirm: Boolean(confirmAction),
+    }),
     remoteSettings: remoteSettingsManagementBusy,
   });
 
@@ -485,11 +498,6 @@ function App() {
     }
   }, [currentView, isRemoteTarget]);
 
-  const [usageProvider, setUsageProvider] = useState<Provider | null>(null);
-  const [confirmAction, setConfirmAction] = useState<{
-    provider: Provider;
-    action: "remove" | "delete";
-  } | null>(null);
   const [envConflicts, setEnvConflicts] = useState<EnvConflict[]>([]);
   const [showEnvBanner, setShowEnvBanner] = useState(false);
 

@@ -174,6 +174,7 @@ export function RemoteSettingsPage({
     isLoadingRemoteSettings ||
     isSavingRemoteSettings ||
     isDiagnosingTools ||
+    importExport.isSelectingFile ||
     importExport.isImporting ||
     importExport.isExporting ||
     batchAction !== null ||

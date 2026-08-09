@@ -30,6 +30,7 @@ export interface UseImportExportResult {
   errorMessage: string | null;
   backupId: string | null;
   isImporting: boolean;
+  isSelectingFile: boolean;
   isExporting: boolean;
   restorePreflightReport: RestorePreflightReport | null;
   isRestorePreflightOpen: boolean;
@@ -55,6 +56,7 @@ export function useImportExport(
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [backupId, setBackupId] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [isSelectingFile, setIsSelectingFile] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [restorePreflightReport, setRestorePreflightReport] =
     useState<RestorePreflightReport | null>(null);
@@ -66,6 +68,7 @@ export function useImportExport(
     setErrorMessage(null);
     setBackupId(null);
     setIsImporting(false);
+    setIsSelectingFile(false);
     setIsExporting(false);
     setRestorePreflightReport(null);
     setIsRestorePreflightOpen(false);
@@ -82,6 +85,7 @@ export function useImportExport(
 
   const selectImportFile = useCallback(async () => {
     const generation = capture();
+    setIsSelectingFile(true);
     try {
       const filePath = await settingsApi.openFileDialog();
       if (!isCurrent(generation)) return;
@@ -100,6 +104,8 @@ export function useImportExport(
           defaultValue: "选择文件失败",
         }),
       );
+    } finally {
+      if (isCurrent(generation)) setIsSelectingFile(false);
     }
   }, [capture, isCurrent, t]);
 
@@ -349,6 +355,7 @@ export function useImportExport(
     errorMessage,
     backupId,
     isImporting,
+    isSelectingFile,
     isExporting,
     restorePreflightReport,
     isRestorePreflightOpen,

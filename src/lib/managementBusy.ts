@@ -10,3 +10,10 @@ export interface ManagementInteractionState {
 export const isManagementInteractionBusy = (
   state: ManagementInteractionState,
 ) => Object.values(state).some(Boolean);
+
+export const isProviderTargetWorkflowOpen = (state: {
+  add: boolean;
+  edit: boolean;
+  usage: boolean;
+  confirm: boolean;
+}) => Object.values(state).some(Boolean);
