@@ -798,12 +798,40 @@ pub(crate) fn merge_settings_for_save(
     incoming
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsSaveWarning {
+    pub code: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsSaveResult {
+    pub saved: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub warning: Option<SettingsSaveWarning>,
+}
+
 /// Apply a frontend/helper settings payload as one transaction, including the
 /// live Codex rewrite. The helper and desktop command must use this same path.
 pub(crate) fn save_settings_with_state(
     state: &crate::store::AppState,
     settings: AppSettings,
-) -> Result<bool, String> {
+) -> Result<SettingsSaveResult, String> {
+    save_settings_with_state_and_migration_runner(state, settings, || {
+        retry_pending_codex_history_migration()
+    })
+}
+
+pub(crate) fn save_settings_with_state_and_migration_runner<F>(
+    state: &crate::store::AppState,
+    settings: AppSettings,
+    migration_runner: F,
+) -> Result<SettingsSaveResult, String>
+where
+    F: FnOnce() -> Result<(), AppError>,
+{
     let transaction = settings_transaction();
     let existing = get_settings();
     let mut merged = merge_settings_for_save(settings, &existing);
@@ -830,11 +858,22 @@ pub(crate) fn save_settings_with_state(
         }
     }
     drop(transaction);
-    if unify_codex_changed && unify_codex_enabled {
-        retry_pending_codex_history_migration()
-            .map_err(|error| format!("设置已保存，但 Codex 历史迁移仍待重试: {error}"))?;
-    }
-    Ok(true)
+    let warning = if unify_codex_changed && unify_codex_enabled {
+        migration_runner().err().map(|error| {
+            let message = format!("设置已保存，但 Codex 历史迁移仍待重试: {error}");
+            log::warn!("{message}");
+            SettingsSaveWarning {
+                code: "codex_history_migration_pending".to_string(),
+                message,
+            }
+        })
+    } else {
+        None
+    };
+    Ok(SettingsSaveResult {
+        saved: true,
+        warning,
+    })
 }
 
 fn retry_pending_codex_history_migration_with<F>(runner: F) -> Result<(), AppError>
@@ -1466,12 +1505,11 @@ mod tests {
             move || {
                 start.wait();
                 mutate_settings(|current| {
-                    current.webdav_sync.as_mut().expect("webdav").status =
-                        WebDavSyncStatus {
-                            last_sync_at: Some(101),
-                            last_remote_etag: Some("dav-etag".to_string()),
-                            ..WebDavSyncStatus::default()
-                        };
+                    current.webdav_sync.as_mut().expect("webdav").status = WebDavSyncStatus {
+                        last_sync_at: Some(101),
+                        last_remote_etag: Some("dav-etag".to_string()),
+                        ..WebDavSyncStatus::default()
+                    };
                     current.s3_sync.as_mut().expect("s3").status = WebDavSyncStatus {
                         last_sync_at: Some(202),
                         last_local_manifest_hash: Some("s3-local-hash".to_string()),

@@ -236,7 +236,7 @@ pub async fn remote_save_settings(
     profile: RemoteHostProfile,
     settings: AppSettings,
     secret: Option<RemoteConnectionSecret>,
-) -> Result<bool, String> {
+) -> Result<crate::settings::SettingsSaveResult, String> {
     let settings_json = serde_json::to_string(&settings).map_err(|e| e.to_string())?;
     run_remote_helper_json(
         profile,

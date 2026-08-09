@@ -3200,6 +3200,7 @@
         "unsupported": "当前远程 Helper 不支持通用设置管理。请更新到包含 settings capability 的新版 Helper。",
         "loadFailed": "远程设置加载失败",
         "saveFailed": "远程设置保存失败",
+        "savedWithPendingMigration": "远程设置已保存，后台迁移待重试",
         "skillsUnsupported": "当前远程 Helper 不支持 Skills 存储位置迁移。"
       },
       "auth": {

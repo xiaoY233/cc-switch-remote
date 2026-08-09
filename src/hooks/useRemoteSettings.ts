@@ -145,12 +145,20 @@ export function useRemoteSettings({
         }),
       );
       try {
-        await remoteApi.saveSettings(
+        const saveResult = await remoteApi.saveSettings(
           target.profile,
           nextSettings,
           target.secret,
         );
         if (!isCurrent(generation)) return false;
+        if (saveResult?.warning) {
+          toast.warning(
+            t("remote.settings.general.savedWithPendingMigration", {
+              defaultValue: "远程设置已保存，后台迁移待重试",
+            }),
+            { description: saveResult.warning.message },
+          );
+        }
         await queryClient.invalidateQueries({
           queryKey: openCodeRuntimeModelsQueryKey(target),
         });

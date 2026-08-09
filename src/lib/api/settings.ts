@@ -36,6 +36,16 @@ export interface WebDavSyncResult {
   status: string;
 }
 
+export interface SettingsSaveWarning {
+  code: string;
+  message: string;
+}
+
+export interface SettingsSaveResult {
+  saved: boolean;
+  warning?: SettingsSaveWarning;
+}
+
 export const settingsApi = {
   async get(target?: ManagementTarget): Promise<Settings> {
     if (target?.type === "remote") {
@@ -44,7 +54,7 @@ export const settingsApi = {
     return await invoke("get_settings");
   },
 
-  async save(settings: Settings): Promise<boolean> {
+  async save(settings: Settings): Promise<SettingsSaveResult> {
     return await invoke("save_settings", { settings });
   },
 

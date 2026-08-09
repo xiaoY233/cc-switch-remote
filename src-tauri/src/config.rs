@@ -677,11 +677,7 @@ mod tests {
         std::fs::write(&path, &old).expect("seed settings");
         let mut in_memory = old;
 
-        let result = atomic_write_private_with_failure(
-            &path,
-            &new,
-            AtomicWriteFailure::ParentSync,
-        );
+        let result = atomic_write_private_with_failure(&path, &new, AtomicWriteFailure::ParentSync);
         if result.is_ok() {
             in_memory = new.clone();
         }

@@ -24,7 +24,11 @@ import type {
   StreamCheckConfig,
   StreamCheckResult,
 } from "./connectivity-check";
-import type { BackupEntry, LogConfig } from "./settings";
+import type {
+  BackupEntry,
+  LogConfig,
+  SettingsSaveResult,
+} from "./settings";
 import type { SubscriptionQuota } from "@/types/subscription";
 import type { Prompt } from "./prompts";
 import type {
@@ -431,8 +435,8 @@ export const remoteApi = {
     profile: RemoteHostProfile,
     settings: Settings,
     secret?: RemoteConnectionSecret,
-  ): Promise<boolean> {
-    return invoke<boolean>("remote_save_settings", {
+  ): Promise<SettingsSaveResult> {
+    return invoke<SettingsSaveResult>("remote_save_settings", {
       profile,
       settings,
       secret,

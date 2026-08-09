@@ -4,6 +4,10 @@ import { useRemoteSettings } from "@/hooks/useRemoteSettings";
 import type { RemoteHostProfile } from "@/lib/api";
 import type { Settings } from "@/types";
 
+const { warningToastMock } = vi.hoisted(() => ({
+  warningToastMock: vi.fn(),
+}));
+
 const invalidateQueriesMock = vi.fn();
 const getSettingsMock = vi.fn();
 const saveSettingsMock = vi.fn();
@@ -21,7 +25,9 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
+vi.mock("sonner", () => ({
+  toast: { error: vi.fn(), warning: warningToastMock },
+}));
 
 vi.mock("@/lib/api", () => ({
   remoteApi: {
@@ -62,6 +68,7 @@ describe("useRemoteSettings runtime model cache", () => {
     saveSettingsMock.mockReset();
     getCurrentProviderMock.mockReset();
     applyClaudePluginConfigMock.mockReset();
+    warningToastMock.mockReset();
   });
 
   it("invalidates only the selected remote runtime-model query after save succeeds", async () => {
@@ -109,6 +116,49 @@ describe("useRemoteSettings runtime model cache", () => {
     });
 
     expect(invalidateQueriesMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps committed remote settings and reports a pending migration warning", async () => {
+    const previousSettings = {
+      language: "en",
+      unifyCodexSessionHistory: false,
+    } as Settings;
+    const onSettingsSaved = vi.fn();
+    getSettingsMock.mockResolvedValue(previousSettings);
+    saveSettingsMock.mockResolvedValue({
+      saved: true,
+      warning: {
+        code: "codex_history_migration_pending",
+        message: "settings saved; migration pending",
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useRemoteSettings({ target, onSettingsSaved }),
+    );
+    await act(async () => {
+      await result.current.loadSettings(false);
+    });
+    await act(async () => {
+      expect(
+        await result.current.saveSettings({
+          language: "zh",
+          unifyCodexSessionHistory: true,
+          unifyCodexMigrateExisting: true,
+        }),
+      ).toBe(true);
+    });
+
+    expect(result.current.settings).toMatchObject({
+      language: "zh",
+      unifyCodexSessionHistory: true,
+      unifyCodexMigrateExisting: true,
+    });
+    expect(onSettingsSaved).not.toHaveBeenLastCalledWith(previousSettings);
+    expect(warningToastMock).toHaveBeenCalledWith(
+      "远程设置已保存，后台迁移待重试",
+      { description: "settings saved; migration pending" },
+    );
   });
 
   it("invalidates the selected remote runtime-model query when a post-save sync fails", async () => {

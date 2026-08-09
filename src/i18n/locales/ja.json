@@ -3200,6 +3200,7 @@
         "unsupported": "現在のリモート Helper は一般設定管理をサポートしていません。settings capability を含む Helper に更新してください。",
         "loadFailed": "リモート設定の読み込みに失敗しました",
         "saveFailed": "リモート設定の保存に失敗しました",
+        "savedWithPendingMigration": "リモート設定は保存されました。バックグラウンド移行を再試行します",
         "skillsUnsupported": "現在のリモート Helper は Skills 保存先の移行をサポートしていません。"
       },
       "auth": {

@@ -1361,7 +1361,7 @@ pub fn get_settings() -> crate::settings::AppSettings {
     crate::settings::get_settings_for_frontend()
 }
 
-pub fn save_settings(settings_json: &str) -> Result<bool, String> {
+pub fn save_settings(settings_json: &str) -> Result<crate::settings::SettingsSaveResult, String> {
     let settings: crate::settings::AppSettings =
         serde_json::from_str(settings_json).map_err(|e| e.to_string())?;
     let state = build_command_state()?;
@@ -3468,6 +3468,69 @@ mod tests {
             .and_then(|value| value.codex_provider_template_v1.as_ref())
             .is_some());
         assert_eq!(saved.language.as_deref(), Some("zh"));
+    }
+
+    #[test]
+    #[serial]
+    fn helper_settings_save_reports_pending_migration_without_rolling_back_saved_state() {
+        let home = tempfile::tempdir().expect("temporary home");
+        let _guard = TestHomeGuard::set(home.path());
+        crate::settings::update_settings(crate::settings::AppSettings::default())
+            .expect("seed settings");
+        let state = build_command_state().expect("isolated helper state");
+        let mut incoming = crate::settings::get_settings_for_frontend();
+        incoming.language = Some("zh".to_string());
+        incoming.unify_codex_session_history = true;
+        incoming.unify_codex_migrate_existing = Some(true);
+
+        let result = crate::settings::save_settings_with_state_and_migration_runner(
+            &state,
+            incoming,
+            || {
+                Err(crate::error::AppError::Message(
+                    "injected migration failure".to_string(),
+                ))
+            },
+        );
+
+        let response = result
+            .expect("settings and live state already committed; pending migration is a warning");
+        assert!(response.saved);
+        assert_eq!(
+            response
+                .warning
+                .as_ref()
+                .map(|warning| warning.code.as_str()),
+            Some("codex_history_migration_pending")
+        );
+        assert!(response
+            .warning
+            .as_ref()
+            .is_some_and(|warning| warning.message.contains("injected migration failure")));
+        let helper_response = serde_json::to_value(crate::cli::types::ok(response.clone()))
+            .expect("serialize helper response");
+        assert_eq!(
+            helper_response
+                .get("ok")
+                .and_then(serde_json::Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            helper_response
+                .pointer("/data/saved")
+                .and_then(serde_json::Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            helper_response
+                .pointer("/data/warning/code")
+                .and_then(serde_json::Value::as_str),
+            Some("codex_history_migration_pending")
+        );
+        let saved = crate::settings::get_settings();
+        assert_eq!(saved.language.as_deref(), Some("zh"));
+        assert!(saved.unify_codex_session_history);
+        assert_eq!(saved.unify_codex_migrate_existing, Some(true));
     }
 
     #[test]

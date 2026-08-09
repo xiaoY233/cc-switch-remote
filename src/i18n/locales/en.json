@@ -3200,6 +3200,7 @@
         "unsupported": "The current remote helper does not support general settings management. Update to a helper with the settings capability.",
         "loadFailed": "Failed to load remote settings",
         "saveFailed": "Failed to save remote settings",
+        "savedWithPendingMigration": "Remote settings saved; background migration will retry",
         "skillsUnsupported": "The current remote helper does not support Skills storage migration."
       },
       "auth": {

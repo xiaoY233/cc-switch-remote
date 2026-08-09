@@ -3200,6 +3200,7 @@
         "unsupported": "目前遠端 Helper 不支援通用設定管理。請更新到包含 settings capability 的新版 Helper。",
         "loadFailed": "遠端設定載入失敗",
         "saveFailed": "遠端設定儲存失敗",
+        "savedWithPendingMigration": "遠端設定已儲存，背景遷移將重試",
         "skillsUnsupported": "目前遠端 Helper 不支援 Skills 儲存位置遷移。"
       },
       "auth": {

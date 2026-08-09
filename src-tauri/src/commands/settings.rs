@@ -62,7 +62,7 @@ pub async fn get_settings() -> Result<crate::settings::AppSettings, String> {
 pub async fn save_settings(
     state: tauri::State<'_, crate::store::AppState>,
     settings: crate::settings::AppSettings,
-) -> Result<bool, String> {
+) -> Result<crate::settings::SettingsSaveResult, String> {
     crate::settings::save_settings_with_state(state.inner(), settings)
 }
 
