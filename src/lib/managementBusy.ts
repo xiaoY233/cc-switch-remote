@@ -4,6 +4,7 @@ export interface ManagementInteractionState {
   skillsNavigation: boolean;
   promptsNavigation: boolean;
   providerDialog: boolean;
+  remoteSettings: boolean;
 }
 
 export const isManagementInteractionBusy = (

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -7,6 +7,7 @@ import { openCodeRuntimeModelsQueryKey } from "@/lib/query/omo";
 import type { MigrationResult } from "@/lib/api/skills";
 import type { Settings, SkillStorageLocation } from "@/types";
 import { extractErrorMessage } from "@/utils/errorUtils";
+import { useTargetAsyncGeneration } from "@/hooks/useTargetAsyncGeneration";
 
 type RemoteTarget = Extract<ManagementTarget, { type: "remote" }>;
 
@@ -21,14 +22,24 @@ export function useRemoteSettings({
 }: UseRemoteSettingsOptions) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const { capture, isCurrent, revision } = useTargetAsyncGeneration(target);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [installedSkillCount, setInstalledSkillCount] = useState(0);
   const [activeTask, setActiveTask] = useState<string | null>(null);
 
+  useEffect(() => {
+    setSettings(null);
+    setInstalledSkillCount(0);
+    setIsLoading(false);
+    setIsSaving(false);
+    setActiveTask(null);
+  }, [revision]);
+
   const loadSettings = useCallback(
     async (canLoadSkills: boolean) => {
+      const generation = capture();
       setIsLoading(true);
       setActiveTask(
         t("remote.settings.tasks.loadSettings", {
@@ -42,10 +53,12 @@ export function useRemoteSettings({
             ? remoteApi.getInstalledSkills(target.profile, target.secret)
             : Promise.resolve([]),
         ]);
+        if (!isCurrent(generation)) return null;
         setSettings(nextSettings);
         setInstalledSkillCount(installedSkills.length);
         return nextSettings;
       } catch (error) {
+        if (!isCurrent(generation)) return null;
         console.error("[useRemoteSettings] Failed to load settings", error);
         setSettings(null);
         toast.error(
@@ -56,11 +69,13 @@ export function useRemoteSettings({
         );
         return null;
       } finally {
-        setIsLoading(false);
-        setActiveTask(null);
+        if (isCurrent(generation)) {
+          setIsLoading(false);
+          setActiveTask(null);
+        }
       }
     },
-    [t, target.profile, target.secret],
+    [capture, isCurrent, t, target.profile, target.secret],
   );
 
   const clearSettings = useCallback(() => {
@@ -118,6 +133,7 @@ export function useRemoteSettings({
   const saveSettings = useCallback(
     async (updates: Partial<Settings>) => {
       if (!settings) return false;
+      const generation = capture();
       const nextSettings: Settings = { ...settings, ...updates };
       const previousSettings = settings;
       setSettings(nextSettings);
@@ -134,13 +150,17 @@ export function useRemoteSettings({
           nextSettings,
           target.secret,
         );
+        if (!isCurrent(generation)) return false;
         await queryClient.invalidateQueries({
           queryKey: openCodeRuntimeModelsQueryKey(target),
         });
         await syncClaudePluginIfChanged(nextSettings, settings);
+        if (!isCurrent(generation)) return false;
         await syncClaudeOnboardingIfChanged(nextSettings, settings);
+        if (!isCurrent(generation)) return false;
         return true;
       } catch (error) {
+        if (!isCurrent(generation)) return false;
         setSettings(previousSettings);
         onSettingsSaved?.(previousSettings);
         console.error("[useRemoteSettings] Failed to save settings", error);
@@ -152,12 +172,16 @@ export function useRemoteSettings({
         );
         return false;
       } finally {
-        setIsSaving(false);
-        setActiveTask(null);
+        if (isCurrent(generation)) {
+          setIsSaving(false);
+          setActiveTask(null);
+        }
       }
     },
     [
       onSettingsSaved,
+      capture,
+      isCurrent,
       queryClient,
       settings,
       syncClaudeOnboardingIfChanged,
@@ -170,17 +194,19 @@ export function useRemoteSettings({
 
   const migrateSkillStorage = useCallback(
     async (targetLocation: SkillStorageLocation): Promise<MigrationResult> => {
+      const generation = capture();
       const result = await remoteApi.migrateSkillStorage(
         target.profile,
         targetLocation,
         target.secret,
       );
+      if (!isCurrent(generation)) return result;
       setSettings((prev) =>
         prev ? { ...prev, skillStorageLocation: targetLocation } : prev,
       );
       return result;
     },
-    [target.profile, target.secret],
+    [capture, isCurrent, target.profile, target.secret],
   );
 
   return {

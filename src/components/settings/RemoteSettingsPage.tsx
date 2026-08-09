@@ -57,6 +57,7 @@ import { ToolInstallRow } from "@/components/settings/ToolInstallRow";
 import { useImportExport } from "@/hooks/useImportExport";
 import { useProxyStatus } from "@/hooks/useProxyStatus";
 import { useRemoteSettings } from "@/hooks/useRemoteSettings";
+import { useTargetAsyncGeneration } from "@/hooks/useTargetAsyncGeneration";
 import { useAppProxyConfig } from "@/lib/query/proxy";
 import { REMOTE_ROUTABLE_APPS } from "@/lib/remoteRoutingApps";
 import { remoteApi } from "@/lib/api";
@@ -90,6 +91,7 @@ interface RemoteSettingsPageProps {
   onOpenChange: (open: boolean) => void;
   onImportSuccess?: () => void | Promise<void>;
   onSettingsSaved?: (settings: Settings) => void;
+  onInteractionBlockedChange?: (blocked: boolean) => void;
   defaultTab?: string;
   target: Extract<ManagementTarget, { type: "remote" }>;
 }
@@ -112,10 +114,12 @@ export function RemoteSettingsPage({
   open,
   onImportSuccess,
   onSettingsSaved,
+  onInteractionBlockedChange,
   defaultTab = "environment",
   target,
 }: RemoteSettingsPageProps) {
   const { t } = useTranslation();
+  const { capture, isCurrent, revision } = useTargetAsyncGeneration(target);
   const [activeTab, setActiveTab] = useState(coerceRemoteTab(defaultTab));
 
   const [health, setHealth] = useState<RemoteHealth | null>(null);
@@ -136,6 +140,20 @@ export function RemoteSettingsPage({
   const [isDiagnosingTools, setIsDiagnosingTools] = useState(false);
   const [showInstallCommands, setShowInstallCommands] = useState(false);
 
+  useEffect(() => {
+    setHealth(null);
+    setIsCheckingHealth(false);
+    setIsInstallingHelper(false);
+    setToolVersions([]);
+    setIsLoadingTools(false);
+    setToolActions({});
+    setBatchAction(null);
+    setActiveRemoteTask(null);
+    setToolDiagnostics({});
+    setIsDiagnosingTools(false);
+    setShowInstallCommands(false);
+  }, [revision]);
+
   const importExport = useImportExport({ onImportSuccess, target });
   const {
     settings: remoteSettings,
@@ -148,6 +166,22 @@ export function RemoteSettingsPage({
     saveSettings: saveRemoteSettings,
     migrateSkillStorage: migrateRemoteSkillStorage,
   } = useRemoteSettings({ target, onSettingsSaved });
+
+  const interactionBlocked =
+    isCheckingHealth ||
+    isInstallingHelper ||
+    isLoadingTools ||
+    isLoadingRemoteSettings ||
+    isSavingRemoteSettings ||
+    isDiagnosingTools ||
+    importExport.isImporting ||
+    importExport.isExporting ||
+    batchAction !== null ||
+    Object.keys(toolActions).length > 0;
+  useEffect(() => {
+    onInteractionBlockedChange?.(interactionBlocked);
+    return () => onInteractionBlockedChange?.(false);
+  }, [interactionBlocked, onInteractionBlockedChange]);
 
   const toolsCapability = health?.capabilities.includes("tools") ?? false;
   const settingsCapability = health?.capabilities.includes("settings") ?? false;
@@ -199,6 +233,7 @@ export function RemoteSettingsPage({
   );
 
   const loadHealth = useCallback(async () => {
+    const generation = capture();
     setIsCheckingHealth(true);
     setActiveRemoteTask(
       t("remote.settings.tasks.checkHealth", {
@@ -207,9 +242,11 @@ export function RemoteSettingsPage({
     );
     try {
       const result = await remoteApi.checkHealth(target.profile, target.secret);
+      if (!isCurrent(generation)) return null;
       setHealth(result);
       return result;
     } catch (error) {
+      if (!isCurrent(generation)) return null;
       console.error("[RemoteSettingsPage] Failed to check health", error);
       setHealth({
         reachable: false,
@@ -219,12 +256,15 @@ export function RemoteSettingsPage({
       });
       return null;
     } finally {
-      setIsCheckingHealth(false);
-      setActiveRemoteTask(null);
+      if (isCurrent(generation)) {
+        setIsCheckingHealth(false);
+        setActiveRemoteTask(null);
+      }
     }
-  }, [t, target.profile, target.secret]);
+  }, [capture, isCurrent, t, target.profile, target.secret]);
 
   const loadToolVersions = useCallback(async () => {
+    const generation = capture();
     setIsLoadingTools(true);
     setActiveRemoteTask(
       t("remote.settings.tasks.loadTools", {
@@ -237,9 +277,11 @@ export function RemoteSettingsPage({
         [...TOOL_NAMES],
         target.secret,
       );
+      if (!isCurrent(generation)) return [];
       setToolVersions(result);
       return result;
     } catch (error) {
+      if (!isCurrent(generation)) return [];
       console.error("[RemoteSettingsPage] Failed to load tools", error);
       toast.error(
         t("remote.settings.environment.loadToolsFailed", {
@@ -249,10 +291,12 @@ export function RemoteSettingsPage({
       );
       return [];
     } finally {
-      setIsLoadingTools(false);
-      setActiveRemoteTask(null);
+      if (isCurrent(generation)) {
+        setIsLoadingTools(false);
+        setActiveRemoteTask(null);
+      }
     }
-  }, [t, target.profile, target.secret]);
+  }, [capture, isCurrent, t, target.profile, target.secret]);
 
   const refreshRemoteState = useCallback(async () => {
     const result = await loadHealth();
@@ -278,6 +322,7 @@ export function RemoteSettingsPage({
   }, [open, refreshRemoteState]);
 
   const installHelper = async () => {
+    const generation = capture();
     setIsInstallingHelper(true);
     setActiveRemoteTask(
       t("remote.settings.tasks.installHelper", {
@@ -289,6 +334,7 @@ export function RemoteSettingsPage({
         target.profile,
         target.secret,
       );
+      if (!isCurrent(generation)) return;
       setHealth(result);
       toast.success(
         t("remote.health.installSuccess", {
@@ -296,6 +342,7 @@ export function RemoteSettingsPage({
         }),
       );
     } catch (error) {
+      if (!isCurrent(generation)) return;
       console.error("[RemoteSettingsPage] Failed to install helper", error);
       toast.error(
         t("remote.health.installFailed", {
@@ -304,8 +351,10 @@ export function RemoteSettingsPage({
         }),
       );
     } finally {
-      setIsInstallingHelper(false);
-      setActiveRemoteTask(null);
+      if (isCurrent(generation)) {
+        setIsInstallingHelper(false);
+        setActiveRemoteTask(null);
+      }
     }
   };
 
@@ -314,6 +363,7 @@ export function RemoteSettingsPage({
     action: ToolLifecycleAction,
   ) => {
     if (toolNames.length === 0) return;
+    const generation = capture();
     const isBatch = toolNames.length > 1;
     if (isBatch) setBatchAction(action);
 
@@ -338,9 +388,11 @@ export function RemoteSettingsPage({
           action,
           target.secret,
         );
+        if (!isCurrent(generation)) return;
         succeeded += 1;
         await loadToolVersions();
       } catch (error) {
+        if (!isCurrent(generation)) return;
         console.error(
           `[RemoteSettingsPage] Failed to ${action} ${toolName}`,
           error,
@@ -349,14 +401,16 @@ export function RemoteSettingsPage({
           `${TOOL_DISPLAY_NAMES[toolName]}: ${extractErrorMessage(error)}`,
         );
       } finally {
-        setToolActions((prev) => {
-          const next = { ...prev };
-          delete next[toolName];
-          return next;
-        });
+        if (isCurrent(generation))
+          setToolActions((prev) => {
+            const next = { ...prev };
+            delete next[toolName];
+            return next;
+          });
       }
     }
 
+    if (!isCurrent(generation)) return;
     if (isBatch) setBatchAction(null);
     setActiveRemoteTask(null);
     const actionLabel =
@@ -387,6 +441,7 @@ export function RemoteSettingsPage({
 
   const diagnoseToolInstallations = async () => {
     if (toolsDisabled || isDiagnosingTools) return;
+    const generation = capture();
     setIsDiagnosingTools(true);
     setActiveRemoteTask(
       t("remote.settings.tasks.diagnoseTools", {
@@ -399,6 +454,7 @@ export function RemoteSettingsPage({
         [...TOOL_NAMES],
         target.secret,
       );
+      if (!isCurrent(generation)) return;
       const next: Partial<Record<ToolName, ToolInstallation[]>> = {};
       let conflicts = 0;
       for (const report of reports) {
@@ -416,6 +472,7 @@ export function RemoteSettingsPage({
         );
       }
     } catch (error) {
+      if (!isCurrent(generation)) return;
       console.error("[RemoteSettingsPage] Failed to diagnose tools", error);
       toast.error(
         t("settings.toolDiagnoseFailed", {
@@ -424,8 +481,10 @@ export function RemoteSettingsPage({
         { description: extractErrorMessage(error) },
       );
     } finally {
-      setIsDiagnosingTools(false);
-      setActiveRemoteTask(null);
+      if (isCurrent(generation)) {
+        setIsDiagnosingTools(false);
+        setActiveRemoteTask(null);
+      }
     }
   };
 

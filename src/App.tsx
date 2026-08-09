@@ -252,6 +252,8 @@ function App() {
   const [skillsNavigationBusy, setSkillsNavigationBusy] = useState(false);
   const [promptManagementBusy, setPromptManagementBusy] = useState(false);
   const [promptNavigationBusy, setPromptNavigationBusy] = useState(false);
+  const [remoteSettingsManagementBusy, setRemoteSettingsManagementBusy] =
+    useState(false);
   const [skillsCheckUpdatesState, setSkillsCheckUpdatesState] =
     useState<SkillsCheckUpdatesState>({
       isChecking: false,
@@ -266,6 +268,7 @@ function App() {
     // Lock target navigation for the dialog lifetime so credentials and
     // device codes cannot be completed against another server.
     providerDialog: isAddOpen || Boolean(editingProvider),
+    remoteSettings: remoteSettingsManagementBusy,
   });
 
   useEffect(() => {
@@ -1246,6 +1249,7 @@ function App() {
                 onSettingsSaved={handleRemoteSettingsSaved}
                 defaultTab={settingsDefaultTab}
                 target={settingsTarget}
+                onInteractionBlockedChange={setRemoteSettingsManagementBusy}
               />
             );
           }

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -10,6 +10,7 @@ import type {
   RestorePreflightReport,
 } from "@/lib/api";
 import { syncCurrentProvidersLiveSafe } from "@/utils/postChangeSync";
+import { useTargetAsyncGeneration } from "@/hooks/useTargetAsyncGeneration";
 
 export type ImportStatus =
   | "idle"
@@ -29,6 +30,7 @@ export interface UseImportExportResult {
   errorMessage: string | null;
   backupId: string | null;
   isImporting: boolean;
+  isExporting: boolean;
   restorePreflightReport: RestorePreflightReport | null;
   isRestorePreflightOpen: boolean;
   selectImportFile: () => Promise<void>;
@@ -46,15 +48,28 @@ export function useImportExport(
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { onImportSuccess, target = { type: "local" } } = options;
+  const { capture, isCurrent, revision } = useTargetAsyncGeneration(target);
 
   const [selectedFile, setSelectedFile] = useState("");
   const [status, setStatus] = useState<ImportStatus>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [backupId, setBackupId] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [restorePreflightReport, setRestorePreflightReport] =
     useState<RestorePreflightReport | null>(null);
   const [isRestorePreflightOpen, setIsRestorePreflightOpen] = useState(false);
+
+  useEffect(() => {
+    setSelectedFile("");
+    setStatus("idle");
+    setErrorMessage(null);
+    setBackupId(null);
+    setIsImporting(false);
+    setIsExporting(false);
+    setRestorePreflightReport(null);
+    setIsRestorePreflightOpen(false);
+  }, [revision]);
 
   const clearSelection = useCallback(() => {
     setSelectedFile("");
@@ -66,8 +81,10 @@ export function useImportExport(
   }, []);
 
   const selectImportFile = useCallback(async () => {
+    const generation = capture();
     try {
       const filePath = await settingsApi.openFileDialog();
+      if (!isCurrent(generation)) return;
       if (filePath) {
         setSelectedFile(filePath);
         setStatus("idle");
@@ -76,6 +93,7 @@ export function useImportExport(
         setIsRestorePreflightOpen(false);
       }
     } catch (error) {
+      if (!isCurrent(generation)) return;
       console.error("[useImportExport] Failed to open file dialog", error);
       toast.error(
         t("settings.selectFileFailed", {
@@ -83,15 +101,19 @@ export function useImportExport(
         }),
       );
     }
-  }, [t]);
+  }, [capture, isCurrent, t]);
 
   const handleImportResult = useCallback(
-    async (result: {
-      success: boolean;
-      message: string;
-      backupId?: string;
-      warning?: string;
-    }) => {
+    async (
+      result: {
+        success: boolean;
+        message: string;
+        backupId?: string;
+        warning?: string;
+      },
+      generation: ReturnType<typeof capture>,
+    ) => {
+      if (!isCurrent(generation)) return;
       if (!result.success) {
         setStatus("error");
         const message =
@@ -110,12 +132,14 @@ export function useImportExport(
           queryKey: openCodeRuntimeModelsQueryKey(target),
         });
       }
+      if (!isCurrent(generation)) return;
       void onImportSuccess?.();
 
       const syncResult =
         target.type === "remote"
           ? { ok: true as const }
           : await syncCurrentProvidersLiveSafe();
+      if (!isCurrent(generation)) return;
       if (syncResult.ok) {
         setStatus("success");
         toast.success(
@@ -138,11 +162,14 @@ export function useImportExport(
         );
       }
     },
-    [onImportSuccess, queryClient, t, target],
+    [isCurrent, onImportSuccess, queryClient, t, target],
   );
 
   const executeImport = useCallback(
-    async (restoreMode: RestoreMode) => {
+    async (
+      restoreMode: RestoreMode,
+      generation: ReturnType<typeof capture>,
+    ) => {
       const result =
         target.type === "remote"
           ? await remoteApi.importConfigFromFile(
@@ -152,9 +179,10 @@ export function useImportExport(
               { restoreMode },
             )
           : await settingsApi.importConfigFromFile(selectedFile);
-      await handleImportResult(result);
+      if (!isCurrent(generation)) return;
+      await handleImportResult(result, generation);
     },
-    [handleImportResult, selectedFile, target],
+    [handleImportResult, isCurrent, selectedFile, target],
   );
 
   const importConfig = useCallback(async () => {
@@ -168,6 +196,7 @@ export function useImportExport(
     }
 
     if (isImporting) return;
+    const generation = capture();
 
     setIsImporting(true);
     setStatus("importing");
@@ -180,6 +209,7 @@ export function useImportExport(
           selectedFile,
           target.secret,
         );
+        if (!isCurrent(generation)) return;
         setRestorePreflightReport(report);
         if (report.hasBlockingRisks) {
           setStatus("idle");
@@ -193,8 +223,9 @@ export function useImportExport(
         }
       }
 
-      await executeImport("exact");
+      await executeImport("exact", generation);
     } catch (error) {
+      if (!isCurrent(generation)) return;
       console.error("[useImportExport] Failed to import config", error);
       setStatus("error");
       const message =
@@ -207,13 +238,14 @@ export function useImportExport(
         }),
       );
     } finally {
-      setIsImporting(false);
+      if (isCurrent(generation)) setIsImporting(false);
     }
-  }, [executeImport, isImporting, selectedFile, t, target]);
+  }, [capture, executeImport, isCurrent, isImporting, selectedFile, t, target]);
 
   const importWithRestoreMode = useCallback(
     async (mode: RestoreMode) => {
       if (!selectedFile || isImporting) return;
+      const generation = capture();
 
       setIsRestorePreflightOpen(false);
       setIsImporting(true);
@@ -221,8 +253,9 @@ export function useImportExport(
       setErrorMessage(null);
 
       try {
-        await executeImport(mode);
+        await executeImport(mode, generation);
       } catch (error) {
+        if (!isCurrent(generation)) return;
         console.error("[useImportExport] Failed to import config", error);
         setStatus("error");
         const message =
@@ -235,10 +268,10 @@ export function useImportExport(
           }),
         );
       } finally {
-        setIsImporting(false);
+        if (isCurrent(generation)) setIsImporting(false);
       }
     },
-    [executeImport, isImporting, selectedFile, t],
+    [capture, executeImport, isCurrent, isImporting, selectedFile, t],
   );
 
   const cancelRestorePreflight = useCallback(() => {
@@ -247,11 +280,14 @@ export function useImportExport(
   }, []);
 
   const exportConfig = useCallback(async () => {
+    const generation = capture();
+    setIsExporting(true);
     try {
       const now = new Date();
       const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}_${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}${String(now.getSeconds()).padStart(2, "0")}`;
       const defaultName = `cc-switch-export-${stamp}.sql`;
       const destination = await settingsApi.saveFileDialog(defaultName);
+      if (!isCurrent(generation)) return;
       if (!destination) {
         toast.error(
           t("settings.selectFileFailed", {
@@ -269,6 +305,7 @@ export function useImportExport(
               target.secret,
             )
           : await settingsApi.exportConfigToFile(destination);
+      if (!isCurrent(generation)) return;
       if (result.success) {
         const displayPath = result.filePath ?? destination;
         toast.success(
@@ -285,6 +322,7 @@ export function useImportExport(
         );
       }
     } catch (error) {
+      if (!isCurrent(generation)) return;
       console.error("[useImportExport] Failed to export config", error);
       toast.error(
         t("settings.exportFailedError", {
@@ -292,8 +330,10 @@ export function useImportExport(
           message: error instanceof Error ? error.message : String(error ?? ""),
         }),
       );
+    } finally {
+      if (isCurrent(generation)) setIsExporting(false);
     }
-  }, [t, target]);
+  }, [capture, isCurrent, t, target]);
 
   const resetStatus = useCallback(() => {
     setStatus("idle");
@@ -309,6 +349,7 @@ export function useImportExport(
     errorMessage,
     backupId,
     isImporting,
+    isExporting,
     restorePreflightReport,
     isRestorePreflightOpen,
     selectImportFile,

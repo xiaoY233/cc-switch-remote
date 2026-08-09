@@ -10,6 +10,7 @@ describe("management interaction lock", () => {
         skillsNavigation: false,
         promptsNavigation: false,
         providerDialog: true,
+        remoteSettings: false,
       }),
     ).toBe(true);
   });
@@ -22,6 +23,7 @@ describe("management interaction lock", () => {
         skillsNavigation: false,
         promptsNavigation: false,
         providerDialog: false,
+        remoteSettings: false,
       }),
     ).toBe(false);
   });
