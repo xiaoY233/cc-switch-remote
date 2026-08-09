@@ -125,4 +125,28 @@ describe("useManagedAuth connection generation", () => {
     await waitFor(() => expect(result.current.pollingState).toBe("idle"));
     expect(result.current.deviceCode).toBeNull();
   });
+
+  it("exposes logout as pending until the selected target finishes logging out", async () => {
+    let resolveLogout!: () => void;
+    vi.spyOn(authApi, "authLogout").mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveLogout = resolve;
+        }),
+    );
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const { result } = renderHook(
+      () => useManagedAuth("github_copilot", undefined, target("host-a", "secret-a")),
+      { wrapper: wrapper(queryClient) },
+    );
+    await waitFor(() => expect(result.current.isLoadingStatus).toBe(false));
+
+    act(() => result.current.logout());
+    await waitFor(() => expect(result.current.isLoggingOut).toBe(true));
+
+    await act(async () => resolveLogout());
+    await waitFor(() => expect(result.current.isLoggingOut).toBe(false));
+  });
 });

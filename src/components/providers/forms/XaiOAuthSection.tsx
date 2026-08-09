@@ -53,6 +53,7 @@ export const XaiOAuthSection: React.FC<XaiOAuthSectionProps> = ({
     error,
     isPolling,
     isAddingAccount,
+    isLoggingOut,
     isRemovingAccount,
     isSettingDefaultAccount,
     addAccount,
@@ -65,6 +66,7 @@ export const XaiOAuthSection: React.FC<XaiOAuthSectionProps> = ({
   const interactionBusy =
     isPolling ||
     isAddingAccount ||
+    isLoggingOut ||
     isRemovingAccount ||
     isSettingDefaultAccount;
   React.useEffect(() => {
@@ -329,6 +331,7 @@ export const XaiOAuthSection: React.FC<XaiOAuthSectionProps> = ({
           variant="outline"
           className="w-full text-red-500 hover:text-red-600"
           onClick={logout}
+          disabled={interactionBusy}
         >
           <LogOut className="mr-2 h-4 w-4" />
           {t("xaiOauth.logoutAll", "移除所有 xAI 账号")}

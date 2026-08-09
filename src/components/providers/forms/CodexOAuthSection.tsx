@@ -71,6 +71,7 @@ export const CodexOAuthSection: React.FC<CodexOAuthSectionProps> = ({
     error,
     isPolling,
     isAddingAccount,
+    isLoggingOut,
     isRemovingAccount,
     isSettingDefaultAccount,
     addAccount,
@@ -83,6 +84,7 @@ export const CodexOAuthSection: React.FC<CodexOAuthSectionProps> = ({
   const interactionBusy =
     isPolling ||
     isAddingAccount ||
+    isLoggingOut ||
     isRemovingAccount ||
     isSettingDefaultAccount;
   React.useEffect(() => {
@@ -367,6 +369,7 @@ export const CodexOAuthSection: React.FC<CodexOAuthSectionProps> = ({
           type="button"
           variant="outline"
           onClick={logout}
+          disabled={interactionBusy}
           className="w-full text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
         >
           <LogOut className="mr-2 h-4 w-4" />

@@ -75,6 +75,7 @@ export const CopilotAuthSection: React.FC<CopilotAuthSectionProps> = ({
     error,
     isPolling,
     isAddingAccount,
+    isLoggingOut,
     isRemovingAccount,
     isSettingDefaultAccount,
     addAccount,
@@ -87,6 +88,7 @@ export const CopilotAuthSection: React.FC<CopilotAuthSectionProps> = ({
   const interactionBusy =
     isPolling ||
     isAddingAccount ||
+    isLoggingOut ||
     isRemovingAccount ||
     isSettingDefaultAccount;
   React.useEffect(() => {
@@ -408,6 +410,7 @@ export const CopilotAuthSection: React.FC<CopilotAuthSectionProps> = ({
           type="button"
           variant="outline"
           onClick={logout}
+          disabled={interactionBusy}
           className="w-full text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
         >
           <LogOut className="mr-2 h-4 w-4" />

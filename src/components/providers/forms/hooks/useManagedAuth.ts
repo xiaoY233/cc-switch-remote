@@ -284,6 +284,7 @@ export function useManagedAuth(
     error,
     isPolling: pollingState === "polling",
     isAddingAccount: startLoginMutation.isPending || pollingState === "polling",
+    isLoggingOut: logoutMutation.isPending,
     isRemovingAccount: removeAccountMutation.isPending,
     isSettingDefaultAccount: setDefaultAccountMutation.isPending,
     startAuth,
