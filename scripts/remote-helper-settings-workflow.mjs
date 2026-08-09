@@ -18,8 +18,27 @@ export function assertIsolatedHelperTestHome(env = process.env) {
   }
 
   const resolved = path.resolve(rawHome);
-  const relativeToTmp = path.relative(path.resolve(os.tmpdir()), resolved);
-  const basename = path.basename(resolved);
+  let rootStat;
+  let realPath;
+  try {
+    rootStat = fs.lstatSync(resolved);
+    realPath = fs.realpathSync(resolved);
+  } catch {
+    throw new Error("helper workflow test home must be a harness-created directory");
+  }
+  if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
+    throw new Error("helper workflow test home must not be a symlink");
+  }
+  const lexicalTmp = path.resolve(os.tmpdir());
+  const realTmp = fs.realpathSync(lexicalTmp);
+  const relativeToTmp = path.relative(realTmp, realPath);
+  const relativeToLexicalTmp = path.relative(lexicalTmp, resolved);
+  const inputRelative =
+    !relativeToLexicalTmp.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(relativeToLexicalTmp)
+      ? relativeToLexicalTmp
+      : path.relative(realTmp, resolved);
+  const basename = path.basename(realPath);
   if (
     relativeToTmp === "" ||
     relativeToTmp.startsWith(`..${path.sep}`) ||
@@ -31,7 +50,23 @@ export function assertIsolatedHelperTestHome(env = process.env) {
   if (!basename.includes(runId)) {
     throw new Error("helper workflow requires a task-specific test home");
   }
-  return resolved;
+  if (inputRelative !== relativeToTmp) {
+    throw new Error("helper workflow test home real path contains a symlink alias");
+  }
+  return realPath;
+}
+
+export function createIsolatedHelperTestHome(runId) {
+  if (!runId || !/^[a-zA-Z0-9_-]+$/.test(runId)) {
+    throw new Error("CC_SWITCH_HELPER_TEST_RUN_ID must identify this task");
+  }
+  const root = fs.mkdtempSync(
+    path.join(fs.realpathSync(os.tmpdir()), `${SAFE_PREFIX}${runId}-`),
+  );
+  return assertIsolatedHelperTestHome({
+    CC_SWITCH_TEST_HOME: root,
+    CC_SWITCH_HELPER_TEST_RUN_ID: runId,
+  });
 }
 
 function sha256(filePath) {
@@ -162,8 +197,49 @@ export function runSettingsWorkflow(env = process.env) {
     throw new Error("redacted secrets or backend migration marker were not preserved");
   }
 
+  const privateSettingsMode =
+    process.platform === "win32" ||
+    (fs.statSync(settingsPath).mode & 0o777) === 0o600;
+  if (!privateSettingsMode) {
+    throw new Error("settings file permissions are not private");
+  }
+
+  const directOverride = runHelper(
+    helperPath,
+    ["settings", "set-app-config-dir", upstreamDir],
+    env,
+  );
+  if (directOverride.ok) {
+    throw new Error("helper accepted the upstream app config directory");
+  }
+  const alias = path.join(testHome, "upstream-config-alias");
+  fs.symlinkSync(
+    upstreamDir,
+    alias,
+    process.platform === "win32" ? "junction" : "dir",
+  );
+  const symlinkOverride = runHelper(
+    helperPath,
+    ["settings", "set-app-config-dir", alias],
+    env,
+  );
+  if (symlinkOverride.ok) {
+    throw new Error("helper accepted a symlink alias to the upstream app config directory");
+  }
+  const configAfterRejectedOverrides = runHelper(
+    helperPath,
+    ["settings", "app-config-dir"],
+    env,
+  );
+  if (
+    !configAfterRejectedOverrides.ok ||
+    path.resolve(configAfterRejectedOverrides.data) !== expectedConfigDir
+  ) {
+    throw new Error("rejected override changed the active helper config directory");
+  }
+
   const beforeFailure = sha256(settingsPath);
-  fs.chmodSync(settingsPath, 0o400);
+  fs.chmodSync(expectedConfigDir, 0o500);
   let failedSave;
   try {
     failedSave = runHelper(
@@ -176,7 +252,7 @@ export function runSettingsWorkflow(env = process.env) {
       env,
     );
   } finally {
-    fs.chmodSync(settingsPath, 0o600);
+    fs.chmodSync(expectedConfigDir, 0o700);
   }
   if (failedSave.ok || sha256(settingsPath) !== beforeFailure) {
     throw new Error("failed settings save did not preserve the previous file");
@@ -192,10 +268,27 @@ export function runSettingsWorkflow(env = process.env) {
     settingsSavePreservedSecretsAndMarker: true,
     failedSavePreservedBytes: true,
     upstreamSettingsUnchanged: true,
+    upstreamOverrideRejected: true,
+    symlinkOverrideRejected: true,
+    privateSettingsMode,
   };
+}
+
+export function runIsolatedSettingsWorkflow(env = process.env) {
+  const runId = env.CC_SWITCH_HELPER_TEST_RUN_ID?.trim();
+  const testHome = createIsolatedHelperTestHome(runId);
+  try {
+    return runSettingsWorkflow({
+      ...env,
+      CC_SWITCH_TEST_HOME: testHome,
+      CC_SWITCH_HELPER_TEST_RUN_ID: runId,
+    });
+  } finally {
+    fs.rmSync(testHome, { recursive: true, force: true });
+  }
 }
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
-  process.stdout.write(`${JSON.stringify(runSettingsWorkflow())}\n`);
+  process.stdout.write(`${JSON.stringify(runIsolatedSettingsWorkflow())}\n`);
 }

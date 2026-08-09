@@ -33,7 +33,7 @@ pub fn get_app_config_dir_override() -> Option<PathBuf> {
 pub fn set_app_config_dir_override_for_cli(path: Option<&str>) -> Result<(), AppError> {
     let value = match path.map(str::trim) {
         Some(trimmed) if !trimmed.is_empty() && trimmed != "-" => {
-            let path = resolve_path(trimmed);
+            let path = crate::config::validate_app_config_dir_override(&resolve_path(trimmed))?;
             fs::create_dir_all(&path).map_err(|e| AppError::io(&path, e))?;
             Some(path)
         }
@@ -59,7 +59,14 @@ fn read_override_from_store(app: &tauri::AppHandle) -> Option<PathBuf> {
                 return None;
             }
 
-            let path = resolve_path(path_str);
+            let path =
+                match crate::config::validate_app_config_dir_override(&resolve_path(path_str)) {
+                    Ok(path) => path,
+                    Err(error) => {
+                        log::warn!("拒绝不安全的 app_config_dir Store 覆盖: {error}");
+                        return None;
+                    }
+                };
 
             if !path.exists() {
                 log::warn!(
@@ -101,8 +108,11 @@ pub fn set_app_config_dir_to_store(
         Some(p) => {
             let trimmed = p.trim();
             if !trimmed.is_empty() {
-                store.set(STORE_KEY_APP_CONFIG_DIR, Value::String(trimmed.to_string()));
-                log::info!("已将 app_config_dir 写入 Store: {trimmed}");
+                let validated =
+                    crate::config::validate_app_config_dir_override(&resolve_path(trimmed))?;
+                let normalized = validated.to_string_lossy().to_string();
+                store.set(STORE_KEY_APP_CONFIG_DIR, Value::String(normalized.clone()));
+                log::info!("已将 app_config_dir 写入 Store: {normalized}");
             } else {
                 store.delete(STORE_KEY_APP_CONFIG_DIR);
                 log::info!("已从 Store 中删除 app_config_dir 配置");
@@ -125,17 +135,11 @@ pub fn set_app_config_dir_to_store(
 /// 解析路径，支持 ~ 开头的相对路径
 fn resolve_path(raw: &str) -> PathBuf {
     if raw == "~" {
-        if let Some(home) = dirs::home_dir() {
-            return home;
-        }
+        return crate::config::get_home_dir();
     } else if let Some(stripped) = raw.strip_prefix("~/") {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(stripped);
-        }
+        return crate::config::get_home_dir().join(stripped);
     } else if let Some(stripped) = raw.strip_prefix("~\\") {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(stripped);
-        }
+        return crate::config::get_home_dir().join(stripped);
     }
 
     PathBuf::from(raw)
@@ -149,4 +153,61 @@ pub fn migrate_app_config_dir_from_settings(app: &tauri::AppHandle) -> Result<()
 
     let _ = refresh_app_config_dir_override(app);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use serial_test::serial;
+
+    struct TestHomeGuard(Option<std::ffi::OsString>);
+
+    impl TestHomeGuard {
+        fn set(path: &std::path::Path) -> Self {
+            let previous = std::env::var_os("CC_SWITCH_TEST_HOME");
+            std::env::set_var("CC_SWITCH_TEST_HOME", path);
+            Self(previous)
+        }
+    }
+
+    impl Drop for TestHomeGuard {
+        fn drop(&mut self) {
+            match self.0.take() {
+                Some(value) => std::env::set_var("CC_SWITCH_TEST_HOME", value),
+                None => std::env::remove_var("CC_SWITCH_TEST_HOME"),
+            }
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn rejects_upstream_app_config_directory_and_children() {
+        let home = tempfile::tempdir().expect("temporary home");
+        let _guard = TestHomeGuard::set(home.path());
+        let upstream = home.path().join(".cc-switch");
+        std::fs::create_dir_all(&upstream).expect("create upstream directory");
+
+        assert!(crate::config::validate_app_config_dir_override(&upstream).is_err());
+        assert!(crate::config::validate_app_config_dir_override(&upstream.join("nested")).is_err());
+        assert!(crate::config::validate_app_config_dir_override(
+            &home.path().join(".cc-switch-remote")
+        )
+        .is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    #[serial]
+    fn rejects_symlink_alias_to_upstream_app_config_directory() {
+        use std::os::unix::fs::symlink;
+
+        let home = tempfile::tempdir().expect("temporary home");
+        let _guard = TestHomeGuard::set(home.path());
+        let upstream = home.path().join(".cc-switch");
+        std::fs::create_dir_all(&upstream).expect("create upstream directory");
+        let alias = home.path().join("remote-alias");
+        symlink(&upstream, &alias).expect("create symlink alias");
+
+        assert!(crate::config::validate_app_config_dir_override(&alias).is_err());
+        assert!(crate::config::validate_app_config_dir_override(&alias.join("nested")).is_err());
+    }
 }

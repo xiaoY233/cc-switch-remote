@@ -222,10 +222,11 @@ mod app_store {
     pub fn set_app_config_dir_override_for_cli(path: Option<&str>) -> Result<(), crate::AppError> {
         let value = match path.map(str::trim) {
             Some(trimmed) if !trimmed.is_empty() && trimmed != "-" => {
-                let resolved = resolve_path(trimmed);
+                let resolved =
+                    crate::config::validate_app_config_dir_override(&resolve_path(trimmed))?;
                 std::fs::create_dir_all(&resolved)
                     .map_err(|e| crate::AppError::io(&resolved, e))?;
-                Some(trimmed.to_string())
+                Some(resolved.to_string_lossy().to_string())
             }
             _ => None,
         };
@@ -245,11 +246,8 @@ mod app_store {
             return None;
         }
         let path = resolve_path(raw);
-        if path.exists() {
-            Some(path)
-        } else {
-            None
-        }
+        let path = crate::config::validate_app_config_dir_override(&path).ok()?;
+        path.exists().then_some(path)
     }
 
     fn write_override_to_file(path: Option<&str>) -> Result<(), crate::AppError> {

@@ -223,6 +223,50 @@ fn legacy_app_config_dir() -> PathBuf {
     get_home_dir().join(LEGACY_APP_CONFIG_DIR_NAME)
 }
 
+fn absolute_path(path: &Path) -> Result<PathBuf, AppError> {
+    if path.is_absolute() {
+        Ok(path.to_path_buf())
+    } else {
+        std::env::current_dir()
+            .map(|current| current.join(path))
+            .map_err(|error| AppError::io(path, error))
+    }
+}
+
+fn canonicalize_allow_missing(path: &Path) -> Result<PathBuf, AppError> {
+    let mut existing = absolute_path(path)?;
+    let mut missing = Vec::new();
+    while !existing.exists() {
+        let name = existing.file_name().ok_or_else(|| {
+            AppError::Config(format!("无法规范化 app_config_dir: {}", path.display()))
+        })?;
+        missing.push(name.to_os_string());
+        if !existing.pop() {
+            return Err(AppError::Config(format!(
+                "无法规范化 app_config_dir: {}",
+                path.display()
+            )));
+        }
+    }
+    let mut resolved = fs::canonicalize(&existing).map_err(|e| AppError::io(&existing, e))?;
+    for component in missing.into_iter().rev() {
+        resolved.push(component);
+    }
+    Ok(resolved)
+}
+
+pub(crate) fn validate_app_config_dir_override(path: &Path) -> Result<PathBuf, AppError> {
+    let candidate = canonicalize_allow_missing(path)?;
+    let upstream = canonicalize_allow_missing(&legacy_app_config_dir())?;
+    if path_is_within(&upstream, &candidate) {
+        return Err(AppError::Config(format!(
+            "app_config_dir 不得指向上游 CC Switch 数据目录: {}",
+            path.display()
+        )));
+    }
+    Ok(candidate)
+}
+
 fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<(), AppError> {
     std::fs::create_dir_all(destination).map_err(|e| AppError::io(destination, e))?;
     for entry in std::fs::read_dir(source).map_err(|e| AppError::io(source, e))? {
