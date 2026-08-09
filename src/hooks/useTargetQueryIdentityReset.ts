@@ -6,7 +6,11 @@ import {
 } from "@tanstack/react-query";
 import type { ManagementTarget } from "@/lib/api/remote";
 
-type TargetQueryDomain = "mcp" | "skills" | "opencode-runtime-models";
+type TargetQueryDomain =
+  | "mcp"
+  | "skills"
+  | "opencode-runtime-models"
+  | "codex-oauth-quota";
 
 const TARGET_SCOPED_SKILLS_COLLECTIONS = new Set([
   "installed",
@@ -27,6 +31,13 @@ const matchesTargetQuery = (
   domain: TargetQueryDomain,
   targetKey: string,
 ) => {
+  if (domain === "codex-oauth-quota") {
+    return (
+      query.queryKey[0] === "codex_oauth" &&
+      query.queryKey[1] === "quota" &&
+      query.queryKey[2] === targetKey
+    );
+  }
   if (domain === "opencode-runtime-models") {
     return (
       query.queryKey[0] === "opencode" &&

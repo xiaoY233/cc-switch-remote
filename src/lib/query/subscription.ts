@@ -8,6 +8,7 @@ import { resolveManagedAccountId } from "@/lib/authBinding";
 import { PROVIDER_TYPES } from "@/config/constants";
 import { resolveDisplayUsage, type LastGoodSnapshot } from "./queries";
 import { extractErrorMessage } from "@/utils/errorUtils";
+import { useTargetQueryIdentityReset } from "@/hooks/useTargetQueryIdentityReset";
 
 const REFETCH_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
@@ -158,6 +159,7 @@ export function useCodexOauthQuotaByAccountId(
     staleTime: REFETCH_INTERVAL,
     retry: 1,
   });
+  useTargetQueryIdentityReset("codex-oauth-quota", target, key);
 
   return useQuotaKeepLastGood(query, `${key}:${accountId ?? "default"}`);
 }

@@ -87,4 +87,55 @@ describe("Codex OAuth quota target isolation", () => {
       "local-account",
     ]);
   });
+
+  it("reloads account quota when the same remote profile gets new connection credentials", async () => {
+    const nextTarget: ManagementTarget = {
+      ...remoteTarget,
+      profile: {
+        ...remoteTarget.profile,
+        host: "192.0.2.11",
+        updatedAt: 2,
+      },
+      secret: { password: "new-secret" },
+    };
+    const getQuotaSpy = vi
+      .spyOn(subscriptionApi, "getCodexOauthQuota")
+      .mockImplementation((_, target) =>
+        Promise.resolve({
+          tool: "codex_oauth",
+          credentialStatus: "valid",
+          credentialMessage: null,
+          success: true,
+          tiers: [],
+          extraUsage: null,
+          error: null,
+          queriedAt: target === remoteTarget ? 1 : 2,
+        }),
+      );
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: PropsWithChildren) =>
+      createElement(QueryClientProvider, { client: queryClient }, children);
+
+    const { result, rerender } = renderHook(
+      ({ target }: { target: ManagementTarget }) =>
+        useCodexOauthQuotaByAccountId("remote-account", { target }),
+      {
+        initialProps: { target: remoteTarget },
+        wrapper,
+      },
+    );
+
+    await waitFor(() => expect(result.current.data?.queriedAt).toBe(1));
+
+    rerender({ target: nextTarget });
+
+    await waitFor(() => expect(getQuotaSpy).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(result.current.data?.queriedAt).toBe(2));
+    expect(getQuotaSpy.mock.calls).toEqual([
+      ["remote-account", remoteTarget],
+      ["remote-account", nextTarget],
+    ]);
+  });
 });
