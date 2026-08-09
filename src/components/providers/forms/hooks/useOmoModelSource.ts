@@ -38,6 +38,16 @@ interface OmoModelBuild {
   usedFallbackSource: boolean;
 }
 
+export const buildOmoWarningSignature = (
+  targetKey: string,
+  fallback: boolean,
+  failedProviders: string[],
+) =>
+  `${targetKey}:${fallback ? "fallback:" : ""}${failedProviders
+    .slice()
+    .sort()
+    .join(",")}`;
+
 export interface OmoModelSourceResult {
   omoModelOptions: Array<{ value: string; label: string }>;
   omoModelVariantsMap: Record<string, string[]>;
@@ -89,6 +99,11 @@ export function useOmoModelSource({
   const [omoLiveIdsLoadFailed, setOmoLiveIdsLoadFailed] = useState(false);
   const lastOmoModelSourceWarningRef = useRef<string>("");
   const lastRuntimeModelsWarningRef = useRef<string>("");
+
+  useEffect(() => {
+    lastOmoModelSourceWarningRef.current = "";
+    lastRuntimeModelsWarningRef.current = "";
+  }, [targetKey]);
 
   useEffect(() => {
     let active = true;
@@ -276,10 +291,7 @@ export function useOmoModelSource({
     const fallback = omoModelBuild.usedFallbackSource;
     if (failed.length === 0 && !fallback) return;
 
-    const signature = `${fallback ? "fallback:" : ""}${failed
-      .slice()
-      .sort()
-      .join(",")}`;
+    const signature = buildOmoWarningSignature(targetKey, fallback, failed);
     if (lastOmoModelSourceWarningRef.current === signature) return;
     lastOmoModelSourceWarningRef.current = signature;
 
@@ -304,6 +316,7 @@ export function useOmoModelSource({
     isOmoCategory,
     omoModelBuild.parseFailedProviders,
     omoModelBuild.usedFallbackSource,
+    targetKey,
     t,
   ]);
 
@@ -320,7 +333,7 @@ export function useOmoModelSource({
         runtimeModelsError ||
         "",
     );
-    const signature = detail || "runtime-models-failed";
+    const signature = `${targetKey}:${detail || "runtime-models-failed"}`;
     if (lastRuntimeModelsWarningRef.current === signature) return;
     lastRuntimeModelsWarningRef.current = signature;
 
@@ -330,7 +343,7 @@ export function useOmoModelSource({
           "Failed to load OpenCode runtime models. Showing configured providers only.",
       }),
     );
-  }, [isOmoCategory, runtimeModelsFailed, runtimeModelsError, t]);
+  }, [isOmoCategory, runtimeModelsFailed, runtimeModelsError, t, targetKey]);
 
   return {
     omoModelOptions: omoModelBuild.options,

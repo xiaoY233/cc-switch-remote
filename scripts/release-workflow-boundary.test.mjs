@@ -21,3 +21,14 @@ test('release body uses only an explicitly fork-owned note or the fork fallback'
   assert.doesNotMatch(prepareStep, /docs\/release-notes\/\$\{TAG\}-zh\.md/);
   assert.match(prepareStep, /## CC Switch Remote \$\{TAG\}/);
 });
+
+test('Windows title and tray tooltip preserve the fork product identity', () => {
+  const windowsConfig = JSON.parse(
+    fs.readFileSync(path.join(repoRoot, 'src-tauri/tauri.windows.conf.json'), 'utf8'),
+  );
+  const rustApp = fs.readFileSync(path.join(repoRoot, 'src-tauri/src/lib.rs'), 'utf8');
+
+  assert.equal(windowsConfig.app.windows[0].title, 'CC Switch Remote');
+  assert.match(rustApp, /\.tooltip\("CC Switch Remote"\)/);
+  assert.doesNotMatch(rustApp, /\.tooltip\("CC Switch"\)/);
+});
