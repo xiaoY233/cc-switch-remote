@@ -7,7 +7,82 @@
 use reqwest::header::{HeaderValue, USER_AGENT};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::time::Duration;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenCodeModelRef {
+    pub provider_id: String,
+    pub model_id: String,
+}
+
+const OPENCODE_MODELS_TIMEOUT: Duration = Duration::from_secs(20);
+
+pub async fn get_opencode_models() -> Result<Vec<OpenCodeModelRef>, String> {
+    tokio::task::spawn_blocking(|| {
+        let config_dir = crate::opencode_config::get_opencode_dir();
+        let config_dir_env = config_dir.to_string_lossy().into_owned();
+        let extra_env = [
+            ("OPENCODE_CONFIG_DIR", config_dir_env),
+            ("OPENCODE_DISABLE_PROJECT_CONFIG", "true".to_string()),
+        ];
+        let output = crate::tool_environment::run_detected_tool_command_with_timeout(
+            "opencode",
+            &["models"],
+            Some(OPENCODE_MODELS_TIMEOUT),
+            &extra_env,
+            &config_dir,
+        )?;
+        if !output.status.success() {
+            let stderr = crate::tool_environment::decode_command_output(&output.stderr);
+            let stdout = crate::tool_environment::decode_command_output(&output.stdout);
+            let detail = if stderr.trim().is_empty() {
+                stdout.trim()
+            } else {
+                stderr.trim()
+            };
+            return Err(if detail.is_empty() {
+                "Failed to load OpenCode models".to_string()
+            } else {
+                format!("Failed to load OpenCode models: {detail}")
+            });
+        }
+
+        Ok(parse_opencode_models(
+            &crate::tool_environment::decode_command_output(&output.stdout),
+        ))
+    })
+    .await
+    .map_err(|e| format!("OpenCode model discovery task failed: {e}"))?
+}
+
+fn parse_opencode_models(output: &str) -> Vec<OpenCodeModelRef> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let (provider_id, model_id) = line.trim().split_once('/')?;
+            if provider_id.is_empty()
+                || model_id.is_empty()
+                || !provider_id
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+                || model_id
+                    .chars()
+                    .any(|c| c.is_whitespace() || c.is_control())
+            {
+                return None;
+            }
+            Some((provider_id.to_string(), model_id.to_string()))
+        })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .map(|(provider_id, model_id)| OpenCodeModelRef {
+            provider_id,
+            model_id,
+        })
+        .collect()
+}
 
 /// 获取到的模型信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -477,5 +552,32 @@ mod tests {
         let json = r#"{"object":"list","data":[]}"#;
         let resp: ModelsResponse = serde_json::from_str(json).unwrap();
         assert!(resp.data.unwrap().is_empty());
+    }
+
+    #[test]
+    fn parses_sorts_and_deduplicates_opencode_runtime_models() {
+        assert_eq!(
+            parse_opencode_models(
+                "openrouter/vendor/model\nopencode/free-model\ninvalid\nopencode/free-model\n"
+            ),
+            vec![
+                OpenCodeModelRef {
+                    provider_id: "opencode".to_string(),
+                    model_id: "free-model".to_string(),
+                },
+                OpenCodeModelRef {
+                    provider_id: "openrouter".to_string(),
+                    model_id: "vendor/model".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn skips_malformed_opencode_runtime_model_lines() {
+        assert!(parse_opencode_models(
+            "notice: loading models\n/model\nprovider/\nbad provider/model\nprovider/bad model\nprovider/bad\u{1b}[0m\n"
+        )
+        .is_empty());
     }
 }

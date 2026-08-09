@@ -9,6 +9,22 @@ export interface FetchedModel {
   ownedBy: string | null;
 }
 
+export interface OpenCodeModelRef {
+  providerId: string;
+  modelId: string;
+}
+
+/** 获取选定管理目标上 OpenCode 当前运行时可用的模型。 */
+export async function getOpenCodeModels(
+  target: ManagementTarget = { type: "local" },
+): Promise<OpenCodeModelRef[]> {
+  if (target.type === "remote") {
+    return remoteApi.getOpenCodeModels(target.profile, target.secret);
+  }
+
+  return invoke("get_opencode_models");
+}
+
 /**
  * 从供应商获取可用模型列表
  *

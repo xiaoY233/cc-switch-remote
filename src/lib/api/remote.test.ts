@@ -182,6 +182,22 @@ describe("remote OMO API", () => {
       },
     );
   });
+
+  it("loads OpenCode runtime models from the selected remote helper", async () => {
+    invokeMock.mockResolvedValueOnce([
+      { providerId: "remote-oauth", modelId: "gpt-5-remote" },
+    ]);
+
+    const result = await remoteApi.getOpenCodeModels(remoteProfile, secret);
+
+    expect(result).toEqual([
+      { providerId: "remote-oauth", modelId: "gpt-5-remote" },
+    ]);
+    expect(invokeMock).toHaveBeenCalledWith("remote_get_opencode_models", {
+      profile: remoteProfile,
+      secret,
+    });
+  });
 });
 
 describe("remote API invoke mappings", () => {

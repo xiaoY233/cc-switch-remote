@@ -74,7 +74,7 @@ export function AuthCenterPanel({ target }: AuthCenterPanelProps) {
           </div>
         </div>
 
-        <CodexOAuthSection target={target} />
+        <CodexOAuthSection target={target} showAccountQuota />
       </section>
 
       <section className="rounded-xl border border-border/60 bg-card/60 p-6">

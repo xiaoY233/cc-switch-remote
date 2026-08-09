@@ -11,10 +11,23 @@ import { extractErrorMessage } from "@/utils/errorUtils";
 
 const REFETCH_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
+const targetKey = (target: ManagementTarget) =>
+  target.type === "remote" ? `remote:${target.profile.id}` : "local";
+
 export const subscriptionKeys = {
   all: ["subscription"] as const,
   quota: (appId: AppId, targetKey = "local") =>
     [...subscriptionKeys.all, "quota", targetKey, appId] as const,
+  codexOauthQuota: (
+    accountId: string | null,
+    target: ManagementTarget = { type: "local" },
+  ) =>
+    [
+      "codex_oauth",
+      "quota",
+      targetKey(target),
+      accountId ?? "default",
+    ] as const,
 };
 
 /**
@@ -125,8 +138,8 @@ export interface UseCodexOauthQuotaOptions {
  * Query key 包含 accountId，多张卡片绑定到同一账号时会自动去重共享请求。
  * accountId 为 null 时使用 "default" 占位，让后端 fallback 到默认账号。
  */
-export function useCodexOauthQuota(
-  meta: ProviderMeta | undefined,
+export function useCodexOauthQuotaByAccountId(
+  accountId: string | null,
   options: UseCodexOauthQuotaOptions = {},
 ) {
   const {
@@ -134,11 +147,9 @@ export function useCodexOauthQuota(
     autoQuery = false,
     target = { type: "local" },
   } = options;
-  const accountId = resolveManagedAccountId(meta, PROVIDER_TYPES.CODEX_OAUTH);
-  const targetKey =
-    target.type === "remote" ? `remote:${target.profile.id}` : "local";
+  const key = targetKey(target);
   const query = useQuery({
-    queryKey: ["codex_oauth", "quota", targetKey, accountId ?? "default"],
+    queryKey: subscriptionKeys.codexOauthQuota(accountId, target),
     queryFn: () => subscriptionApi.getCodexOauthQuota(accountId, target),
     enabled,
     refetchInterval: autoQuery ? REFETCH_INTERVAL : false,
@@ -148,7 +159,15 @@ export function useCodexOauthQuota(
     retry: 1,
   });
 
-  return useQuotaKeepLastGood(query, `${targetKey}:${accountId ?? "default"}`);
+  return useQuotaKeepLastGood(query, `${key}:${accountId ?? "default"}`);
+}
+
+export function useCodexOauthQuota(
+  meta: ProviderMeta | undefined,
+  options: UseCodexOauthQuotaOptions = {},
+) {
+  const accountId = resolveManagedAccountId(meta, PROVIDER_TYPES.CODEX_OAUTH);
+  return useCodexOauthQuotaByAccountId(accountId, options);
 }
 
 /**

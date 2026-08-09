@@ -1427,6 +1427,7 @@ pub fn run() {
             commands::apply_profile,
             // model list fetch (OpenAI-compatible /v1/models)
             commands::fetch_models_for_config,
+            commands::get_opencode_models,
             // ours: endpoint speed test + custom endpoint management
             commands::test_api_endpoints,
             commands::get_custom_endpoints,
@@ -1644,6 +1645,7 @@ pub fn run() {
             commands::remote_test_usage_script,
             commands::remote_get_balance,
             commands::remote_get_coding_plan_quota,
+            commands::remote_get_opencode_models,
             commands::remote_fetch_codex_oauth_models,
             commands::remote_fetch_xai_oauth_models,
             commands::remote_get_codex_oauth_quota,

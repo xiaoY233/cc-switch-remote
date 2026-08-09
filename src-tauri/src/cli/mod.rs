@@ -288,6 +288,37 @@ mod tests {
     }
 
     #[test]
+    fn status_advertises_opencode_runtime_models_only_with_dispatch_support() {
+        let response = run_command(&["status".to_string()]);
+        let capabilities = response
+            .get("data")
+            .and_then(|data| data.get("capabilities"))
+            .and_then(Value::as_array)
+            .expect("status capabilities");
+
+        assert!(capabilities
+            .iter()
+            .any(|capability| capability == "opencode-runtime-models"));
+    }
+
+    #[test]
+    fn opencode_runtime_models_command_is_registered() {
+        let response = run_command(&["opencode".to_string(), "models".to_string()]);
+
+        if response.get("ok").and_then(Value::as_bool) == Some(true) {
+            assert!(response.get("data").and_then(Value::as_array).is_some());
+        } else {
+            assert_eq!(
+                response
+                    .get("error")
+                    .and_then(|error| error.get("code"))
+                    .and_then(Value::as_str),
+                Some("opencode_models_failed")
+            );
+        }
+    }
+
+    #[test]
     fn providers_fetch_models_command_is_registered() {
         let response = run_command(&[
             "providers".to_string(),
@@ -1866,6 +1897,18 @@ pub(crate) fn run_command(args: &[String]) -> Value {
                     message,
                 ))
                 .expect("serialize subscription quota error"),
+            }
+        }
+        [group, cmd] if group == "opencode" && cmd == "models" => {
+            match commands::get_opencode_models() {
+                Ok(value) => {
+                    serde_json::to_value(types::ok(value)).expect("serialize OpenCode models")
+                }
+                Err(message) => serde_json::to_value(types::err::<()>(
+                    "opencode_models_failed",
+                    message,
+                ))
+                .expect("serialize OpenCode models error"),
             }
         }
         [group, cmd, auth_provider, account_id] if group == "auth" && cmd == "remove" => {

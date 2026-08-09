@@ -5,6 +5,7 @@ pub const REMOTE_HELPER_CAPABILITIES: &[&str] = &[
     "omo",
     "provider-official-seed",
     "provider-model-fetch",
+    "opencode-runtime-models",
     "universal-providers",
     "routing-config",
     #[cfg(feature = "proxy-runtime")]

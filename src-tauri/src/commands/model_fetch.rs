@@ -4,6 +4,11 @@
 
 use crate::services::model_fetch::{self, FetchedModel};
 
+#[tauri::command]
+pub async fn get_opencode_models() -> Result<Vec<model_fetch::OpenCodeModelRef>, String> {
+    model_fetch::get_opencode_models().await
+}
+
 /// 获取供应商的可用模型列表
 ///
 /// 使用 OpenAI 兼容的 GET /v1/models 端点。优先使用 `models_url` 精确覆写；

@@ -550,6 +550,11 @@ pub fn get_subscription_quota(
     auth_runtime()?.block_on(crate::services::subscription::get_subscription_quota(tool))
 }
 
+pub fn get_opencode_models() -> Result<Vec<crate::services::model_fetch::OpenCodeModelRef>, String>
+{
+    auth_runtime()?.block_on(crate::services::model_fetch::get_opencode_models())
+}
+
 pub fn fetch_copilot_models(
     auth_provider: &str,
     account_id: Option<&str>,

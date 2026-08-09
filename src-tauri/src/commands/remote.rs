@@ -2330,6 +2330,20 @@ pub async fn remote_get_coding_plan_quota(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+pub async fn remote_get_opencode_models(
+    profile: RemoteHostProfile,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<Vec<crate::services::model_fetch::OpenCodeModelRef>, String> {
+    run_remote_helper_json(
+        profile,
+        vec!["opencode".to_string(), "models".to_string()],
+        secret,
+        "Remote OpenCode runtime models",
+    )
+    .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
 pub async fn remote_fetch_codex_oauth_models(
     profile: RemoteHostProfile,
     account_id: Option<String>,

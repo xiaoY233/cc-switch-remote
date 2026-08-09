@@ -41,6 +41,9 @@ const invalidateOpenCodeDerivedState = async (
     queryKey: ["opencodeLiveProviderIds", key],
   });
   await queryClient.invalidateQueries({
+    queryKey: ["opencode", "runtime-models", key],
+  });
+  await queryClient.invalidateQueries({
     queryKey: omoKeys.currentProviderId(key),
   });
   await queryClient.invalidateQueries({
@@ -445,6 +448,9 @@ export const useSaveSettingsMutation = () => {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["settings"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["opencode", "runtime-models", "local"],
+      });
     },
   });
 };

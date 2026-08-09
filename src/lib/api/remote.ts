@@ -83,7 +83,7 @@ import type {
   ManagedAuthStatus,
 } from "./auth";
 import type { CopilotModel, CopilotUsageResponse } from "./copilot";
-import type { FetchedModel } from "./model-fetch";
+import type { FetchedModel, OpenCodeModelRef } from "./model-fetch";
 import type { Profile, ProfileScope, ProfilesResponse } from "./profiles";
 import type {
   AppType as ConfigAppType,
@@ -1223,6 +1223,16 @@ export const remoteApi = {
     return invoke<UsageResult>("remote_get_balance", {
       profile,
       options,
+      secret,
+    });
+  },
+
+  getOpenCodeModels(
+    profile: RemoteHostProfile,
+    secret?: RemoteConnectionSecret,
+  ): Promise<OpenCodeModelRef[]> {
+    return invoke<OpenCodeModelRef[]>("remote_get_opencode_models", {
+      profile,
       secret,
     });
   },
