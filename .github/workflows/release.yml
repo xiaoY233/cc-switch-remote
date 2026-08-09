@@ -97,8 +97,12 @@ jobs:
             || sudo apt-get install -y --no-install-recommends libsoup2.4-dev
 
       - name: Setup pnpm
+        env:
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
         run: |
-          npm install -g pnpm@10.12.3 --no-audit --no-fund
+          corepack enable
+          corepack install
+          node --version
           pnpm --version
 
       - name: Get pnpm store directory

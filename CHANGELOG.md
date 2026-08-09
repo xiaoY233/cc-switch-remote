@@ -5,6 +5,16 @@ All notable changes to CC Switch will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.19.2] - Upstream baseline (2026-08-06)
+
+CC Switch Remote has merged the exact upstream `v3.19.2` tag as migration input. This entry records the upstream baseline only; it does not claim that a CC Switch Remote v3.19.2 release has been built or published.
+
+The upstream changes include management-list search and bulk app toggles, per-account subscription usage, runtime-discovered OMO models, Codex usage-accounting fixes, OMO unified-config writes, bounded script/file/proxy reads, deep-link credential visibility, batched backup and session-import writes, and Corepack-based pnpm setup. Full upstream reference notes are preserved in:
+
+- `docs/release-notes/v3.19.2-en.md`
+- `docs/release-notes/v3.19.2-ja.md`
+- `docs/release-notes/v3.19.2-zh.md`
+
 ## [3.18.0] - 2026-07-21
 
 Development since v3.17.0 is headlined by Grok Build joining as the eighth managed app — full provider switching, proxy takeover on its own route namespace, MCP/Skills/prompts sync, a curated preset list, and a Grok Official entry with official-login import (schema v14/v15) — and by xAI Grok account sign-in over an OAuth device flow for Claude Code, Claude Desktop, and Codex, including a strict-gateway compatibility layer that lets codex 0.142+ drive a Grok subscription over native Responses. A usage-accounting repair wave fixes the v3.17.0 fork/sub-agent double count with a one-time automatic rebuild (schema v16) plus a manual rebuild action, makes proxy usage logging idempotent, and stops the usage page freezing during large imports. Diagnostics mature: logs persist across restarts under size rotation, every log egress redacts secrets, and renderer crashes are captured to disk behind an error boundary with a reload screen. The Codex conversion layer gets four correctness fixes — tool schemas normalized to object type, reasoning attached forward across turns, streamed tool-call identity and order preserved, and parser-required catalog fields backfilled so codex 0.144.5+ starts — while managed-OAuth providers are now reliably flagged as routing-required and Windows provider switches no longer flash a console window or freeze the UI. Rounded out by Kimi K3 presets and pricing, corrected OpenClaw preset costs, SudoCode.us restored beside SudoCode.chat, sponsor-grouped preset ordering, first-run tray language detection, and permanently deletable default Skill repositories.

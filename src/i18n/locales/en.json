@@ -34,6 +34,9 @@
     "import": "Import",
     "all": "All",
     "search": "Search",
+    "enableAllForApp": "Enable all for {{app}}",
+    "disableAllForApp": "Disable all for {{app}}",
+    "bulkToggleFailed": "Failed to update {{count}} item(s)",
     "reset": "Reset",
     "actions": "Actions",
     "deleting": "Deleting...",
@@ -917,6 +920,9 @@
     "openclaw": "OpenClaw",
     "hermes": "Hermes"
   },
+  "appSwitcher": {
+    "more": "More apps"
+  },
   "grokBuild": {
     "apiBackend": "API backend",
     "contextWindow": "Context window",
@@ -1050,8 +1056,9 @@
     "providerKeyStatusLoading": "Provider identifier status is still loading. Please try again shortly.",
     "getApiKey": "Get API Key",
     "partnerPromotion": {
+      "kimi": "New Kimi users get 10% of their first successful top-up back as bonus API credit, up to CNY ¥1,000.",
       "a6api": "A6API is a token aggregation platform with a built-in real-time price leaderboard that automatically picks the lowest price on the market. Smooth and stable, simple to operate, and no more tedious price comparisons. Register now to claim free trial credits!",
-      "sudocode": "With one SudoCode key, Claude Code and Claude Desktop use Claude Opus 4.8, while Codex uses GPT-5.6. Sign up, join QQ group 726213516, and contact the group owner to claim CNY ¥10 in trial credit.",
+      "sudocode": "With one SudoCode key, Claude Code and Claude Desktop use Claude Opus 5, while Codex uses GPT-5.6. Sign up, join QQ group 726213516, and contact the group owner to claim CNY ¥10 in trial credit.",
       "code0": "code0.ai is an AI coding service platform for developers, supporting Claude Code, Codex, and Gemini. Exclusive for CC Switch Remote users: contact support via the official website to claim free trial credits!",
       "nekocode": "NekoCode gives developers a stable, efficient, and reliable API relay for Claude, Codex, and other AI models, with transparent pay-as-you-go pricing. Exclusive 10% off for CC Switch Remote users: register via the link above and enter promo code cc-switch at recharge to save 10%!",
       "packycode": "PackyCode is an official partner of CC Switch Remote. Register using this link and enter \"cc-switch\" promo code during recharge to get 10% off",
@@ -1841,6 +1848,9 @@
       "enabledApps": "Enabled Apps",
       "noImportFound": "No MCP servers to import found. All servers are already managed by CC Switch Remote.",
       "importSuccess": "Successfully imported {{count}} MCP servers",
+      "searchPlaceholder": "Search MCP name, description, tag, or command...",
+      "searchAriaLabel": "Search managed MCP servers",
+      "noSearchResults": "No MCP servers match your search",
       "apps": {
         "claude": "Claude",
         "codex": "Codex",
@@ -1999,6 +2009,9 @@
     "empty": "No prompts yet",
     "emptyDescription": "Click the button above to add or import prompts",
     "loading": "Loading...",
+    "searchPlaceholder": "Search prompt name, description, or content...",
+    "searchAriaLabel": "Search managed prompts",
+    "noSearchResults": "No prompts match your search",
     "name": "Name",
     "namePlaceholder": "e.g., Default Project Prompt",
     "description": "Description",
@@ -2397,6 +2410,9 @@
     },
     "search": "Search Skills",
     "searchPlaceholder": "Search skill name or repo...",
+    "installedSearchPlaceholder": "Search installed skill name, description, or repo...",
+    "installedSearchAriaLabel": "Search installed skills",
+    "noInstalledSearchResults": "No installed skills match your search",
     "searchSource": {
       "repos": "Repos",
       "skillssh": "skills.sh"
@@ -2546,6 +2562,8 @@
     "usageScriptWarning": "This is JavaScript that runs when usage is queried, once enabled. Import it only if you trust the source.",
     "usageApiKey": "Usage API Key",
     "usageBaseUrl": "Usage Query URL",
+    "usageAccessToken": "Usage Access Token",
+    "usageUserId": "Usage User ID",
     "usageAutoInterval": "Auto Query",
     "usageAutoIntervalValue": "Every {{minutes}} minutes",
     "risk": {
@@ -2917,6 +2935,7 @@
     "noEnabledModelsWarning": "No configured models available. Configure OpenCode models first.",
     "modelSourcePartialWarning": "Some provider model configs are invalid and were skipped.",
     "modelSourceFallbackWarning": "Failed to load live provider state. Falling back to configured providers.",
+    "runtimeModelsFailedWarning": "Failed to load OpenCode runtime models. Showing configured providers only.",
     "importLocalReplaceSuccess": "Imported local file and replaced Agents/Categories/Other Fields",
     "importLocalFailed": "Failed to read local file: {{error}}",
     "agentKeyPlaceholder": "agent key",
