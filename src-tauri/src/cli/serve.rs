@@ -72,6 +72,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn handle_line_dispatches_routing_runtime_status() {
         let dir = tempfile::tempdir().expect("temp test home");
         let previous_home = std::env::var_os("CC_SWITCH_TEST_HOME");
