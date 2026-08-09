@@ -149,4 +149,15 @@ fn production_helper_serve_keeps_session_and_uses_shared_codex_sync() {
         )
         .expect("query persisted helper cursors");
     assert_eq!(cursor_count, 2);
+
+    let upstream_root = test_home.path().join(".cc-switch");
+    assert!(
+        !upstream_root.exists(),
+        "the remote helper must never create or mutate the upstream CC Switch root: {}",
+        upstream_root.display()
+    );
+    assert!(
+        !upstream_root.join("cc-switch.db").exists(),
+        "the remote helper database must remain isolated under .cc-switch-remote"
+    );
 }

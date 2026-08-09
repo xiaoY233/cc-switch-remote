@@ -480,13 +480,66 @@ impl SkillService {
             log::warn!("跳过非法仓库坐标的文档链接: {owner}/{repo}@{branch}");
             return None;
         }
-        Some(format!(
-            "https://github.com/{owner}/{repo}/blob/{branch}/{doc_path}"
-        ))
+
+        let doc_segments = doc_path.split('/').collect::<Vec<_>>();
+        if doc_segments.is_empty()
+            || doc_segments
+                .iter()
+                .any(|segment| segment.is_empty() || matches!(*segment, "." | ".."))
+        {
+            log::warn!("跳过非法仓库文档路径: {doc_path}");
+            return None;
+        }
+
+        let mut url = url::Url::parse("https://github.com").ok()?;
+        {
+            let mut path = url.path_segments_mut().ok()?;
+            path.pop_if_empty();
+            path.push(owner).push(repo).push("blob");
+            for segment in branch.split('/') {
+                path.push(segment);
+            }
+            for segment in doc_segments {
+                path.push(segment);
+            }
+        }
+        Some(url.to_string())
+    }
+
+    fn decode_url_path_segment(segment: &str) -> Option<String> {
+        fn hex_value(byte: u8) -> Option<u8> {
+            match byte {
+                b'0'..=b'9' => Some(byte - b'0'),
+                b'a'..=b'f' => Some(byte - b'a' + 10),
+                b'A'..=b'F' => Some(byte - b'A' + 10),
+                _ => None,
+            }
+        }
+
+        let input = segment.as_bytes();
+        let mut decoded = Vec::with_capacity(input.len());
+        let mut index = 0;
+        while index < input.len() {
+            if input[index] == b'%' {
+                let high = *input.get(index + 1)?;
+                let low = *input.get(index + 2)?;
+                decoded.push((hex_value(high)? << 4) | hex_value(low)?);
+                index += 3;
+            } else {
+                decoded.push(input[index]);
+                index += 1;
+            }
+        }
+        String::from_utf8(decoded).ok()
     }
 
     /// 从旧 readme_url 中提取仓库内文档路径，兼容 `blob`/`tree` 两种格式
     fn extract_doc_path_from_url(url: &str) -> Option<String> {
+        let parsed = url::Url::parse(url).ok()?;
+        if parsed.query().is_some() || parsed.fragment().is_some() {
+            return None;
+        }
+
         let marker = if url.contains("/blob/") {
             "/blob/"
         } else if url.contains("/tree/") {
@@ -496,11 +549,23 @@ impl SkillService {
         };
 
         let (_, tail) = url.split_once(marker)?;
-        let (_, path) = tail.split_once('/')?;
-        if path.is_empty() {
+        let (_, encoded_path) = tail.split_once('/')?;
+        if encoded_path.is_empty() {
             return None;
         }
-        Some(path.to_string())
+
+        let mut decoded_segments = Vec::new();
+        for encoded in encoded_path.split('/') {
+            let decoded = Self::decode_url_path_segment(encoded)?;
+            if decoded.is_empty()
+                || matches!(decoded.as_str(), "." | "..")
+                || decoded.contains(['/', '\\'])
+            {
+                return None;
+            }
+            decoded_segments.push(decoded);
+        }
+        Some(decoded_segments.join("/"))
     }
 
     // ========== 路径管理 ==========
@@ -3793,6 +3858,119 @@ mod tests {
         assert!(
             SkillService::build_skill_doc_url("owner", "repo", "../../../issues", "x").is_none()
         );
+    }
+
+    #[test]
+    fn build_skill_doc_url_encodes_significant_resolved_path_segments() {
+        let temp = tempdir().expect("tempdir");
+
+        for (directory, encoded_directory) in [
+            ("hash#anchor", "hash%23anchor"),
+            ("query?anchor", "query%3Fanchor"),
+        ] {
+            let source = temp.path().join("catalog").join(directory);
+            write_skill(&source, directory);
+            let doc_path = SkillService::doc_path_for_source(temp.path(), &source)
+                .expect("resolved repository-relative SKILL.md path");
+
+            let raw = SkillService::build_skill_doc_url("owner", "repo", "main", &doc_path)
+                .expect("valid repository coordinates and document path");
+            let parsed = url::Url::parse(&raw).expect("generated documentation URL parses");
+
+            assert_eq!(
+                parsed.query(),
+                None,
+                "`?` must remain inside its path segment"
+            );
+            assert_eq!(
+                parsed.fragment(),
+                None,
+                "`#` must remain inside its path segment"
+            );
+            assert_eq!(
+                parsed.path(),
+                format!("/owner/repo/blob/main/catalog/{encoded_directory}/SKILL.md"),
+                "the parsed URL path must stay anchored to the exact resolved SKILL.md"
+            );
+            assert_eq!(
+                parsed
+                    .path_segments()
+                    .expect("hierarchical GitHub URL")
+                    .collect::<Vec<_>>(),
+                vec![
+                    "owner",
+                    "repo",
+                    "blob",
+                    "main",
+                    "catalog",
+                    encoded_directory,
+                    "SKILL.md",
+                ]
+            );
+        }
+    }
+
+    #[test]
+    fn skill_doc_url_extract_rebuild_preserves_significant_path_segments() {
+        for (doc_path, encoded_directory) in [
+            ("catalog/hash#anchor/SKILL.md", "hash%23anchor"),
+            ("catalog/query?anchor/SKILL.md", "query%3Fanchor"),
+        ] {
+            let first = SkillService::build_skill_doc_url("owner", "repo", "main", doc_path)
+                .expect("build initial documentation URL");
+            let extracted = SkillService::extract_doc_path_from_url(&first)
+                .expect("extract stored documentation path");
+            assert_eq!(extracted, doc_path, "extraction must return raw path data");
+
+            let rebuilt = SkillService::build_skill_doc_url("owner", "repo", "main", &extracted)
+                .expect("rebuild documentation URL");
+            let parsed = url::Url::parse(&rebuilt).expect("rebuilt URL parses");
+            assert_eq!(parsed.query(), None);
+            assert_eq!(parsed.fragment(), None);
+            assert_eq!(
+                parsed
+                    .path_segments()
+                    .expect("hierarchical GitHub URL")
+                    .collect::<Vec<_>>(),
+                vec![
+                    "owner",
+                    "repo",
+                    "blob",
+                    "main",
+                    "catalog",
+                    encoded_directory,
+                    "SKILL.md",
+                ],
+                "build -> extract -> rebuild must preserve parsed path semantics"
+            );
+        }
+    }
+
+    #[test]
+    fn skill_doc_url_rejects_empty_and_dot_document_segments() {
+        for doc_path in [
+            "",
+            "/",
+            "catalog//SKILL.md",
+            "./SKILL.md",
+            "../SKILL.md",
+            "catalog/../SKILL.md",
+        ] {
+            assert!(
+                SkillService::build_skill_doc_url("owner", "repo", "main", doc_path).is_none(),
+                "must reject ambiguous document path: {doc_path:?}"
+            );
+        }
+
+        for stored_url in [
+            "https://github.com/owner/repo/blob/main/catalog//SKILL.md",
+            "https://github.com/owner/repo/blob/main/catalog/%2E%2E/SKILL.md",
+        ] {
+            assert!(
+                SkillService::extract_doc_path_from_url(stored_url).is_none(),
+                "must reject unsafe stored document URL: {stored_url}"
+            );
+        }
     }
 
     #[test]
