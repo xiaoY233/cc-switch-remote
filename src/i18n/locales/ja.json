@@ -1060,7 +1060,6 @@
       "a6api": "A6API はトークンアグリゲーションサイトです。リアルタイム価格ランキングを内蔵し、全ネット最安値を自動で選択。動作は滑らかで安定し、面倒な価格比較も不要。登録するだけで体験クレジットがもらえます！",
       "sudocode": "SudoCode の1つのキーで、Claude Code と Claude Desktop では Claude Opus 5、Codex では GPT-5.6 を利用できます。登録後 QQ グループ 726213516 に参加し、管理者へ連絡すると CNY ¥10 のトライアルクレジットを受け取れます。",
       "code0": "code0.ai は開発者向けの AI コーディングサービスプラットフォームで、Claude Code、Codex、Gemini に対応。CC Switch Remote ユーザー限定特典：公式サイトからサポートに連絡してテストクレジットを受け取れます！",
-      "nekocode": "NekoCode は Claude や Codex などの AI モデルに対応した、安定・高効率で信頼性の高い API 中継サービスを提供します。明瞭な従量課金制。CC Switch Remote ユーザー限定 10%オフ：上のリンクから登録し、チャージ時にクーポンコード cc-switch を入力すると 10%オフ！",
       "packycode": "PackyCode は CC Switch Remote の公式パートナーです。登録後チャージ時に \"cc-switch\" を入力すると 10% オフ",
       "apikeyfun": "APIKEY.FUN は CC Switch Remote ユーザー向けに特別優待を提供しています。専用リンクから登録すると、最大でチャージ永久 5% オフを受けられます。",
       "apinebula": "APINEBULA は CC Switch Remote ユーザー向けに特別割引を提供しています。専用リンクから登録し、チャージ時にプロモコード「ccswitch」を入力すると、さらに 10% OFF の割引が適用されます。",
@@ -1068,7 +1067,7 @@
       "patewayai": "PatewayAI は CC Switch Remote ユーザーに特別な特典を提供しています。このリンクから登録すると $3 のクレジットがもらえます。",
       "claudeapi": "ClaudeAPI は CC Switch Remote ユーザーに特別な特典を提供しています。このリンクから登録するとテストクレジットを受け取ることができます。",
       "claudecn": "ClaudeCN は登録企業が運営するエンタープライズグレードの AI ゲートウェイプラットフォームで、企業調達プロセスをサポートし、法人支払い、契約、コンプライアンス保証を提供します。",
-      "runapi": "RunAPI は CC Switch Remote ユーザーに特別な特典を提供しています。このリンクから登録しカスタマーサポートにご連絡いただくと、¥14 の無料クレジットを受け取ることができます。",
+      "runapi": "RunAPI は CC Switch Remote ユーザーに特別な特典を提供しています。このリンクから登録すると、初回チャージが 10% オフになります。",
       "minimax_cn": "MiniMax Coding Plan 特別価格、Starter ¥9.9 から",
       "minimax_en": "MiniMax Coding Plan Black Friday、Starter が月額 $2（80% OFF）",
       "opencode_go": "このリンクから OpenCode Go を購読すると、初月はわずか $5、さらに $5 分のクレジットがもらえます！",
@@ -1093,8 +1092,7 @@
       "qiniu": "Qiniu Cloud（七牛云）はマルチプロトコル対応の AI 中継プラットフォームです。1つのキーでネイティブの Claude・GPT・Gemini モデルを利用でき、Anthropic／OpenAI／Gemini の各 API に対応します。",
       "fenno": "Fenno.ai は安定・高効率な API 中継サービスで、幅広い主要モデルを利用できます。CC Switch Remote 利用者限定特典：このリンクから 9.9 元（150 ドル相当）の Coding Plan を購入できます！",
       "zetaapi": "ZetaAPI はモデルを水増し・劣化させず、公式価格の 35% から利用できます。CC Switch Remote 利用者限定特典：このリンクから登録し、初回チャージ時にプロモコード CC-SWITCH を使うと初回チャージ 10% オフ！",
-      "teamorouter": "TeamoRouter はエンタープライズグレードの Agentic LLM ゲートウェイで、料金は最大 90% オフ。CC Switch Remote ユーザーに特別特典を提供しています：このリンクから新規登録すると初回チャージが 10% オフ！",
-      "unity2": "Unity2.ai は CC Switch Remote ユーザーに専属特典を提供しています：このリンクから登録すると $2 分のクレジット、公式グループ参加でさらに $10、最大 $12 の無料クレジットがもらえます！"
+      "teamorouter": "TeamoRouter はエンタープライズグレードの Agentic LLM ゲートウェイで、料金は最大 90% オフ。CC Switch Remote ユーザーに特別特典を提供しています：このリンクから新規登録すると初回チャージが 10% オフ！"
     },
     "presets": {
       "ucloud": "Compshare",

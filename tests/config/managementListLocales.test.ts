@@ -3,6 +3,14 @@ import en from "@/i18n/locales/en.json";
 import ja from "@/i18n/locales/ja.json";
 import zhTW from "@/i18n/locales/zh-TW.json";
 import zh from "@/i18n/locales/zh.json";
+import { providerPresets } from "@/config/claudeProviderPresets";
+import { claudeDesktopProviderPresets } from "@/config/claudeDesktopProviderPresets";
+import { codexProviderPresets } from "@/config/codexProviderPresets";
+import { geminiProviderPresets } from "@/config/geminiProviderPresets";
+import { grokBuildProviderPresets } from "@/config/grokBuildProviderPresets";
+import { hermesProviderPresets } from "@/config/hermesProviderPresets";
+import { openclawProviderPresets } from "@/config/openclawProviderPresets";
+import { opencodeProviderPresets } from "@/config/opencodeProviderPresets";
 
 const requiredPaths = [
   "common.enableAllForApp",
@@ -27,6 +35,25 @@ const locales = [
   ["zh", zh],
   ["zh-TW", zhTW],
 ] as const;
+
+const partnerPromotionKeys = Array.from(
+  new Set(
+    [
+      ...providerPresets,
+      ...claudeDesktopProviderPresets,
+      ...codexProviderPresets,
+      ...geminiProviderPresets,
+      ...grokBuildProviderPresets,
+      ...hermesProviderPresets,
+      ...openclawProviderPresets,
+      ...opencodeProviderPresets,
+    ]
+      .map((preset) => preset.partnerPromotionKey)
+      .filter(
+        (key): key is string => Boolean(key) && key !== "google-official",
+      ),
+  ),
+).sort();
 
 function getTranslation(locale: Locale, path: string): unknown {
   return path.split(".").reduce<unknown>((value, key) => {
@@ -63,6 +90,18 @@ describe("management list locale coverage", () => {
           interpolationVariables(expected),
         );
       }
+    },
+  );
+
+  it.each(locales)(
+    "defines promotions only for referenced partner presets in %s",
+    (_name, locale) => {
+      const promotions = getTranslation(
+        locale as Locale,
+        "providerForm.partnerPromotion",
+      ) as Record<string, unknown>;
+
+      expect(Object.keys(promotions).sort()).toEqual(partnerPromotionKeys);
     },
   );
 });
