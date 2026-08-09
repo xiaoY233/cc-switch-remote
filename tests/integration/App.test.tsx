@@ -150,10 +150,14 @@ vi.mock("@/components/AppSwitcher", () => ({
 vi.mock("@/components/remote/ManagementTargetSwitcher", () => ({
   ManagementTargetSwitcher: ({
     profiles,
+    activeTargetKey,
     onTargetChange,
     onManageServers,
   }: any) => (
-    <div data-testid="management-target-switcher">
+    <div
+      data-testid="management-target-switcher"
+      data-active-target-key={activeTargetKey}
+    >
       <button onClick={() => onTargetChange("local")}>target-local</button>
       {profiles.map((profile: any) => (
         <button
@@ -666,6 +670,7 @@ describe("App integration with MSW", () => {
         "deepseek",
       ),
     );
+    expect(screen.getByTestId("provider-target")).toHaveTextContent("remote");
 
     fireEvent.click(screen.getByText("set-default"));
 
@@ -738,6 +743,10 @@ describe("App integration with MSW", () => {
     expect(
       await screen.findByTestId("remote-session-password-dialog"),
     ).toBeInTheDocument();
+    expect(screen.getByTestId("management-target-switcher")).toHaveAttribute(
+      "data-active-target-key",
+      "remote:remote-1",
+    );
     expect(screen.getByTestId("provider-target")).toHaveTextContent("remote");
 
     fireEvent.change(screen.getByTestId("remote-session-password-input"), {
