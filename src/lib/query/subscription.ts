@@ -62,16 +62,20 @@ const QUERY_REJECTED_PLACEHOLDER: SubscriptionQuota = {
 function useQuotaKeepLastGood(
   query: UseQueryResult<SubscriptionQuota>,
   scopeKey: string,
+  connectionRevision = 0,
 ) {
   const lastGoodRef = useRef<{
     key: string;
+    connectionRevision: number;
     snap: LastGoodSnapshot<SubscriptionQuota> | null;
-  }>({ key: scopeKey, snap: null });
-  if (lastGoodRef.current.key !== scopeKey) {
-    lastGoodRef.current = { key: scopeKey, snap: null };
+  }>({ key: scopeKey, connectionRevision, snap: null });
+  const connectionChanged =
+    lastGoodRef.current.connectionRevision !== connectionRevision;
+  if (lastGoodRef.current.key !== scopeKey || connectionChanged) {
+    lastGoodRef.current = { key: scopeKey, connectionRevision, snap: null };
   }
   const { data, lastGood } = resolveDisplayUsage(
-    query.data,
+    connectionChanged ? undefined : query.data,
     query.dataUpdatedAt,
     lastGoodRef.current.snap,
     Date.now(),
@@ -119,8 +123,17 @@ export function useSubscriptionQuota(
         : REFETCH_INTERVAL,
     retry: 1,
   });
+  const connectionRevision = useTargetQueryIdentityReset(
+    "quota",
+    target,
+    targetKey,
+  );
 
-  return useQuotaKeepLastGood(query, `${targetKey}:${appId}`);
+  return useQuotaKeepLastGood(
+    query,
+    `${targetKey}:${appId}`,
+    connectionRevision,
+  );
 }
 
 export interface UseCodexOauthQuotaOptions {
@@ -159,9 +172,13 @@ export function useCodexOauthQuotaByAccountId(
     staleTime: REFETCH_INTERVAL,
     retry: 1,
   });
-  useTargetQueryIdentityReset("codex-oauth-quota", target, key);
+  const connectionRevision = useTargetQueryIdentityReset("quota", target, key);
 
-  return useQuotaKeepLastGood(query, `${key}:${accountId ?? "default"}`);
+  return useQuotaKeepLastGood(
+    query,
+    `${key}:${accountId ?? "default"}`,
+    connectionRevision,
+  );
 }
 
 export function useCodexOauthQuota(
@@ -201,6 +218,15 @@ export function useXaiOauthQuota(
     staleTime: REFETCH_INTERVAL,
     retry: 1,
   });
+  const connectionRevision = useTargetQueryIdentityReset(
+    "quota",
+    target,
+    targetKey,
+  );
 
-  return useQuotaKeepLastGood(query, `${targetKey}:${accountId ?? "default"}`);
+  return useQuotaKeepLastGood(
+    query,
+    `${targetKey}:${accountId ?? "default"}`,
+    connectionRevision,
+  );
 }

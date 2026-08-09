@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { copilotGetUsageForTarget } from "@/lib/api/copilot";
 import type { ManagementTarget } from "@/lib/api";
 import type { QuotaTier } from "@/types/subscription";
+import { useTargetQueryIdentityReset } from "@/hooks/useTargetQueryIdentityReset";
 
 const REFETCH_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
@@ -32,7 +33,7 @@ export function useCopilotQuota(
   } = options;
   const targetKey =
     target.type === "remote" ? `remote:${target.profile.id}` : "local";
-  return useQuery<CopilotQuota>({
+  const query = useQuery<CopilotQuota>({
     queryKey: ["copilot", "quota", targetKey, accountId ?? "default"],
     queryFn: async (): Promise<CopilotQuota> => {
       const usage = await copilotGetUsageForTarget(accountId, target);
@@ -66,4 +67,6 @@ export function useCopilotQuota(
     staleTime: REFETCH_INTERVAL,
     retry: 1,
   });
+  useTargetQueryIdentityReset("quota", target, targetKey);
+  return query;
 }
