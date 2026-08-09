@@ -17,6 +17,7 @@ import {
 import type { AppId } from "@/lib/api/types";
 import type { ManagementTarget } from "@/lib/api/remote";
 import { mergeImportedSkills } from "@/hooks/useSkills.helpers";
+import { runSequentialBulkAction } from "@/lib/utils/sequentialBulkAction";
 
 const LOCAL_TARGET: ManagementTarget = { type: "local" };
 
@@ -25,8 +26,8 @@ const getTargetKey = (target: ManagementTarget) =>
 
 /**
  * 查询所有已安装的 Skills
- * 使用 staleTime: Infinity 和 placeholderData: keepPreviousData
- * 实现首次进入使用缓存，只有刷新时才重新获取
+ * 使用 staleTime: Infinity 实现首次进入使用缓存，只有刷新时才重新获取。
+ * 不跨 query key 保留占位数据，避免切换管理目标时短暂显示另一目标的 Skill。
  */
 export function useInstalledSkills(target: ManagementTarget = LOCAL_TARGET) {
   const targetKey = getTargetKey(target);
@@ -34,7 +35,6 @@ export function useInstalledSkills(target: ManagementTarget = LOCAL_TARGET) {
     queryKey: ["skills", "installed", targetKey],
     queryFn: () => skillsApi.getInstalled(target),
     staleTime: Infinity,
-    placeholderData: keepPreviousData,
   });
 }
 
@@ -52,18 +52,23 @@ export function useDeleteSkillBackup(target: ManagementTarget = LOCAL_TARGET) {
   const targetKey = getTargetKey(target);
   return useMutation({
     mutationFn: (backupId: string) => skillsApi.deleteBackup(backupId, target),
-    onSuccess: () => {
+    onSuccess: (_result, backupId) => {
+      queryClient.setQueryData<SkillBackupEntry[]>(
+        ["skills", "backups", targetKey],
+        (oldData) => oldData?.filter((backup) => backup.backupId !== backupId),
+      );
+    },
+    onSettled: () =>
       queryClient.invalidateQueries({
         queryKey: ["skills", "backups", targetKey],
-      });
-    },
+      }),
   });
 }
 
 /**
  * 发现可安装的 Skills（从仓库获取）
- * 使用 staleTime: Infinity 和 placeholderData: keepPreviousData
- * 实现首次进入使用缓存，只有刷新时才重新获取
+ * 使用 staleTime: Infinity 实现首次进入使用缓存，只有刷新时才重新获取。
+ * 不跨 query key 保留占位数据，避免切换管理目标时短暂显示另一目标的 Skill。
  */
 export function useDiscoverableSkills(target: ManagementTarget = LOCAL_TARGET) {
   const targetKey = getTargetKey(target);
@@ -71,7 +76,6 @@ export function useDiscoverableSkills(target: ManagementTarget = LOCAL_TARGET) {
     queryKey: ["skills", "discoverable", targetKey],
     queryFn: () => skillsApi.discoverAvailable(target),
     staleTime: Infinity,
-    placeholderData: keepPreviousData,
   });
 }
 
@@ -90,14 +94,13 @@ export function useInstallSkill(target: ManagementTarget = LOCAL_TARGET) {
       skill: DiscoverableSkill;
       currentApp: AppId;
     }) => skillsApi.installUnified(skill, currentApp, target),
-    onSuccess: (installedSkill, _vars, _ctx) => {
+    onSuccess: (installedSkill, _vars) => {
       const { skill } = _vars;
       // 直接更新 installed 缓存
       queryClient.setQueryData<InstalledSkill[]>(
         ["skills", "installed", targetKey],
         (oldData) => {
-          if (!oldData) return [installedSkill];
-          return [...oldData, installedSkill];
+          return mergeImportedSkills(oldData, [installedSkill]);
         },
       );
 
@@ -120,6 +123,15 @@ export function useInstallSkill(target: ManagementTarget = LOCAL_TARGET) {
         },
       );
     },
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["skills", "installed", targetKey],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["skills", "unmanaged", targetKey],
+        }),
+      ]),
   });
 }
 
@@ -131,17 +143,18 @@ export function useUninstallSkill(target: ManagementTarget = LOCAL_TARGET) {
   const queryClient = useQueryClient();
   const targetKey = getTargetKey(target);
   return useMutation({
-    mutationFn: ({ id, skillKey }: { id: string; skillKey: string }) =>
-      skillsApi
+    mutationFn: ({ id, skillKey }: { id: string; skillKey: string }) => {
+      return skillsApi
         .uninstallUnified(id, target)
-        .then((result) => ({ ...result, skillKey })),
-    onSuccess: ({ skillKey }, _vars) => {
+        .then((result) => ({ ...result, skillKey }));
+    },
+    onSuccess: ({ skillKey }, { id }) => {
       // 直接更新 installed 缓存，移除该 skill
       queryClient.setQueryData<InstalledSkill[]>(
         ["skills", "installed", targetKey],
         (oldData) => {
           if (!oldData) return oldData;
-          return oldData.filter((s) => s.id !== _vars.id);
+          return oldData.filter((s) => s.id !== id);
         },
       );
 
@@ -158,7 +171,20 @@ export function useUninstallSkill(target: ManagementTarget = LOCAL_TARGET) {
           });
         },
       );
+      queryClient.setQueryData<SkillUpdateInfo[]>(
+        ["skills", "updates", targetKey],
+        (oldData) => oldData?.filter((update) => update.id !== id),
+      );
     },
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["skills", "backups", targetKey],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["skills", "unmanaged", targetKey],
+        }),
+      ]),
   });
 }
 
@@ -173,14 +199,15 @@ export function useRestoreSkillBackup(target: ManagementTarget = LOCAL_TARGET) {
       backupId: string;
       currentApp: AppId;
     }) => skillsApi.restoreBackup(backupId, currentApp, target),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["skills", "installed", targetKey],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ["skills", "backups", targetKey],
-      });
-    },
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["skills", "installed", targetKey],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["skills", "backups", targetKey],
+        }),
+      ]),
   });
 }
 
@@ -208,6 +235,30 @@ export function useToggleSkillApp(target: ManagementTarget = LOCAL_TARGET) {
   });
 }
 
+/** Toggle multiple Skills serially because each operation writes app files. */
+export function useBulkToggleSkillApp(target: ManagementTarget = LOCAL_TARGET) {
+  const queryClient = useQueryClient();
+  const targetKey = getTargetKey(target);
+  return useMutation({
+    mutationFn: ({
+      ids,
+      app,
+      enabled,
+    }: {
+      ids: string[];
+      app: AppId;
+      enabled: boolean;
+    }) =>
+      runSequentialBulkAction(ids, (id) =>
+        skillsApi.toggleApp(id, app, enabled, target),
+      ),
+    onSettled: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["skills", "installed", targetKey],
+      }),
+  });
+}
+
 /**
  * 扫描未管理的 Skills
  *
@@ -226,7 +277,6 @@ export function useScanUnmanagedSkills(
     queryFn: () => skillsApi.scanUnmanaged(target),
     enabled: options?.enabled ?? false,
     staleTime: 30 * 1000,
-    placeholderData: keepPreviousData,
   });
 }
 
@@ -248,11 +298,22 @@ export function useImportSkillsFromApps(
         ["skills", "installed", targetKey],
         (oldData) => mergeImportedSkills(oldData, importedSkills),
       );
-      // 刷新 unmanaged 列表（已被导入的应该移除）
-      queryClient.invalidateQueries({
-        queryKey: ["skills", "unmanaged", targetKey],
-      });
     },
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["skills", "installed", targetKey],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["skills", "unmanaged", targetKey],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["skills", "repos", targetKey],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["skills", "discoverable", targetKey],
+        }),
+      ]),
   });
 }
 
@@ -323,13 +384,21 @@ export function useInstallSkillsFromZip() {
     onSuccess: (installedSkills) => {
       // 直接更新 installed 缓存
       queryClient.setQueryData<InstalledSkill[]>(
-        ["skills", "installed"],
+        ["skills", "installed", "local"],
         (oldData) => {
-          if (!oldData) return installedSkills;
-          return [...oldData, ...installedSkills];
+          return mergeImportedSkills(oldData, installedSkills);
         },
       );
     },
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["skills", "installed", "local"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["skills", "unmanaged", "local"],
+        }),
+      ]),
   });
 }
 
@@ -374,6 +443,10 @@ export function useUpdateSkill(target: ManagementTarget = LOCAL_TARGET) {
         },
       );
     },
+    onSettled: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["skills", "backups", targetKey],
+      }),
   });
 }
 

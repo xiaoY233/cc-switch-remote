@@ -3,6 +3,7 @@ import { mcpApi } from "@/lib/api/mcp";
 import type { McpServer } from "@/types";
 import type { AppId } from "@/lib/api/types";
 import type { ManagementTarget } from "@/lib/api/remote";
+import { runSequentialBulkAction } from "@/lib/utils/sequentialBulkAction";
 
 const LOCAL_TARGET: ManagementTarget = { type: "local" };
 
@@ -29,9 +30,10 @@ export function useUpsertMcpServer(target: ManagementTarget = LOCAL_TARGET) {
   return useMutation({
     mutationFn: (server: McpServer) =>
       mcpApi.upsertUnifiedServer(server, target),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["mcp", "all", targetKey] });
-    },
+    onSettled: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["mcp", "all", targetKey],
+      }),
   });
 }
 
@@ -51,9 +53,34 @@ export function useToggleMcpApp(target: ManagementTarget = LOCAL_TARGET) {
       app: AppId;
       enabled: boolean;
     }) => mcpApi.toggleApp(serverId, app, enabled, target),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["mcp", "all", targetKey] });
-    },
+    onSettled: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["mcp", "all", targetKey],
+      }),
+  });
+}
+
+/** Toggle multiple MCP servers serially to avoid lost whole-file writes. */
+export function useBulkToggleMcpApp(target: ManagementTarget = LOCAL_TARGET) {
+  const queryClient = useQueryClient();
+  const targetKey = getTargetKey(target);
+  return useMutation({
+    mutationFn: ({
+      serverIds,
+      app,
+      enabled,
+    }: {
+      serverIds: string[];
+      app: AppId;
+      enabled: boolean;
+    }) =>
+      runSequentialBulkAction(serverIds, (serverId) =>
+        mcpApi.toggleApp(serverId, app, enabled, target),
+      ),
+    onSettled: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["mcp", "all", targetKey],
+      }),
   });
 }
 
@@ -65,9 +92,10 @@ export function useDeleteMcpServer(target: ManagementTarget = LOCAL_TARGET) {
   const targetKey = getTargetKey(target);
   return useMutation({
     mutationFn: (id: string) => mcpApi.deleteUnifiedServer(id, target),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["mcp", "all", targetKey] });
-    },
+    onSettled: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["mcp", "all", targetKey],
+      }),
   });
 }
 

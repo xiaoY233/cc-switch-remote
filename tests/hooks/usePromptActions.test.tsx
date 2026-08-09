@@ -99,6 +99,56 @@ beforeEach(() => {
 });
 
 describe("usePromptActions remote target", () => {
+  it("does not let a response from the previous target overwrite the selected remote target", async () => {
+    let resolveLocal!: (value: Record<string, Prompt>) => void;
+    let resolveRemote!: (value: Record<string, Prompt>) => void;
+    const localRequest = new Promise<Record<string, Prompt>>((resolve) => {
+      resolveLocal = resolve;
+    });
+    const remoteRequest = new Promise<Record<string, Prompt>>((resolve) => {
+      resolveRemote = resolve;
+    });
+    getPromptsMock.mockImplementation(
+      (_appId: string, target: { type: "local" | "remote" }) =>
+        target.type === "remote" ? remoteRequest : localRequest,
+    );
+    getCurrentFileContentMock.mockResolvedValue("current file");
+    const { wrapper } = createWrapper();
+    const initialTarget: ManagementTarget = { type: "local" };
+    const { result, rerender } = renderHook(
+      ({ target }: { target: ManagementTarget }) =>
+        usePromptActions("claude", target),
+      {
+        initialProps: { target: initialTarget } as {
+          target: ManagementTarget;
+        },
+        wrapper,
+      },
+    );
+
+    let localReload!: Promise<boolean>;
+    act(() => {
+      localReload = result.current.reload();
+    });
+    rerender({ target: remoteTarget });
+    let remoteReload!: Promise<boolean>;
+    act(() => {
+      remoteReload = result.current.reload();
+    });
+
+    resolveRemote({ default: prompt });
+    await act(async () => {
+      await remoteReload;
+    });
+    resolveLocal({ local: { ...prompt, id: "local", name: "Local" } });
+    await act(async () => {
+      await localReload;
+    });
+
+    expect(result.current.prompts).toEqual({ default: prompt });
+    expect(getPromptsMock).toHaveBeenLastCalledWith("claude", remoteTarget);
+  });
+
   it("loads prompts and current prompt file content from the selected remote target", async () => {
     mockReload();
     const { wrapper } = createWrapper();

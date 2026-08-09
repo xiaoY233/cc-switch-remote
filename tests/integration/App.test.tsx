@@ -148,7 +148,11 @@ vi.mock("@/components/AppSwitcher", () => ({
 }));
 
 vi.mock("@/components/remote/ManagementTargetSwitcher", () => ({
-  ManagementTargetSwitcher: ({ profiles, onTargetChange }: any) => (
+  ManagementTargetSwitcher: ({
+    profiles,
+    onTargetChange,
+    onManageServers,
+  }: any) => (
     <div data-testid="management-target-switcher">
       <button onClick={() => onTargetChange("local")}>target-local</button>
       {profiles.map((profile: any) => (
@@ -159,6 +163,7 @@ vi.mock("@/components/remote/ManagementTargetSwitcher", () => ({
           {profile.name}
         </button>
       ))}
+      <button onClick={() => onManageServers?.()}>manage-servers</button>
     </div>
   ),
 }));
@@ -251,6 +256,27 @@ vi.mock("@/components/mcp/McpPanel", () => ({
     ),
 }));
 
+vi.mock("@/components/mcp/UnifiedMcpPanel", async () => {
+  const React = await vi.importActual<typeof import("react")>("react");
+  return {
+    default: React.forwardRef(function UnifiedMcpPanelMock(
+      { target, onInteractionBlockedChange }: any,
+      _ref,
+    ) {
+      return (
+        <div data-testid="unified-mcp-panel">
+          <span data-testid="mcp-management-target">
+            {target?.type === "remote" ? target.profile.id : "local"}
+          </span>
+          <button onClick={() => onInteractionBlockedChange?.(true)}>
+            set-mcp-busy
+          </button>
+        </div>
+      );
+    }),
+  };
+});
+
 vi.mock("@/components/MarkdownEditor", () => ({
   default: ({ value, onChange }: any) => (
     <textarea
@@ -279,6 +305,69 @@ describe("App integration with MSW", () => {
     resetProviderState();
     toastSuccessMock.mockReset();
     toastErrorMock.mockReset();
+  });
+
+  it("keeps the remote target switcher and MCP header actions visible while management writes are guarded", async () => {
+    setSettings({
+      firstRunNoticeConfirmed: true,
+      visibleApps: {
+        claude: true,
+        "claude-desktop": true,
+        codex: true,
+        gemini: true,
+        grokbuild: true,
+        opencode: true,
+        openclaw: true,
+        hermes: true,
+      },
+    });
+    setRemoteProfiles([
+      {
+        id: "server-a",
+        name: "Server A",
+        host: "192.0.2.10",
+        port: 22,
+        username: "root",
+        authMethod: { type: "sshAgent" },
+        helperPath: "~/.local/bin/cc-switch-remote-helper",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]);
+
+    const { default: App } = await import("@/App");
+    renderApp(App);
+
+    fireEvent.click(await screen.findByText("Server A"));
+    fireEvent.click(screen.getByTitle("mcp.title"));
+
+    expect(
+      await screen.findByTestId("mcp-management-target"),
+    ).toHaveTextContent("server-a");
+    expect(
+      screen.getByTestId("management-target-switcher"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "mcp.importExisting" }),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "mcp.addMcp" })).toBeVisible();
+
+    fireEvent.click(screen.getByText("set-mcp-busy"));
+
+    expect(
+      screen.getByRole("button", { name: "mcp.importExisting" }),
+    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "mcp.addMcp" })).toBeDisabled();
+    expect(
+      screen.getByTestId("management-target-switcher"),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("target-local"));
+    fireEvent.click(screen.getByText("manage-servers"));
+
+    expect(screen.getByTestId("mcp-management-target")).toHaveTextContent(
+      "server-a",
+    );
   });
 
   it("covers basic provider flows via real hooks", async () => {

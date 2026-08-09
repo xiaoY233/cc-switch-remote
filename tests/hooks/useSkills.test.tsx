@@ -127,6 +127,31 @@ describe("useSkills remote target", () => {
     expect(getInstalledMock).toHaveBeenCalledWith(remoteTarget);
   });
 
+  it("does not expose local Skills as remote data while the remote target loads", async () => {
+    const localTarget: ManagementTarget = { type: "local" };
+    getInstalledMock.mockImplementation((target: ManagementTarget) =>
+      target.type === "local"
+        ? Promise.resolve([installedSkill])
+        : new Promise(() => {}),
+    );
+    const { wrapper } = createWrapper();
+    const { result, rerender } = renderHook(
+      ({ target }: { target: ManagementTarget }) => useInstalledSkills(target),
+      {
+        initialProps: { target: localTarget } as {
+          target: ManagementTarget;
+        },
+        wrapper,
+      },
+    );
+
+    await waitFor(() => expect(result.current.data).toEqual([installedSkill]));
+    rerender({ target: remoteTarget });
+
+    expect(result.current.data).toBeUndefined();
+    expect(getInstalledMock).toHaveBeenLastCalledWith(remoteTarget);
+  });
+
   it("installs and uninstalls skills through the selected remote target without touching local caches", async () => {
     installUnifiedMock.mockResolvedValueOnce(installedSkill);
     uninstallUnifiedMock.mockResolvedValueOnce({ backupPath: "/tmp/backup" });
