@@ -134,11 +134,11 @@ export function useRemoteSettings({
           nextSettings,
           target.secret,
         );
-        await syncClaudePluginIfChanged(nextSettings, settings);
-        await syncClaudeOnboardingIfChanged(nextSettings, settings);
         await queryClient.invalidateQueries({
           queryKey: openCodeRuntimeModelsQueryKey(target),
         });
+        await syncClaudePluginIfChanged(nextSettings, settings);
+        await syncClaudeOnboardingIfChanged(nextSettings, settings);
         return true;
       } catch (error) {
         setSettings(previousSettings);

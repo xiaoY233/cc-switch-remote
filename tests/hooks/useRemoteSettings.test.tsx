@@ -7,6 +7,8 @@ import type { Settings } from "@/types";
 const invalidateQueriesMock = vi.fn();
 const getSettingsMock = vi.fn();
 const saveSettingsMock = vi.fn();
+const getCurrentProviderMock = vi.fn();
+const applyClaudePluginConfigMock = vi.fn();
 
 vi.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({ invalidateQueries: invalidateQueriesMock }),
@@ -26,9 +28,10 @@ vi.mock("@/lib/api", () => ({
     getSettings: (...args: unknown[]) => getSettingsMock(...args),
     getInstalledSkills: vi.fn().mockResolvedValue([]),
     saveSettings: (...args: unknown[]) => saveSettingsMock(...args),
-    getCurrentProvider: vi.fn(),
+    getCurrentProvider: (...args: unknown[]) => getCurrentProviderMock(...args),
     getProviders: vi.fn(),
-    applyClaudePluginConfig: vi.fn(),
+    applyClaudePluginConfig: (...args: unknown[]) =>
+      applyClaudePluginConfigMock(...args),
     setClaudeOnboardingSkip: vi.fn(),
     migrateSkillStorage: vi.fn(),
   },
@@ -57,6 +60,8 @@ describe("useRemoteSettings runtime model cache", () => {
     invalidateQueriesMock.mockReset();
     getSettingsMock.mockReset();
     saveSettingsMock.mockReset();
+    getCurrentProviderMock.mockReset();
+    applyClaudePluginConfigMock.mockReset();
   });
 
   it("invalidates only the selected remote runtime-model query after save succeeds", async () => {
@@ -104,5 +109,43 @@ describe("useRemoteSettings runtime model cache", () => {
     });
 
     expect(invalidateQueriesMock).not.toHaveBeenCalled();
+  });
+
+  it("invalidates the selected remote runtime-model query when a post-save sync fails", async () => {
+    const previousSettings = {
+      opencodeConfigDir: "/old/opencode",
+      enableClaudePluginIntegration: false,
+    } as Settings;
+    getSettingsMock.mockResolvedValue(previousSettings);
+    saveSettingsMock.mockResolvedValue(undefined);
+    getCurrentProviderMock.mockResolvedValue(null);
+    applyClaudePluginConfigMock.mockRejectedValue(
+      new Error("plugin sync failed"),
+    );
+    const onSettingsSaved = vi.fn();
+
+    const { result } = renderHook(() =>
+      useRemoteSettings({ target, onSettingsSaved }),
+    );
+    await act(async () => {
+      await result.current.loadSettings(false);
+    });
+    await act(async () => {
+      expect(
+        await result.current.saveSettings({
+          opencodeConfigDir: "/new/opencode",
+          enableClaudePluginIntegration: true,
+        }),
+      ).toBe(false);
+    });
+
+    expect(saveSettingsMock).toHaveBeenCalledTimes(1);
+    expect(applyClaudePluginConfigMock).toHaveBeenCalledTimes(1);
+    expect(invalidateQueriesMock).toHaveBeenCalledTimes(1);
+    expect(invalidateQueriesMock).toHaveBeenCalledWith({
+      queryKey: ["opencode", "runtime-models", "remote:remote-settings-host"],
+    });
+    expect(result.current.settings).toEqual(previousSettings);
+    expect(onSettingsSaved).toHaveBeenLastCalledWith(previousSettings);
   });
 });
