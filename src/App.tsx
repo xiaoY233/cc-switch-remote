@@ -58,6 +58,7 @@ import { useUsageCacheBridge } from "@/hooks/useUsageCacheBridge";
 import { useTauriEvent } from "@/hooks/useTauriEvent";
 import { useLastValidValue } from "@/hooks/useLastValidValue";
 import { useScanUnmanagedSkills } from "@/hooks/useSkills";
+import { useTargetQueryIdentityReset } from "@/hooks/useTargetQueryIdentityReset";
 import {
   extractErrorMessage,
   isRemotePasswordRequiredError,
@@ -332,6 +333,12 @@ function App() {
     return { type: "local" };
   }, [activeRemoteProfile, remoteSecrets]);
   const isRemoteTarget = managementTarget.type === "remote";
+  const managementTargetKey = getManagementTargetKey(managementTarget);
+  const managementConnectionRevision = useTargetQueryIdentityReset(
+    "all",
+    managementTarget,
+    managementTargetKey,
+  );
 
   useEffect(() => {
     if (managementTarget.type !== "remote") {
@@ -1418,7 +1425,7 @@ function App() {
     return (
       <AnimatePresence mode="wait">
         <motion.div
-          key={currentView}
+          key={`${currentView}:${managementTargetKey}:${managementConnectionRevision}`}
           className="flex-1 min-h-0"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}

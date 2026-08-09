@@ -6,7 +6,12 @@ import {
 } from "@tanstack/react-query";
 import type { ManagementTarget } from "@/lib/api/remote";
 
-type TargetQueryDomain = "mcp" | "skills" | "opencode-runtime-models" | "quota";
+type TargetQueryDomain =
+  | "all"
+  | "mcp"
+  | "skills"
+  | "opencode-runtime-models"
+  | "quota";
 
 const TARGET_SCOPED_SKILLS_COLLECTIONS = new Set([
   "installed",
@@ -27,6 +32,9 @@ const matchesTargetQuery = (
   domain: TargetQueryDomain,
   targetKey: string,
 ) => {
+  if (domain === "all") {
+    return query.queryKey.includes(targetKey);
+  }
   if (domain === "quota") {
     return (
       ["subscription", "codex_oauth", "xai_oauth", "copilot"].includes(
@@ -53,7 +61,7 @@ const matchesTargetQuery = (
   return query.queryKey[1] === "all" && query.queryKey[2] === targetKey;
 };
 
-const hasSameConnectionIdentity = (
+export const hasSameConnectionIdentity = (
   previous: ManagementTarget,
   current: ManagementTarget,
 ) => {

@@ -116,7 +116,10 @@ export const useProvidersQuery = (
 
   return useQuery({
     queryKey: ["providers", appId, key],
-    placeholderData: keepPreviousData,
+    // Remote targets are separate machines. Showing the previous target while
+    // the next one loads leaves stale provider cards actionable against the
+    // newly selected connection. Keep upstream's smooth local refresh only.
+    placeholderData: target.type === "local" ? keepPreviousData : undefined,
     staleTime: target.type === "remote" ? 30_000 : 0,
     refetchOnWindowFocus: target.type === "local",
     // 当代理服务运行时，每 10 秒刷新一次供应商列表
