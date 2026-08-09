@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{OnceLock, RwLock};
+use std::sync::{Mutex, MutexGuard, OnceLock, RwLock};
 
 use crate::app_config::AppType;
 use crate::error::AppError;
@@ -704,9 +704,20 @@ fn save_settings_file_at_path(
 }
 
 static SETTINGS_STORE: OnceLock<RwLock<AppSettings>> = OnceLock::new();
+static SETTINGS_TRANSACTION: OnceLock<Mutex<()>> = OnceLock::new();
 
 fn settings_store() -> &'static RwLock<AppSettings> {
     SETTINGS_STORE.get_or_init(|| RwLock::new(AppSettings::load_from_file()))
+}
+
+fn settings_transaction() -> MutexGuard<'static, ()> {
+    SETTINGS_TRANSACTION
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|error| {
+            log::warn!("设置事务锁已毒化，继续使用恢复值: {error}");
+            error.into_inner()
+        })
 }
 
 fn resolve_override_path(raw: &str) -> PathBuf {
@@ -784,17 +795,24 @@ pub(crate) fn save_settings_with_state(
     state: &crate::store::AppState,
     settings: AppSettings,
 ) -> Result<bool, String> {
+    let transaction = settings_transaction();
     let existing = get_settings();
-    let merged = merge_settings_for_save(settings, &existing);
+    let mut merged = merge_settings_for_save(settings, &existing);
     let unify_codex_changed =
         merged.unify_codex_session_history != existing.unify_codex_session_history;
     let unify_codex_enabled = merged.unify_codex_session_history;
-    update_settings(merged).map_err(|e| e.to_string())?;
+    if unify_codex_changed && !unify_codex_enabled {
+        if let Some(migrations) = merged.local_migrations.as_mut() {
+            migrations.codex_official_history_unify_v1 = None;
+        }
+        merged.unify_codex_migrate_existing = None;
+    }
+    update_settings_locked(merged).map_err(|e| e.to_string())?;
 
     if unify_codex_changed {
         if let Err(err) = crate::services::provider::reapply_current_codex_official_live(state) {
             log::warn!("统一 Codex 会话历史开关变更后重写 live 配置失败，回滚设置: {err}");
-            if let Err(rollback_err) = update_settings(existing) {
+            if let Err(rollback_err) = update_settings_locked(existing) {
                 log::error!("回滚统一会话开关设置失败: {rollback_err}");
             }
             return Err(format!(
@@ -819,19 +837,18 @@ pub(crate) fn save_settings_with_state(
                     Err(e) => log::warn!("✗ Codex official history unify migration failed: {e}"),
                 }
             });
-        } else {
-            if let Err(err) = clear_codex_official_history_unify_migration() {
-                log::warn!("清除统一会话迁移标记失败: {err}");
-            }
-            if let Err(err) = clear_codex_unify_migrate_existing() {
-                log::warn!("清除统一会话迁移意愿失败: {err}");
-            }
         }
     }
+    drop(transaction);
     Ok(true)
 }
 
-pub fn update_settings(mut new_settings: AppSettings) -> Result<(), AppError> {
+pub fn update_settings(new_settings: AppSettings) -> Result<(), AppError> {
+    let _transaction = settings_transaction();
+    update_settings_locked(new_settings)
+}
+
+fn update_settings_locked(mut new_settings: AppSettings) -> Result<(), AppError> {
     new_settings.normalize_paths();
     save_settings_file(&new_settings)?;
 
@@ -844,6 +861,14 @@ pub fn update_settings(mut new_settings: AppSettings) -> Result<(), AppError> {
 }
 
 fn mutate_settings<F>(mutator: F) -> Result<(), AppError>
+where
+    F: FnOnce(&mut AppSettings),
+{
+    let _transaction = settings_transaction();
+    mutate_settings_locked(mutator)
+}
+
+fn mutate_settings_locked<F>(mutator: F) -> Result<(), AppError>
 where
     F: FnOnce(&mut AppSettings),
 {
@@ -933,27 +958,14 @@ pub fn mark_codex_official_history_unify_migrated_if_enabled(
     Ok(written)
 }
 
-pub fn clear_codex_official_history_unify_migration() -> Result<(), AppError> {
-    mutate_settings(|settings| {
-        if let Some(migrations) = settings.local_migrations.as_mut() {
-            migrations.codex_official_history_unify_v1 = None;
-        }
-    })
-}
-
 pub fn unify_codex_migrate_existing_requested() -> bool {
     get_settings().unify_codex_migrate_existing.unwrap_or(false)
-}
-
-pub fn clear_codex_unify_migrate_existing() -> Result<(), AppError> {
-    mutate_settings(|settings| {
-        settings.unify_codex_migrate_existing = None;
-    })
 }
 
 /// 从文件重新加载设置到内存缓存
 /// 用于导入配置等场景，确保内存缓存与文件同步
 pub fn reload_settings() -> Result<(), AppError> {
+    let _transaction = settings_transaction();
     let fresh_settings = AppSettings::load_from_file();
     let mut guard = settings_store().write().unwrap_or_else(|e| {
         log::warn!("设置锁已毒化，使用恢复值: {e}");
@@ -961,6 +973,21 @@ pub fn reload_settings() -> Result<(), AppError> {
     });
     *guard = fresh_settings;
     Ok(())
+}
+
+#[cfg(test)]
+fn save_settings_payload_with_snapshot_barrier<F>(
+    settings: AppSettings,
+    after_snapshot: F,
+) -> Result<(), AppError>
+where
+    F: FnOnce(),
+{
+    let _transaction = settings_transaction();
+    let existing = get_settings();
+    let merged = merge_settings_for_save(settings, &existing);
+    after_snapshot();
+    update_settings_locked(merged)
 }
 
 pub fn get_claude_override_dir() -> Option<PathBuf> {
@@ -1234,6 +1261,8 @@ mod tests {
     use super::*;
     use crate::app_config::AppType;
     use serial_test::serial;
+    use std::sync::{mpsc, Arc, Barrier};
+    use std::time::Duration;
 
     struct TestHomeGuard(Option<std::ffi::OsString>);
 
@@ -1332,6 +1361,52 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(std::fs::read(&path).expect("read settings"), old);
         assert_eq!(std::fs::read_dir(dir.path()).expect("list dir").count(), 1);
+    }
+
+    #[test]
+    #[serial]
+    fn frontend_save_serializes_with_backend_owned_marker_mutation() {
+        let home = tempfile::tempdir().expect("temporary home");
+        let _guard = TestHomeGuard::set(home.path());
+        update_settings(AppSettings::default()).expect("seed settings");
+
+        let start = Arc::new(Barrier::new(2));
+        let (finished_tx, finished_rx) = mpsc::channel();
+        let backend = std::thread::spawn({
+            let start = start.clone();
+            move || {
+                start.wait();
+                mark_codex_provider_template_migrated(CodexProviderTemplateMigration {
+                    completed_at: "2026-08-10T00:00:00Z".to_string(),
+                    migrated_provider_ids: vec!["backend-marker".to_string()],
+                })
+                .expect("backend marker mutation");
+                finished_tx.send(()).expect("signal backend completion");
+            }
+        });
+
+        let mut incoming = AppSettings::default();
+        incoming.language = Some("zh".to_string());
+        save_settings_payload_with_snapshot_barrier(incoming, || {
+            start.wait();
+            assert!(
+                finished_rx.recv_timeout(Duration::from_millis(50)).is_err(),
+                "backend mutation must remain blocked until the frontend transaction commits"
+            );
+        })
+        .expect("frontend settings save");
+        backend.join().expect("backend thread");
+
+        let final_settings = get_settings();
+        assert_eq!(final_settings.language.as_deref(), Some("zh"));
+        assert_eq!(
+            final_settings
+                .local_migrations
+                .and_then(|migrations| migrations.codex_provider_template_v1)
+                .expect("backend marker survives")
+                .migrated_provider_ids,
+            vec!["backend-marker"]
+        );
     }
 
     #[test]
