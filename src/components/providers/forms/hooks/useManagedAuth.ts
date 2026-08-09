@@ -12,6 +12,7 @@ import type {
   ManagedAuthStatus,
   ManagedAuthDeviceCodeResponse,
 } from "@/lib/api";
+import { useTargetQueryIdentityReset } from "@/hooks/useTargetQueryIdentityReset";
 
 type PollingState = "idle" | "polling" | "success" | "error";
 
@@ -21,11 +22,23 @@ export function useManagedAuth(
   target: ManagementTarget = LOCAL_MANAGEMENT_TARGET,
 ) {
   const queryClient = useQueryClient();
+  const targetKey = getManagementTargetKey(target);
   const queryKey = [
     "managed-auth-status",
-    getManagementTargetKey(target),
+    targetKey,
     authProvider,
   ];
+  const connectionGeneration = useTargetQueryIdentityReset(
+    "all",
+    target,
+    targetKey,
+  );
+  const connectionGenerationRef = useRef(connectionGeneration);
+  connectionGenerationRef.current = connectionGeneration;
+  const isCurrentGeneration = useCallback(
+    (generation: number) => connectionGenerationRef.current === generation,
+    [],
+  );
 
   const [pollingState, setPollingState] = useState<PollingState>("idle");
   const [deviceCode, setDeviceCode] =
@@ -68,10 +81,20 @@ export function useManagedAuth(
     };
   }, [stopPolling]);
 
+  useEffect(() => {
+    stopPolling();
+    setPollingState("idle");
+    setDeviceCode(null);
+    setError(null);
+  }, [connectionGeneration, stopPolling]);
+
   const startLoginMutation = useMutation({
-    mutationFn: () =>
-      authApi.authStartLogin(authProvider, githubDomain, target),
-    onSuccess: async (response) => {
+    mutationFn: async () => ({
+      response: await authApi.authStartLogin(authProvider, githubDomain, target),
+      generation: connectionGeneration,
+    }),
+    onSuccess: async ({ response, generation }) => {
+      if (!isCurrentGeneration(generation)) return;
       setDeviceCode(response);
       setPollingState("polling");
       setError(null);
@@ -94,6 +117,10 @@ export function useManagedAuth(
       const expiresAt = Date.now() + response.expires_in * 1000;
 
       const pollOnce = async () => {
+        if (!isCurrentGeneration(generation)) {
+          stopPolling();
+          return;
+        }
         if (Date.now() > expiresAt) {
           stopPolling();
           setPollingState("error");
@@ -108,6 +135,10 @@ export function useManagedAuth(
             githubDomain,
             target,
           );
+          if (!isCurrentGeneration(generation)) {
+            stopPolling();
+            return;
+          }
           if (newAccount) {
             stopPolling();
             setPollingState("success");
@@ -117,6 +148,7 @@ export function useManagedAuth(
             setDeviceCode(null);
           }
         } catch (e) {
+          if (!isCurrentGeneration(generation)) return;
           const errorMessage = e instanceof Error ? e.message : String(e);
           if (
             !errorMessage.includes("pending") &&
@@ -132,6 +164,7 @@ export function useManagedAuth(
       void pollOnce();
       pollingIntervalRef.current = setInterval(pollOnce, interval);
       pollingTimeoutRef.current = setTimeout(() => {
+        if (!isCurrentGeneration(generation)) return;
         stopPolling();
         setPollingState("error");
         setError("Device code expired. Please try again.");
@@ -144,8 +177,12 @@ export function useManagedAuth(
   });
 
   const logoutMutation = useMutation({
-    mutationFn: () => authApi.authLogout(authProvider, target),
-    onSuccess: async () => {
+    mutationFn: async () => {
+      await authApi.authLogout(authProvider, target);
+      return connectionGeneration;
+    },
+    onSuccess: async (generation) => {
+      if (!isCurrentGeneration(generation)) return;
       setPollingState("idle");
       setDeviceCode(null);
       setError(null);
@@ -165,9 +202,12 @@ export function useManagedAuth(
   });
 
   const removeAccountMutation = useMutation({
-    mutationFn: (accountId: string) =>
-      authApi.authRemoveAccount(authProvider, accountId, target),
-    onSuccess: async () => {
+    mutationFn: async ({ accountId }: { accountId: string }) => {
+      await authApi.authRemoveAccount(authProvider, accountId, target);
+      return connectionGeneration;
+    },
+    onSuccess: async (generation) => {
+      if (!isCurrentGeneration(generation)) return;
       setPollingState("idle");
       setDeviceCode(null);
       setError(null);
@@ -181,9 +221,12 @@ export function useManagedAuth(
   });
 
   const setDefaultAccountMutation = useMutation({
-    mutationFn: (accountId: string) =>
-      authApi.authSetDefaultAccount(authProvider, accountId, target),
-    onSuccess: async () => {
+    mutationFn: async ({ accountId }: { accountId: string }) => {
+      await authApi.authSetDefaultAccount(authProvider, accountId, target);
+      return connectionGeneration;
+    },
+    onSuccess: async (generation) => {
+      if (!isCurrentGeneration(generation)) return;
       await refetchStatus();
       await queryClient.invalidateQueries({ queryKey });
     },
@@ -214,14 +257,14 @@ export function useManagedAuth(
 
   const removeAccount = useCallback(
     (accountId: string) => {
-      removeAccountMutation.mutate(accountId);
+      removeAccountMutation.mutate({ accountId });
     },
     [removeAccountMutation],
   );
 
   const setDefaultAccount = useCallback(
     (accountId: string) => {
-      setDefaultAccountMutation.mutate(accountId);
+      setDefaultAccountMutation.mutate({ accountId });
     },
     [setDefaultAccountMutation],
   );
