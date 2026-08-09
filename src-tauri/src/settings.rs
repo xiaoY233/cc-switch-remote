@@ -766,23 +766,32 @@ pub(crate) fn merge_settings_for_save(
 ) -> AppSettings {
     match (&mut incoming.webdav_sync, &existing.webdav_sync) {
         (None, _) => incoming.webdav_sync = existing.webdav_sync.clone(),
-        (Some(incoming_sync), Some(existing_sync))
-            if incoming_sync.password.is_empty() && !existing_sync.password.is_empty() =>
-        {
-            incoming_sync.password = existing_sync.password.clone();
+        (Some(incoming_sync), Some(existing_sync)) => {
+            if incoming_sync.password.is_empty() && !existing_sync.password.is_empty() {
+                incoming_sync.password = existing_sync.password.clone();
+            }
+            // Sync workers own progress/error/etag/hash state. The frontend can
+            // legitimately submit an older full settings snapshot, so it must
+            // never write this status back over the transaction's latest value.
+            incoming_sync.status = existing_sync.status.clone();
         }
         _ => {}
     }
     match (&mut incoming.s3_sync, &existing.s3_sync) {
         (None, _) => incoming.s3_sync = existing.s3_sync.clone(),
-        (Some(incoming_sync), Some(existing_sync))
+        (Some(incoming_sync), Some(existing_sync)) => {
             if incoming_sync.secret_access_key.is_empty()
-                && !existing_sync.secret_access_key.is_empty() =>
-        {
-            incoming_sync.secret_access_key = existing_sync.secret_access_key.clone();
+                && !existing_sync.secret_access_key.is_empty()
+            {
+                incoming_sync.secret_access_key = existing_sync.secret_access_key.clone();
+            }
+            incoming_sync.status = existing_sync.status.clone();
         }
         _ => {}
     }
+    // The compatibility payload is deliberately hidden by the frontend getter;
+    // only the backend can carry it forward or migrate it.
+    incoming.webdav_backup = existing.webdav_backup.clone();
     // Migration markers are backend-owned. A stale/redacted frontend payload
     // must neither clear nor resurrect them.
     incoming.local_migrations = existing.local_migrations.clone();
@@ -1419,6 +1428,87 @@ mod tests {
                 .expect("backend marker survives")
                 .migrated_provider_ids,
             vec!["backend-marker"]
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn stale_frontend_payload_preserves_latest_backend_sync_state() {
+        let home = tempfile::tempdir().expect("temporary home");
+        let _guard = TestHomeGuard::set(home.path());
+        let mut initial = AppSettings {
+            webdav_sync: Some(WebDavSyncSettings {
+                base_url: "https://dav.example.com".to_string(),
+                username: "alice".to_string(),
+                password: "dav-secret".to_string(),
+                ..WebDavSyncSettings::default()
+            }),
+            s3_sync: Some(S3SyncSettings {
+                region: "us-test-1".to_string(),
+                bucket: "bucket".to_string(),
+                access_key_id: "access-key".to_string(),
+                secret_access_key: "s3-secret".to_string(),
+                ..S3SyncSettings::default()
+            }),
+            webdav_backup: Some(serde_json::json!({ "legacyEtag": "before" })),
+            ..AppSettings::default()
+        };
+        update_settings(initial.clone()).expect("seed settings");
+
+        // This is exactly the redacted/full object a frontend can keep while a
+        // backend sync updates status and legacy backup metadata.
+        let mut stale_frontend = get_settings_for_frontend();
+        assert!(stale_frontend.webdav_backup.is_none());
+
+        let start = Arc::new(Barrier::new(2));
+        let backend = std::thread::spawn({
+            let start = start.clone();
+            move || {
+                start.wait();
+                mutate_settings(|current| {
+                    current.webdav_sync.as_mut().expect("webdav").status =
+                        WebDavSyncStatus {
+                            last_sync_at: Some(101),
+                            last_remote_etag: Some("dav-etag".to_string()),
+                            ..WebDavSyncStatus::default()
+                        };
+                    current.s3_sync.as_mut().expect("s3").status = WebDavSyncStatus {
+                        last_sync_at: Some(202),
+                        last_local_manifest_hash: Some("s3-local-hash".to_string()),
+                        ..WebDavSyncStatus::default()
+                    };
+                    current.webdav_backup =
+                        Some(serde_json::json!({ "legacyEtag": "backend-latest" }));
+                })
+                .expect("backend sync mutation");
+            }
+        });
+
+        start.wait();
+        backend.join().expect("backend mutation thread");
+        stale_frontend.language = Some("zh".to_string());
+        save_settings_payload_with_snapshot_barrier(stale_frontend, || {})
+            .expect("save stale frontend payload");
+
+        initial = get_settings();
+        assert_eq!(initial.language.as_deref(), Some("zh"));
+        assert_eq!(
+            initial
+                .webdav_sync
+                .as_ref()
+                .and_then(|sync| sync.status.last_remote_etag.as_deref()),
+            Some("dav-etag")
+        );
+        assert_eq!(
+            initial
+                .s3_sync
+                .as_ref()
+                .and_then(|sync| sync.status.last_local_manifest_hash.as_deref()),
+            Some("s3-local-hash")
+        );
+        assert_eq!(
+            initial.webdav_backup,
+            Some(serde_json::json!({ "legacyEtag": "backend-latest" }))
         );
     }
 
