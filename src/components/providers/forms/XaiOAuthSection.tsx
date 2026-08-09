@@ -31,6 +31,7 @@ interface XaiOAuthSectionProps {
   target?: ManagementTarget;
   selectedAccountId?: string | null;
   onAccountSelect?: (accountId: string | null) => void;
+  onBusyChange?: (busy: boolean) => void;
 }
 
 export const XaiOAuthSection: React.FC<XaiOAuthSectionProps> = ({
@@ -38,6 +39,7 @@ export const XaiOAuthSection: React.FC<XaiOAuthSectionProps> = ({
   target,
   selectedAccountId,
   onAccountSelect,
+  onBusyChange,
 }) => {
   const { t } = useTranslation();
   const [copied, setCopied] = React.useState(false);
@@ -59,6 +61,16 @@ export const XaiOAuthSection: React.FC<XaiOAuthSectionProps> = ({
     cancelAuth,
     logout,
   } = useXaiOauth(target);
+
+  const interactionBusy =
+    isPolling ||
+    isAddingAccount ||
+    isRemovingAccount ||
+    isSettingDefaultAccount;
+  React.useEffect(() => {
+    onBusyChange?.(interactionBusy);
+    return () => onBusyChange?.(false);
+  }, [interactionBusy, onBusyChange]);
 
   const usableAccounts = accounts.filter((account) => !account.requires_reauth);
 

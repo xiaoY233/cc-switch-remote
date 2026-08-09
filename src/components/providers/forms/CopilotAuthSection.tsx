@@ -34,6 +34,7 @@ interface CopilotAuthSectionProps {
   selectedAccountId?: string | null;
   /** 账号选择回调 */
   onAccountSelect?: (accountId: string | null) => void;
+  onBusyChange?: (busy: boolean) => void;
 }
 
 /**
@@ -46,6 +47,7 @@ export const CopilotAuthSection: React.FC<CopilotAuthSectionProps> = ({
   target,
   selectedAccountId,
   onAccountSelect,
+  onBusyChange,
 }) => {
   const { t } = useTranslation();
   const [copied, setCopied] = React.useState(false);
@@ -81,6 +83,16 @@ export const CopilotAuthSection: React.FC<CopilotAuthSectionProps> = ({
     cancelAuth,
     logout,
   } = useCopilotAuth(effectiveGithubDomain, target);
+
+  const interactionBusy =
+    isPolling ||
+    isAddingAccount ||
+    isRemovingAccount ||
+    isSettingDefaultAccount;
+  React.useEffect(() => {
+    onBusyChange?.(interactionBusy);
+    return () => onBusyChange?.(false);
+  }, [interactionBusy, onBusyChange]);
 
   // 复制用户码
   const copyUserCode = async () => {

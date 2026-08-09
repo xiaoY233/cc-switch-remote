@@ -217,6 +217,7 @@ vi.mock("@/components/settings/RemoteSettingsPage", () => ({
     onImportSuccess,
     onOpenChange,
     onSettingsSaved,
+    onInteractionBlockedChange,
     defaultTab,
     target,
   }: any) => (
@@ -245,6 +246,12 @@ vi.mock("@/components/settings/RemoteSettingsPage", () => ({
         simulate-import-success
       </button>
       <button onClick={() => onOpenChange?.(false)}>close-settings</button>
+      <button onClick={() => onInteractionBlockedChange?.(true)}>
+        remote-settings-busy
+      </button>
+      <button onClick={() => onInteractionBlockedChange?.(false)}>
+        remote-settings-idle
+      </button>
     </div>
   ),
 }));
@@ -397,6 +404,43 @@ describe("App integration with MSW", () => {
 
     expect(screen.getByTestId("mcp-management-target")).toHaveTextContent(
       "server-a",
+    );
+  });
+
+  it("keeps the selected target fixed while managed authentication is busy", async () => {
+    setSettings({ firstRunNoticeConfirmed: true });
+    setRemoteProfiles([
+      {
+        id: "server-a",
+        name: "Server A",
+        host: "192.0.2.10",
+        port: 22,
+        username: "root",
+        authMethod: { type: "sshAgent" },
+        helperPath: "~/.local/bin/cc-switch-remote-helper",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]);
+
+    const { default: App } = await import("@/App");
+    renderApp(App);
+
+    fireEvent.click(await screen.findByText("Server A"));
+    fireEvent.click(screen.getByTitle("common.settings"));
+    await waitFor(() =>
+      expect(screen.getByTestId("settings-target")).toHaveTextContent("remote"),
+    );
+
+    fireEvent.click(screen.getByText("remote-settings-busy"));
+    fireEvent.click(screen.getByText("target-local"));
+    fireEvent.click(screen.getByText("manage-servers"));
+    expect(screen.getByTestId("settings-target")).toHaveTextContent("remote");
+
+    fireEvent.click(screen.getByText("remote-settings-idle"));
+    fireEvent.click(screen.getByText("target-local"));
+    await waitFor(() =>
+      expect(screen.getByTestId("settings-target")).toHaveTextContent("local"),
     );
   });
 

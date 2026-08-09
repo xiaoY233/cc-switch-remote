@@ -40,6 +40,7 @@ interface CodexOAuthSectionProps {
   fastModeEnabled?: boolean;
   /** FAST mode 切换回调 */
   onFastModeChange?: (enabled: boolean) => void;
+  onBusyChange?: (busy: boolean) => void;
 }
 
 /**
@@ -56,6 +57,7 @@ export const CodexOAuthSection: React.FC<CodexOAuthSectionProps> = ({
   onAccountSelect,
   fastModeEnabled = false,
   onFastModeChange,
+  onBusyChange,
 }) => {
   const { t } = useTranslation();
   const [copied, setCopied] = React.useState(false);
@@ -77,6 +79,16 @@ export const CodexOAuthSection: React.FC<CodexOAuthSectionProps> = ({
     cancelAuth,
     logout,
   } = useCodexOauth(target);
+
+  const interactionBusy =
+    isPolling ||
+    isAddingAccount ||
+    isRemovingAccount ||
+    isSettingDefaultAccount;
+  React.useEffect(() => {
+    onBusyChange?.(interactionBusy);
+    return () => onBusyChange?.(false);
+  }, [interactionBusy, onBusyChange]);
 
   const copyUserCode = async () => {
     if (deviceCode?.user_code) {

@@ -114,6 +114,15 @@ vi.mock("@/components/settings/GlobalProxySettings", () => ({
   GlobalProxySettings: () => <div data-testid="global-proxy-settings" />,
 }));
 
+vi.mock("@/components/settings/AuthCenterPanel", () => ({
+  AuthCenterPanel: ({ onBusyChange }: any) => (
+    <div data-testid="auth-center-panel">
+      <button onClick={() => onBusyChange?.(true)}>auth-busy</button>
+      <button onClick={() => onBusyChange?.(false)}>auth-idle</button>
+    </div>
+  ),
+}));
+
 const profile: RemoteHostProfile = {
   id: "remote-1",
   name: "Swarm01",
@@ -202,6 +211,39 @@ describe("RemoteSettingsPage", () => {
       "高级",
       "usage.title",
     ]);
+  });
+
+  it("reports managed authentication activity as a blocked interaction", async () => {
+    const user = userEvent.setup();
+    const onInteractionBlockedChange = vi.fn();
+    checkHealthMock.mockResolvedValueOnce({
+      reachable: true,
+      helperInstalled: true,
+      helperVersion: "3.19.2",
+      platform: "linux",
+      capabilities: ["settings", "auth"],
+    });
+
+    render(
+      <RemoteSettingsPage
+        open
+        onOpenChange={vi.fn()}
+        defaultTab="auth"
+        onInteractionBlockedChange={onInteractionBlockedChange}
+        target={{ type: "remote", profile, secret: { password: "secret" } }}
+      />,
+    );
+
+    await screen.findByTestId("auth-center-panel");
+    await user.click(screen.getByRole("button", { name: "auth-busy" }));
+    await waitFor(() =>
+      expect(onInteractionBlockedChange).toHaveBeenLastCalledWith(true),
+    );
+
+    await user.click(screen.getByRole("button", { name: "auth-idle" }));
+    await waitFor(() =>
+      expect(onInteractionBlockedChange).toHaveBeenLastCalledWith(false),
+    );
   });
 
   it("maps the legacy remote data tab to the advanced tab", async () => {

@@ -1,4 +1,5 @@
 import { Github, ShieldCheck } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { CodexIcon } from "@/components/BrandIcons";
@@ -10,10 +11,20 @@ import type { ManagementTarget } from "@/lib/api";
 
 interface AuthCenterPanelProps {
   target?: ManagementTarget;
+  onBusyChange?: (busy: boolean) => void;
 }
 
-export function AuthCenterPanel({ target }: AuthCenterPanelProps) {
+export function AuthCenterPanel({ target, onBusyChange }: AuthCenterPanelProps) {
   const { t } = useTranslation();
+  const [copilotBusy, setCopilotBusy] = useState(false);
+  const [codexBusy, setCodexBusy] = useState(false);
+  const [xaiBusy, setXaiBusy] = useState(false);
+  const busy = copilotBusy || codexBusy || xaiBusy;
+
+  useEffect(() => {
+    onBusyChange?.(busy);
+    return () => onBusyChange?.(false);
+  }, [busy, onBusyChange]);
 
   return (
     <div className="space-y-6">
@@ -56,7 +67,7 @@ export function AuthCenterPanel({ target }: AuthCenterPanelProps) {
           </div>
         </div>
 
-        <CopilotAuthSection target={target} />
+        <CopilotAuthSection target={target} onBusyChange={setCopilotBusy} />
       </section>
 
       <section className="rounded-xl border border-border/60 bg-card/60 p-6">
@@ -74,7 +85,11 @@ export function AuthCenterPanel({ target }: AuthCenterPanelProps) {
           </div>
         </div>
 
-        <CodexOAuthSection target={target} showAccountQuota />
+        <CodexOAuthSection
+          target={target}
+          showAccountQuota
+          onBusyChange={setCodexBusy}
+        />
       </section>
 
       <section className="rounded-xl border border-border/60 bg-card/60 p-6">
@@ -92,7 +107,7 @@ export function AuthCenterPanel({ target }: AuthCenterPanelProps) {
           </div>
         </div>
 
-        <XaiOAuthSection target={target} />
+        <XaiOAuthSection target={target} onBusyChange={setXaiBusy} />
       </section>
     </div>
   );

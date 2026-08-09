@@ -139,6 +139,7 @@ export function RemoteSettingsPage({
   >({});
   const [isDiagnosingTools, setIsDiagnosingTools] = useState(false);
   const [showInstallCommands, setShowInstallCommands] = useState(false);
+  const [authCenterBusy, setAuthCenterBusy] = useState(false);
 
   useEffect(() => {
     setHealth(null);
@@ -152,6 +153,7 @@ export function RemoteSettingsPage({
     setToolDiagnostics({});
     setIsDiagnosingTools(false);
     setShowInstallCommands(false);
+    setAuthCenterBusy(false);
   }, [revision]);
 
   const importExport = useImportExport({ onImportSuccess, target });
@@ -174,6 +176,7 @@ export function RemoteSettingsPage({
     isLoadingRemoteSettings ||
     isSavingRemoteSettings ||
     isDiagnosingTools ||
+    authCenterBusy ||
     importExport.isSelectingFile ||
     importExport.isImporting ||
     importExport.isExporting ||
@@ -694,7 +697,10 @@ export function RemoteSettingsPage({
                     })}
               </div>
             ) : (
-              <AuthCenterPanel target={target} />
+              <AuthCenterPanel
+                target={target}
+                onBusyChange={setAuthCenterBusy}
+              />
             )}
           </TabsContent>
 
