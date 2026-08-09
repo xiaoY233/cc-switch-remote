@@ -398,6 +398,35 @@ pub fn write_text_file(path: &Path, data: &str) -> Result<(), AppError> {
 
 /// 原子写入：写入临时文件后 rename 替换，避免半写状态
 pub fn atomic_write(path: &Path, data: &[u8]) -> Result<(), AppError> {
+    atomic_write_with_options(path, data, None, AtomicWriteFailure::None)
+}
+
+pub(crate) fn atomic_write_private(path: &Path, data: &[u8]) -> Result<(), AppError> {
+    atomic_write_with_options(path, data, Some(0o600), AtomicWriteFailure::None)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum AtomicWriteFailure {
+    None,
+    TempWrite,
+    Rename,
+}
+
+#[cfg(test)]
+pub(crate) fn atomic_write_private_with_failure(
+    path: &Path,
+    data: &[u8],
+    failure: AtomicWriteFailure,
+) -> Result<(), AppError> {
+    atomic_write_with_options(path, data, Some(0o600), failure)
+}
+
+fn atomic_write_with_options(
+    path: &Path,
+    data: &[u8],
+    unix_mode: Option<u32>,
+    failure: AtomicWriteFailure,
+) -> Result<(), AppError> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| AppError::io(parent, e))?;
     }
@@ -423,11 +452,14 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<(), AppError> {
                 "{file_name}.tmp.{}.{ts}.{counter}",
                 std::process::id()
             ));
-            match fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&candidate)
-            {
+            let mut options = fs::OpenOptions::new();
+            options.write(true).create_new(true);
+            #[cfg(unix)]
+            if let Some(mode) = unix_mode {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(mode);
+            }
+            match options.open(&candidate) {
                 Ok(file) => return Ok((candidate, file)),
                 Err(source) if source.kind() == std::io::ErrorKind::AlreadyExists => {
                     last_collision = Some((candidate, source));
@@ -440,7 +472,16 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<(), AppError> {
         Err(AppError::io(&candidate, source))
     })()?;
 
-    if let Err(source) = file.write_all(data).and_then(|_| file.flush()) {
+    let write_result = if failure == AtomicWriteFailure::TempWrite {
+        Err(std::io::Error::other(
+            "injected temporary settings write failure",
+        ))
+    } else {
+        file.write_all(data)
+            .and_then(|_| file.flush())
+            .and_then(|_| file.sync_all())
+    };
+    if let Err(source) = write_result {
         drop(file);
         let _ = fs::remove_file(&tmp);
         return Err(AppError::io(&tmp, source));
@@ -450,10 +491,21 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<(), AppError> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        if let Ok(meta) = fs::metadata(path) {
-            let perm = meta.permissions().mode();
-            let _ = fs::set_permissions(&tmp, fs::Permissions::from_mode(perm));
+        if unix_mode.is_none() {
+            if let Ok(meta) = fs::metadata(path) {
+                let perm = meta.permissions().mode();
+                let _ = fs::set_permissions(&tmp, fs::Permissions::from_mode(perm));
+            }
         }
+    }
+
+    if failure == AtomicWriteFailure::Rename {
+        let source = std::io::Error::other("injected settings rename failure");
+        let _ = fs::remove_file(&tmp);
+        return Err(AppError::IoContext {
+            context: format!("原子替换失败: {} -> {}", tmp.display(), path.display()),
+            source,
+        });
     }
 
     #[cfg(windows)]
@@ -538,6 +590,11 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<(), AppError> {
             });
         }
     }
+    #[cfg(unix)]
+    fs::File::open(parent)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|e| AppError::io(parent, e))?;
+
     Ok(())
 }
 

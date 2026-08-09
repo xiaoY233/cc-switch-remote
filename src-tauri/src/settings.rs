@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{OnceLock, RwLock};
 
 use crate::app_config::AppType;
@@ -666,11 +666,15 @@ impl AppSettings {
 }
 
 fn save_settings_file(settings: &AppSettings) -> Result<(), AppError> {
-    let mut normalized = settings.clone();
-    normalized.normalize_paths();
     let Some(path) = AppSettings::settings_path() else {
         return Err(AppError::Config("无法获取用户主目录".to_string()));
     };
+    save_settings_file_to_path(settings, &path)
+}
+
+fn save_settings_file_to_path(settings: &AppSettings, path: &Path) -> Result<(), AppError> {
+    let mut normalized = settings.clone();
+    normalized.normalize_paths();
 
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| AppError::io(parent, e))?;
@@ -678,29 +682,25 @@ fn save_settings_file(settings: &AppSettings) -> Result<(), AppError> {
 
     let json = serde_json::to_string_pretty(&normalized)
         .map_err(|e| AppError::JsonSerialize { source: e })?;
-    #[cfg(unix)]
-    {
-        use std::fs::OpenOptions;
-        use std::io::Write;
-        use std::os::unix::fs::OpenOptionsExt;
+    crate::config::atomic_write_private(path, json.as_bytes())
+}
 
-        let mut file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(&path)
-            .map_err(|e| AppError::io(&path, e))?;
-        file.write_all(json.as_bytes())
-            .map_err(|e| AppError::io(&path, e))?;
+#[cfg(test)]
+fn save_settings_file_at_path(
+    settings: &AppSettings,
+    path: &Path,
+    failure: Option<crate::config::AtomicWriteFailure>,
+) -> Result<(), AppError> {
+    let mut normalized = settings.clone();
+    normalized.normalize_paths();
+    let json = serde_json::to_string_pretty(&normalized)
+        .map_err(|e| AppError::JsonSerialize { source: e })?;
+    match failure {
+        Some(failure) => {
+            crate::config::atomic_write_private_with_failure(path, json.as_bytes(), failure)
+        }
+        None => save_settings_file_to_path(settings, path),
     }
-
-    #[cfg(not(unix))]
-    {
-        fs::write(&path, json).map_err(|e| AppError::io(&path, e))?;
-    }
-
-    Ok(())
 }
 
 static SETTINGS_STORE: OnceLock<RwLock<AppSettings>> = OnceLock::new();
@@ -1276,6 +1276,62 @@ mod tests {
             b"upstream-settings-sentinel"
         );
         assert!(home.path().join(".cc-switch-remote/settings.json").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn settings_atomic_write_uses_private_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().expect("temporary settings directory");
+        let path = dir.path().join("settings.json");
+        save_settings_file_at_path(&AppSettings::default(), &path, None)
+            .expect("atomic settings save");
+
+        assert_eq!(
+            std::fs::metadata(&path)
+                .expect("settings metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+    }
+
+    #[test]
+    fn settings_temp_write_failure_preserves_previous_bytes() {
+        let dir = tempfile::tempdir().expect("temporary settings directory");
+        let path = dir.path().join("settings.json");
+        let old = b"previous-settings-bytes";
+        std::fs::write(&path, old).expect("seed settings");
+
+        let result = save_settings_file_at_path(
+            &AppSettings::default(),
+            &path,
+            Some(crate::config::AtomicWriteFailure::TempWrite),
+        );
+
+        assert!(result.is_err());
+        assert_eq!(std::fs::read(&path).expect("read settings"), old);
+        assert_eq!(std::fs::read_dir(dir.path()).expect("list dir").count(), 1);
+    }
+
+    #[test]
+    fn settings_rename_failure_preserves_previous_bytes() {
+        let dir = tempfile::tempdir().expect("temporary settings directory");
+        let path = dir.path().join("settings.json");
+        let old = b"previous-settings-bytes";
+        std::fs::write(&path, old).expect("seed settings");
+
+        let result = save_settings_file_at_path(
+            &AppSettings::default(),
+            &path,
+            Some(crate::config::AtomicWriteFailure::Rename),
+        );
+
+        assert!(result.is_err());
+        assert_eq!(std::fs::read(&path).expect("read settings"), old);
+        assert_eq!(std::fs::read_dir(dir.path()).expect("list dir").count(), 1);
     }
 
     #[test]
