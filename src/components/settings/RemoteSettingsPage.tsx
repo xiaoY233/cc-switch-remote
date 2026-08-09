@@ -1095,7 +1095,7 @@ function RemoteRoutingSettingsSection({
                 className="gap-1.5 h-6 ml-auto mr-2"
               >
                 <Activity
-                  className={`h-3 w-3 ${isRunning ? "animate-pulse" : ""}`}
+                  className={`h-3 w-3 ${isRunning ? "status-heartbeat" : ""}`}
                 />
                 {isRunning
                   ? t("settings.advanced.proxy.running")

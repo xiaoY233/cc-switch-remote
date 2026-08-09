@@ -79,9 +79,13 @@ describe("RemoteAppRoutingToggle", () => {
       mutateAsync: vi.fn(),
     });
 
-    render(<RemoteAppRoutingToggle activeApp="claude" target={remoteTarget} />);
+    const { container } = render(
+      <RemoteAppRoutingToggle activeApp="claude" target={remoteTarget} />,
+    );
 
     expect(screen.getByRole("switch")).toHaveAttribute("aria-checked", "true");
+    expect(container.querySelector("svg")).toHaveClass("status-heartbeat");
+    expect(container.querySelector("svg")).not.toHaveClass("animate-pulse");
   });
 
   it("disables enabling when remote routing preflight fails", () => {

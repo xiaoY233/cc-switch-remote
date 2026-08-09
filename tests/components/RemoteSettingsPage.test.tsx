@@ -14,6 +14,7 @@ const startProxyServerMock = vi.fn();
 const stopWithRestoreMock = vi.fn();
 const hasCodexUnifyHistoryBackupMock = vi.fn();
 const restoreCodexUnifiedHistoryMock = vi.fn();
+let proxyRunning = false;
 
 vi.mock("@tanstack/react-query", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@tanstack/react-query")>();
@@ -59,7 +60,7 @@ vi.mock("@/lib/api", async () => {
 
 vi.mock("@/hooks/useProxyStatus", () => ({
   useProxyStatus: () => ({
-    isRunning: false,
+    isRunning: proxyRunning,
     status: null,
     takeoverStatus: {},
     startProxyServer: startProxyServerMock,
@@ -159,6 +160,7 @@ describe("RemoteSettingsPage", () => {
     stopWithRestoreMock.mockReset();
     hasCodexUnifyHistoryBackupMock.mockReset();
     restoreCodexUnifiedHistoryMock.mockReset();
+    proxyRunning = false;
 
     checkHealthMock.mockResolvedValue({
       reachable: true,
@@ -306,6 +308,29 @@ describe("RemoteSettingsPage", () => {
       saveDeferred.resolve(true);
       await saveDeferred.promise;
     });
+  });
+
+  it("uses the window-aware heartbeat for the running routing badge", async () => {
+    const user = userEvent.setup();
+    proxyRunning = true;
+
+    render(
+      <RemoteSettingsPage
+        open
+        onOpenChange={vi.fn()}
+        defaultTab="proxy"
+        target={{ type: "remote", profile, secret: { password: "secret" } }}
+      />,
+    );
+
+    const proxySection = await screen.findByRole("button", {
+      name: /settings\.advanced\.proxy\.title/,
+    });
+    await user.click(proxySection);
+
+    const runningMarker = proxySection.querySelector("svg.h-3.w-3");
+    expect(runningMarker).toHaveClass("status-heartbeat");
+    expect(runningMarker).not.toHaveClass("animate-pulse");
   });
 
   it("loads remote general settings and saves per-host app visibility", async () => {
