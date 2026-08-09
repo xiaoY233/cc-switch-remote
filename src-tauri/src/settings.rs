@@ -805,12 +805,45 @@ pub struct SettingsSaveWarning {
     pub message: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SettingsSaveResult {
     pub saved: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub warning: Option<SettingsSaveWarning>,
+}
+
+impl<'de> Deserialize<'de> for SettingsSaveResult {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct StructuredResult {
+            saved: bool,
+            #[serde(default)]
+            warning: Option<SettingsSaveWarning>,
+        }
+
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum WireResult {
+            Structured(StructuredResult),
+            Legacy(bool),
+        }
+
+        match WireResult::deserialize(deserializer)? {
+            WireResult::Structured(result) => Ok(Self {
+                saved: result.saved,
+                warning: result.warning,
+            }),
+            WireResult::Legacy(saved) => Ok(Self {
+                saved,
+                warning: None,
+            }),
+        }
+    }
 }
 
 /// Apply a frontend/helper settings payload as one transaction, including the
@@ -1636,5 +1669,14 @@ mod tests {
         .expect("visible apps");
 
         assert!(!visible.is_visible(&AppType::ClaudeDesktop));
+    }
+
+    #[test]
+    fn settings_save_result_accepts_legacy_boolean_helper_acknowledgement() {
+        let result: SettingsSaveResult =
+            serde_json::from_value(serde_json::json!(true)).expect("legacy helper result");
+
+        assert!(result.saved);
+        assert!(result.warning.is_none());
     }
 }
