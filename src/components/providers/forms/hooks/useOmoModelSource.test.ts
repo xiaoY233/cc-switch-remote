@@ -3,9 +3,10 @@ import { buildOmoWarningSignature } from "./useOmoModelSource";
 
 describe("OMO warning target identity", () => {
   it("does not deduplicate equal failures from different targets", () => {
-    const local = buildOmoWarningSignature("local", true, ["broken"]);
+    const local = buildOmoWarningSignature("local", 0, true, ["broken"]);
     const remote = buildOmoWarningSignature(
       "remote:server-1",
+      0,
       true,
       ["broken"],
     );
@@ -15,7 +16,26 @@ describe("OMO warning target identity", () => {
 
   it("is stable for the same target regardless of provider failure order", () => {
     expect(
-      buildOmoWarningSignature("remote:server-1", false, ["b", "a"]),
-    ).toBe(buildOmoWarningSignature("remote:server-1", false, ["a", "b"]));
+      buildOmoWarningSignature("remote:server-1", 0, false, ["b", "a"]),
+    ).toBe(
+      buildOmoWarningSignature("remote:server-1", 0, false, ["a", "b"]),
+    );
+  });
+
+  it("does not deduplicate the same failure after a same-id connection change", () => {
+    const oldConnection = buildOmoWarningSignature(
+      "remote:server-1",
+      0,
+      true,
+      ["broken"],
+    );
+    const newConnection = buildOmoWarningSignature(
+      "remote:server-1",
+      1,
+      true,
+      ["broken"],
+    );
+
+    expect(oldConnection).not.toBe(newConnection);
   });
 });

@@ -40,10 +40,11 @@ interface OmoModelBuild {
 
 export const buildOmoWarningSignature = (
   targetKey: string,
+  connectionRevision: number,
   fallback: boolean,
   failedProviders: string[],
 ) =>
-  `${targetKey}:${fallback ? "fallback:" : ""}${failedProviders
+  `${targetKey}:${connectionRevision}:${fallback ? "fallback:" : ""}${failedProviders
     .slice()
     .sort()
     .join(",")}`;
@@ -81,7 +82,11 @@ export function useOmoModelSource({
     refetchOnWindowFocus: false,
     retry: 1,
   });
-  useTargetQueryIdentityReset("opencode-runtime-models", target, targetKey);
+  const connectionRevision = useTargetQueryIdentityReset(
+    "opencode-runtime-models",
+    target,
+    targetKey,
+  );
 
   const { data: opencodeProvidersData } = useProvidersQuery("opencode", {
     target,
@@ -103,7 +108,7 @@ export function useOmoModelSource({
   useEffect(() => {
     lastOmoModelSourceWarningRef.current = "";
     lastRuntimeModelsWarningRef.current = "";
-  }, [targetKey]);
+  }, [targetKey, connectionRevision]);
 
   useEffect(() => {
     let active = true;
@@ -291,7 +296,12 @@ export function useOmoModelSource({
     const fallback = omoModelBuild.usedFallbackSource;
     if (failed.length === 0 && !fallback) return;
 
-    const signature = buildOmoWarningSignature(targetKey, fallback, failed);
+    const signature = buildOmoWarningSignature(
+      targetKey,
+      connectionRevision,
+      fallback,
+      failed,
+    );
     if (lastOmoModelSourceWarningRef.current === signature) return;
     lastOmoModelSourceWarningRef.current = signature;
 
@@ -317,6 +327,7 @@ export function useOmoModelSource({
     omoModelBuild.parseFailedProviders,
     omoModelBuild.usedFallbackSource,
     targetKey,
+    connectionRevision,
     t,
   ]);
 
@@ -333,7 +344,7 @@ export function useOmoModelSource({
         runtimeModelsError ||
         "",
     );
-    const signature = `${targetKey}:${detail || "runtime-models-failed"}`;
+    const signature = `${targetKey}:${connectionRevision}:${detail || "runtime-models-failed"}`;
     if (lastRuntimeModelsWarningRef.current === signature) return;
     lastRuntimeModelsWarningRef.current = signature;
 
@@ -343,7 +354,14 @@ export function useOmoModelSource({
           "Failed to load OpenCode runtime models. Showing configured providers only.",
       }),
     );
-  }, [isOmoCategory, runtimeModelsFailed, runtimeModelsError, t, targetKey]);
+  }, [
+    isOmoCategory,
+    runtimeModelsFailed,
+    runtimeModelsError,
+    t,
+    targetKey,
+    connectionRevision,
+  ]);
 
   return {
     omoModelOptions: omoModelBuild.options,
