@@ -91,7 +91,15 @@ pub fn remote_list_profiles() -> Result<Vec<RemoteHostProfile>, String> {
 }
 
 #[tauri::command]
-pub fn remote_save_profile(
+pub async fn remote_save_profile(
+    profile: RemoteHostProfile,
+    secret: Option<RemoteConnectionSecret>,
+) -> Result<RemoteHostProfile, String> {
+    remote_save_profile_with_manager(remote_session_manager(), profile, secret).await
+}
+
+async fn remote_save_profile_with_manager(
+    manager: &crate::remote::RemoteSessionManager,
     profile: RemoteHostProfile,
     secret: Option<RemoteConnectionSecret>,
 ) -> Result<RemoteHostProfile, String> {
@@ -105,12 +113,22 @@ pub fn remote_save_profile(
             delete_profile_secret(&saved.id).map_err(|e| e.to_string())?;
         }
     }
+    manager.close(&saved.id).await;
     Ok(saved)
 }
 
 #[tauri::command]
-pub fn remote_delete_profile(id: String) -> Result<bool, String> {
-    delete_profile(&id).map_err(|e| e.to_string())
+pub async fn remote_delete_profile(id: String) -> Result<bool, String> {
+    remote_delete_profile_with_manager(remote_session_manager(), id).await
+}
+
+async fn remote_delete_profile_with_manager(
+    manager: &crate::remote::RemoteSessionManager,
+    id: String,
+) -> Result<bool, String> {
+    let deleted = delete_profile(&id).map_err(|e| e.to_string())?;
+    manager.close(&id).await;
+    Ok(deleted)
 }
 
 #[tauri::command]
@@ -3917,8 +3935,12 @@ pub async fn remote_remove_skill_repo(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::remote::{RemoteAuthMethod, RemoteHostProfile};
+    use crate::remote::{
+        RemoteAuthMethod, RemoteHostProfile, RemoteSessionManager, RemoteSessionState,
+        RemoteSessionStatus,
+    };
     use crate::remote_capabilities::REMOTE_HELPER_REQUIRED_CAPABILITIES;
+    use serial_test::serial;
 
     fn valid_profile() -> RemoteHostProfile {
         RemoteHostProfile {
@@ -3932,6 +3954,69 @@ mod tests {
             created_at: 1,
             updated_at: 1,
         }
+    }
+
+    struct TestHomeGuard(Option<std::ffi::OsString>);
+
+    impl TestHomeGuard {
+        fn set(path: &std::path::Path) -> Self {
+            let previous = std::env::var_os("CC_SWITCH_TEST_HOME");
+            std::env::set_var("CC_SWITCH_TEST_HOME", path);
+            Self(previous)
+        }
+    }
+
+    impl Drop for TestHomeGuard {
+        fn drop(&mut self) {
+            match self.0.take() {
+                Some(value) => std::env::set_var("CC_SWITCH_TEST_HOME", value),
+                None => std::env::remove_var("CC_SWITCH_TEST_HOME"),
+            }
+        }
+    }
+
+    async fn mark_manager_ready(manager: &RemoteSessionManager, profile_id: &str) {
+        manager
+            .set_status(RemoteSessionStatus {
+                profile_id: profile_id.to_string(),
+                state: RemoteSessionState::Ready,
+                last_error: None,
+                active_request_id: None,
+            })
+            .await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn saving_profile_closes_existing_session() {
+        let home = tempfile::tempdir().expect("temporary home");
+        let _guard = TestHomeGuard::set(home.path());
+        let manager = RemoteSessionManager::default();
+        mark_manager_ready(&manager, "prod").await;
+
+        remote_save_profile_with_manager(&manager, valid_profile(), None)
+            .await
+            .expect("save profile");
+
+        assert_eq!(manager.status("prod").await.state, RemoteSessionState::Idle);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn deleting_profile_closes_existing_session() {
+        let home = tempfile::tempdir().expect("temporary home");
+        let _guard = TestHomeGuard::set(home.path());
+        let manager = RemoteSessionManager::default();
+        upsert_profile(valid_profile()).expect("seed profile");
+        mark_manager_ready(&manager, "prod").await;
+
+        assert!(
+            remote_delete_profile_with_manager(&manager, "prod".to_string())
+                .await
+                .expect("delete profile")
+        );
+
+        assert_eq!(manager.status("prod").await.state, RemoteSessionState::Idle);
     }
 
     #[test]

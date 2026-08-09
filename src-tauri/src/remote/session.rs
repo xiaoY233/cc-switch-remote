@@ -10,6 +10,7 @@ use once_cell::sync::Lazy;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -106,8 +107,36 @@ pub struct RemoteSessionManager {
 }
 
 struct ManagedRemoteSession {
+    identity: Option<RemoteSessionIdentity>,
     status: RemoteSessionStatus,
     executor: Option<Arc<dyn RemoteSessionExecutor>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RemoteSessionIdentity {
+    profile_id: String,
+    host: String,
+    port: u16,
+    username: String,
+    auth_method: crate::remote::types::RemoteAuthMethod,
+    helper_path: String,
+    password_fingerprint: Option<[u8; 32]>,
+}
+
+impl RemoteSessionIdentity {
+    fn new(profile: &RemoteHostProfile, secret: Option<&RemoteConnectionSecret>) -> Self {
+        Self {
+            profile_id: profile.id.clone(),
+            host: profile.host.clone(),
+            port: profile.port,
+            username: profile.username.clone(),
+            auth_method: profile.auth_method.clone(),
+            helper_path: profile.helper_path.clone(),
+            password_fingerprint: secret
+                .and_then(|value| value.password.as_deref())
+                .map(|password| Sha256::digest(password.as_bytes()).into()),
+        }
+    }
 }
 
 trait RemoteSessionExecutor: Send + Sync {
@@ -136,12 +165,13 @@ impl RemoteSessionManager {
     }
 
     #[allow(dead_code)]
-    async fn set_status(&self, status: RemoteSessionStatus) {
+    pub(crate) async fn set_status(&self, status: RemoteSessionStatus) {
         let mut sessions = self.sessions.lock().await;
         sessions
             .entry(status.profile_id.clone())
             .and_modify(|session| session.status = status.clone())
             .or_insert(ManagedRemoteSession {
+                identity: None,
                 status,
                 executor: None,
             });
@@ -230,6 +260,7 @@ impl RemoteSessionManager {
                     sessions.insert(
                         profile.id.clone(),
                         ManagedRemoteSession {
+                            identity: Some(RemoteSessionIdentity::new(&profile, secret.as_ref())),
                             status: failed_status,
                             executor: None,
                         },
@@ -248,13 +279,8 @@ impl RemoteSessionManager {
         profile: &RemoteHostProfile,
         secret: Option<&RemoteConnectionSecret>,
     ) -> Result<Arc<dyn RemoteSessionExecutor>, AppError> {
-        if let Some(executor) = self
-            .sessions
-            .lock()
-            .await
-            .get(&profile.id)
-            .and_then(|session| session.executor.clone())
-        {
+        let identity = RemoteSessionIdentity::new(profile, secret);
+        if let Some(executor) = self.take_reusable_executor(&identity).await {
             return Ok(executor);
         }
 
@@ -272,6 +298,7 @@ impl RemoteSessionManager {
         sessions.insert(
             profile.id.clone(),
             ManagedRemoteSession {
+                identity: Some(identity),
                 status: RemoteSessionStatus {
                     profile_id: profile.id.clone(),
                     state: RemoteSessionState::Ready,
@@ -282,6 +309,26 @@ impl RemoteSessionManager {
             },
         );
         Ok(executor)
+    }
+
+    async fn take_reusable_executor(
+        &self,
+        identity: &RemoteSessionIdentity,
+    ) -> Option<Arc<dyn RemoteSessionExecutor>> {
+        let stale_session = {
+            let mut sessions = self.sessions.lock().await;
+            if let Some(session) = sessions.get(&identity.profile_id) {
+                if session.identity.as_ref() == Some(identity) {
+                    return session.executor.clone();
+                }
+            }
+            sessions.remove(&identity.profile_id)
+        };
+
+        if let Some(executor) = stale_session.and_then(|session| session.executor) {
+            executor.close().await;
+        }
+        None
     }
 }
 
@@ -504,6 +551,7 @@ mod tests {
         manager.sessions.lock().await.insert(
             "prod".to_string(),
             ManagedRemoteSession {
+                identity: Some(RemoteSessionIdentity::new(&profile(), None)),
                 status: RemoteSessionStatus {
                     profile_id: "prod".to_string(),
                     state: RemoteSessionState::Ready,
@@ -534,6 +582,7 @@ mod tests {
         manager.sessions.lock().await.insert(
             "prod".to_string(),
             ManagedRemoteSession {
+                identity: Some(RemoteSessionIdentity::new(&profile(), None)),
                 status: RemoteSessionStatus {
                     profile_id: "prod".to_string(),
                     state: RemoteSessionState::Ready,
@@ -571,6 +620,7 @@ mod tests {
         manager.sessions.lock().await.insert(
             "prod".to_string(),
             ManagedRemoteSession {
+                identity: Some(RemoteSessionIdentity::new(&profile(), None)),
                 status: RemoteSessionStatus {
                     profile_id: "prod".to_string(),
                     state: RemoteSessionState::Ready,
@@ -598,6 +648,7 @@ mod tests {
         manager.sessions.lock().await.insert(
             "prod".to_string(),
             ManagedRemoteSession {
+                identity: Some(RemoteSessionIdentity::new(&profile(), None)),
                 status: RemoteSessionStatus {
                     profile_id: "prod".to_string(),
                     state: RemoteSessionState::Ready,
@@ -621,5 +672,127 @@ mod tests {
 
         assert!(manager.close("prod").await);
         assert!(executor.closed.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn connection_identity_covers_every_ssh_input_without_storing_the_password() {
+        let original_profile = profile();
+        let original_secret = RemoteConnectionSecret {
+            password: Some("old-password".to_string()),
+        };
+        let original = RemoteSessionIdentity::new(&original_profile, Some(&original_secret));
+
+        let renamed = RemoteHostProfile {
+            name: "Renamed".to_string(),
+            updated_at: 2,
+            ..original_profile.clone()
+        };
+        assert_eq!(
+            original,
+            RemoteSessionIdentity::new(&renamed, Some(&original_secret))
+        );
+
+        let mut variants = Vec::new();
+        variants.push(RemoteHostProfile {
+            host: "other.example.com".to_string(),
+            ..original_profile.clone()
+        });
+        variants.push(RemoteHostProfile {
+            port: 2222,
+            ..original_profile.clone()
+        });
+        variants.push(RemoteHostProfile {
+            username: "other-user".to_string(),
+            ..original_profile.clone()
+        });
+        variants.push(RemoteHostProfile {
+            helper_path: "/opt/cc-switch-remote-helper".to_string(),
+            ..original_profile.clone()
+        });
+        variants.push(RemoteHostProfile {
+            auth_method: crate::remote::types::RemoteAuthMethod::KeyFile {
+                path: "/tmp/id_ed25519".to_string(),
+            },
+            ..original_profile.clone()
+        });
+        for variant in variants {
+            assert_ne!(
+                original,
+                RemoteSessionIdentity::new(&variant, Some(&original_secret))
+            );
+        }
+
+        let changed_secret = RemoteConnectionSecret {
+            password: Some("new-password".to_string()),
+        };
+        assert_ne!(
+            original,
+            RemoteSessionIdentity::new(&original_profile, Some(&changed_secret))
+        );
+        assert!(!format!("{original:?}").contains("old-password"));
+    }
+
+    #[tokio::test]
+    async fn changed_connection_identity_closes_and_removes_the_old_executor() {
+        let manager = RemoteSessionManager::default();
+        let executor = Arc::new(FakeExecutor::new(Value::Null));
+        let original_profile = profile();
+        manager.sessions.lock().await.insert(
+            original_profile.id.clone(),
+            ManagedRemoteSession {
+                identity: Some(RemoteSessionIdentity::new(&original_profile, None)),
+                status: RemoteSessionStatus {
+                    profile_id: original_profile.id.clone(),
+                    state: RemoteSessionState::Ready,
+                    last_error: None,
+                    active_request_id: None,
+                },
+                executor: Some(executor.clone()),
+            },
+        );
+        let changed_profile = RemoteHostProfile {
+            host: "replacement.example.com".to_string(),
+            ..original_profile
+        };
+
+        let reusable = manager
+            .take_reusable_executor(&RemoteSessionIdentity::new(&changed_profile, None))
+            .await;
+
+        assert!(reusable.is_none());
+        assert!(executor.closed.load(Ordering::SeqCst));
+        assert_eq!(manager.status("prod").await.state, RemoteSessionState::Idle);
+    }
+
+    #[tokio::test]
+    async fn equivalent_connection_identity_reuses_the_executor() {
+        let manager = RemoteSessionManager::default();
+        let executor = Arc::new(FakeExecutor::new(Value::Null));
+        let original_profile = profile();
+        manager.sessions.lock().await.insert(
+            original_profile.id.clone(),
+            ManagedRemoteSession {
+                identity: Some(RemoteSessionIdentity::new(&original_profile, None)),
+                status: RemoteSessionStatus {
+                    profile_id: original_profile.id.clone(),
+                    state: RemoteSessionState::Ready,
+                    last_error: None,
+                    active_request_id: None,
+                },
+                executor: Some(executor.clone()),
+            },
+        );
+        let equivalent_profile = RemoteHostProfile {
+            name: "Renamed only".to_string(),
+            updated_at: 9,
+            ..original_profile
+        };
+
+        let reusable = manager
+            .take_reusable_executor(&RemoteSessionIdentity::new(&equivalent_profile, None))
+            .await;
+
+        assert!(reusable.is_some());
+        assert!(!executor.closed.load(Ordering::SeqCst));
     }
 }
