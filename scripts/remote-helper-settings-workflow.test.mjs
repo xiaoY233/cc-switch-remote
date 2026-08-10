@@ -31,7 +31,7 @@ test("helper workflow rejects user and production data directories", () => {
           CC_SWITCH_TEST_HOME: unsafePath,
           CC_SWITCH_HELPER_TEST_RUN_ID: "task7",
         }),
-      /isolated temporary directory/,
+      /harness-created directory|isolated temporary directory/,
     );
   }
 });

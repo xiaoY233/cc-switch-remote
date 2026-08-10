@@ -454,6 +454,7 @@ pub(crate) enum AtomicWriteFailure {
     None,
     TempWrite,
     Rename,
+    #[cfg(unix)]
     ParentSync,
 }
 
@@ -472,6 +473,9 @@ fn atomic_write_with_options(
     unix_mode: Option<u32>,
     failure: AtomicWriteFailure,
 ) -> Result<(), AppError> {
+    #[cfg(windows)]
+    let _ = unix_mode;
+
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| AppError::io(parent, e))?;
     }
