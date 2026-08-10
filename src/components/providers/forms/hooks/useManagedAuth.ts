@@ -23,11 +23,7 @@ export function useManagedAuth(
 ) {
   const queryClient = useQueryClient();
   const targetKey = getManagementTargetKey(target);
-  const queryKey = [
-    "managed-auth-status",
-    targetKey,
-    authProvider,
-  ];
+  const queryKey = ["managed-auth-status", targetKey, authProvider];
   const connectionGeneration = useTargetQueryIdentityReset(
     "all",
     target,
@@ -90,7 +86,11 @@ export function useManagedAuth(
 
   const startLoginMutation = useMutation({
     mutationFn: async () => ({
-      response: await authApi.authStartLogin(authProvider, githubDomain, target),
+      response: await authApi.authStartLogin(
+        authProvider,
+        githubDomain,
+        target,
+      ),
       generation: connectionGeneration,
     }),
     onSuccess: async ({ response, generation }) => {

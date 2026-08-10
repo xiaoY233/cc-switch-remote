@@ -2,10 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import { createElement, type PropsWithChildren } from "react";
 import { describe, expect, it, vi } from "vitest";
-import {
-  loadProvidersQueryData,
-  useProvidersQuery,
-} from "@/lib/query/queries";
+import { loadProvidersQueryData, useProvidersQuery } from "@/lib/query/queries";
 import { providersApi, type ManagementTarget } from "@/lib/api";
 
 const remoteTarget: ManagementTarget = {
@@ -108,12 +105,16 @@ describe("provider query loading", () => {
       ({ target }) => useProvidersQuery("claude", { target }),
       { initialProps: { target: remoteTarget }, wrapper },
     );
-    await waitFor(() => expect(result.current.data?.currentProviderId).toBe("old"));
+    await waitFor(() =>
+      expect(result.current.data?.currentProviderId).toBe("old"),
+    );
 
     rerender({ target: secondTarget });
 
     expect(result.current.data).toBeUndefined();
     resolveSecond({ providers: {}, currentProviderId: "new" });
-    await waitFor(() => expect(result.current.data?.currentProviderId).toBe("new"));
+    await waitFor(() =>
+      expect(result.current.data?.currentProviderId).toBe("new"),
+    );
   });
 });

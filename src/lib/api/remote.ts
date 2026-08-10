@@ -24,11 +24,7 @@ import type {
   StreamCheckConfig,
   StreamCheckResult,
 } from "./connectivity-check";
-import type {
-  BackupEntry,
-  LogConfig,
-  SettingsSaveResult,
-} from "./settings";
+import type { BackupEntry, LogConfig, SettingsSaveResult } from "./settings";
 import type { SubscriptionQuota } from "@/types/subscription";
 import type { Prompt } from "./prompts";
 import type {

@@ -6,7 +6,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useManagedAuth } from "./useManagedAuth";
 import { authApi, settingsApi, type ManagementTarget } from "@/lib/api";
 
-vi.mock("@/lib/clipboard", () => ({ copyText: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("@/lib/clipboard", () => ({
+  copyText: vi.fn().mockResolvedValue(undefined),
+}));
 
 type RemoteTarget = Extract<ManagementTarget, { type: "remote" }>;
 
@@ -45,14 +47,12 @@ describe("useManagedAuth connection generation", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.spyOn(settingsApi, "openExternal").mockResolvedValue(undefined);
-    vi.spyOn(authApi, "authGetStatus").mockImplementation(
-      async (provider) => ({
-        provider,
-        authenticated: false,
-        default_account_id: null,
-        accounts: [],
-      }),
-    );
+    vi.spyOn(authApi, "authGetStatus").mockImplementation(async (provider) => ({
+      provider,
+      authenticated: false,
+      default_account_id: null,
+      accounts: [],
+    }));
   });
 
   it("drops a late device-code response after same-id credentials change", async () => {
@@ -95,14 +95,12 @@ describe("useManagedAuth connection generation", () => {
   it("stops polling and ignores a late account after the target changes", async () => {
     vi.spyOn(authApi, "authStartLogin").mockResolvedValue(deviceCode);
     let resolvePoll!: (value: null) => void;
-    const poll = vi
-      .spyOn(authApi, "authPollForAccount")
-      .mockImplementation(
-        () =>
-          new Promise((resolve) => {
-            resolvePoll = resolve;
-          }),
-      );
+    const poll = vi.spyOn(authApi, "authPollForAccount").mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePoll = resolve;
+        }),
+    );
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
@@ -138,7 +136,12 @@ describe("useManagedAuth connection generation", () => {
       defaultOptions: { queries: { retry: false } },
     });
     const { result } = renderHook(
-      () => useManagedAuth("github_copilot", undefined, target("host-a", "secret-a")),
+      () =>
+        useManagedAuth(
+          "github_copilot",
+          undefined,
+          target("host-a", "secret-a"),
+        ),
       { wrapper: wrapper(queryClient) },
     );
     await waitFor(() => expect(result.current.isLoadingStatus).toBe(false));

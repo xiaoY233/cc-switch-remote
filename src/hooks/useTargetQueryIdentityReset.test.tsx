@@ -8,9 +8,7 @@ import type { ManagementTarget } from "@/lib/api";
 
 type RemoteTarget = Extract<ManagementTarget, { type: "remote" }>;
 
-const remoteTarget = (
-  overrides: Partial<RemoteTarget> = {},
-): RemoteTarget => ({
+const remoteTarget = (overrides: Partial<RemoteTarget> = {}): RemoteTarget => ({
   type: "remote",
   profile: {
     id: "server-1",
@@ -78,9 +76,9 @@ describe("all-domain target identity reset", () => {
         expect(queryClient.getQueryData(key)).toBeUndefined();
       }
     });
-    expect(
-      queryClient.getQueryData(["providers", "claude", "local"]),
-    ).toBe("local-data");
+    expect(queryClient.getQueryData(["providers", "claude", "local"])).toBe(
+      "local-data",
+    );
   });
 
   it("does not reset equivalent remote copies or local upstream state", async () => {

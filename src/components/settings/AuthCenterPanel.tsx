@@ -14,7 +14,10 @@ interface AuthCenterPanelProps {
   onBusyChange?: (busy: boolean) => void;
 }
 
-export function AuthCenterPanel({ target, onBusyChange }: AuthCenterPanelProps) {
+export function AuthCenterPanel({
+  target,
+  onBusyChange,
+}: AuthCenterPanelProps) {
   const { t } = useTranslation();
   const [copilotBusy, setCopilotBusy] = useState(false);
   const [codexBusy, setCodexBusy] = useState(false);
