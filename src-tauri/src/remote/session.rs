@@ -151,12 +151,15 @@ trait RemoteSessionExecutor: Send + Sync {
     fn close<'a>(&'a self) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>>;
 }
 
+type RemoteSessionStartFuture<'a> =
+    Pin<Box<dyn Future<Output = Result<Arc<dyn RemoteSessionExecutor>, AppError>> + Send + 'a>>;
+
 trait RemoteSessionStarter: Send + Sync {
     fn start<'a>(
         &'a self,
         profile: &'a RemoteHostProfile,
         secret: Option<&'a RemoteConnectionSecret>,
-    ) -> Pin<Box<dyn Future<Output = Result<Arc<dyn RemoteSessionExecutor>, AppError>> + Send + 'a>>;
+    ) -> RemoteSessionStartFuture<'a>;
 }
 
 struct ProcessSessionStarter;
@@ -166,8 +169,7 @@ impl RemoteSessionStarter for ProcessSessionStarter {
         &'a self,
         profile: &'a RemoteHostProfile,
         secret: Option<&'a RemoteConnectionSecret>,
-    ) -> Pin<Box<dyn Future<Output = Result<Arc<dyn RemoteSessionExecutor>, AppError>> + Send + 'a>>
-    {
+    ) -> RemoteSessionStartFuture<'a> {
         Box::pin(async move {
             let process = RemoteSessionProcess::start(profile, secret).await?;
             let executor: Arc<dyn RemoteSessionExecutor> = Arc::new(Mutex::new(process));
@@ -251,7 +253,9 @@ impl RemoteSessionManager {
             let existed = session.identity.is_some() || session.executor.is_some();
             session.generation = session.generation.saturating_add(1);
             session.identity = None;
-            session.pending.take().map(|notify| notify.notify_waiters());
+            if let Some(notify) = session.pending.take() {
+                notify.notify_waiters();
+            }
             session.status = RemoteSessionStatus {
                 profile_id: profile_id.to_string(),
                 state: RemoteSessionState::Idle,
@@ -542,6 +546,7 @@ impl RemoteSessionManager {
         }
     }
 
+    #[cfg(test)]
     async fn take_reusable_executor(
         &self,
         identity: &RemoteSessionIdentity,
