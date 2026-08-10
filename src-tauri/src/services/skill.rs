@@ -3863,11 +3863,16 @@ mod tests {
     #[test]
     fn build_skill_doc_url_encodes_significant_resolved_path_segments() {
         let temp = tempdir().expect("tempdir");
+        let cases: &[(&str, &str)] = if cfg!(windows) {
+            &[("hash#anchor", "hash%23anchor")]
+        } else {
+            &[
+                ("hash#anchor", "hash%23anchor"),
+                ("query?anchor", "query%3Fanchor"),
+            ]
+        };
 
-        for (directory, encoded_directory) in [
-            ("hash#anchor", "hash%23anchor"),
-            ("query?anchor", "query%3Fanchor"),
-        ] {
+        for &(directory, encoded_directory) in cases {
             let source = temp.path().join("catalog").join(directory);
             write_skill(&source, directory);
             let doc_path = SkillService::doc_path_for_source(temp.path(), &source)
