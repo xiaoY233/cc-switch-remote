@@ -5,15 +5,17 @@ All notable changes to CC Switch will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.19.2] - Upstream baseline (2026-08-06)
+## [3.19.2] - 2026-08-10
 
-CC Switch Remote has merged the exact upstream `v3.19.2` tag as migration input. This entry records the upstream baseline only; it does not claim that a CC Switch Remote v3.19.2 release has been built or published.
+CC Switch Remote v3.19.2 uses the exact upstream `v3.19.2` tag as its stable baseline, then adds fork-specific remote-target parity, connection-isolation, helper-runtime, settings-transaction, updater-boundary, and release-safety fixes. The upstream tag remains traceable locally as `upstream-v3.19.2`; the fork release tag points to the reviewed CC Switch Remote release commit.
 
 The upstream changes include management-list search and bulk app toggles, per-account subscription usage, runtime-discovered OMO models, Codex usage-accounting fixes, OMO unified-config writes, bounded script/file/proxy reads, deep-link credential visibility, batched backup and session-import writes, and Corepack-based pnpm setup. Full upstream reference notes are preserved in:
 
 - `docs/release-notes/v3.19.2-en.md`
 - `docs/release-notes/v3.19.2-ja.md`
 - `docs/release-notes/v3.19.2-zh.md`
+
+Fork-specific release details are recorded in `docs/release-notes/v3.19.2-remote-zh.md`.
 
 ## [3.18.0] - 2026-07-21
 
