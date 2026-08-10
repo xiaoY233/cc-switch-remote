@@ -246,8 +246,14 @@ fn cloud_sync_settings_round_trip_through_json_cli() {
                 "false".to_string(),
             ]);
 
-            let settings_path = cli_test_home().join(".cc-switch").join("settings.json");
+            let settings_path = cli_test_home()
+                .join(".cc-switch-remote")
+                .join("settings.json");
             let settings_file = std::fs::read_to_string(settings_path).expect("settings file");
+            assert!(
+                !cli_test_home().join(".cc-switch").exists(),
+                "remote helper cloud settings must not create or mutate the upstream data directory"
+            );
             let settings_json: serde_json::Value =
                 serde_json::from_str(&settings_file).expect("settings json");
             let webdav_password = settings_json["webdavSync"]["password"]
