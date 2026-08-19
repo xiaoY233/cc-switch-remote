@@ -1,10 +1,12 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FullScreenPanel } from "@/components/common/FullScreenPanel";
+import { AuthSettingsPanel } from "@/components/providers/AuthSettingsPanel";
+import type { ManagedAuthProvider } from "@/lib/api";
 import type { Provider, CustomEndpoint, UniversalProvider } from "@/types";
 import type { AppId, ManagementTarget } from "@/lib/api";
 import { universalProvidersApi } from "@/lib/api";
@@ -54,6 +56,7 @@ export function AddProviderDialog({
     appId !== "opencode" &&
     appId !== "openclaw" &&
     appId !== "hermes" &&
+    appId !== "pi" &&
     appId !== "grokbuild" &&
     appId !== "claude-desktop";
   const [activeTab, setActiveTab] = useState<"app-specific" | "universal">(
@@ -63,6 +66,12 @@ export function AddProviderDialog({
   const [selectedUniversalPreset, setSelectedUniversalPreset] =
     useState<UniversalProviderPreset | null>(null);
   const [isFormSubmitting, setIsFormSubmitting] = useState(false);
+  const [authSettingsTarget, setAuthSettingsTarget] =
+    useState<ManagedAuthProvider | null>(null);
+
+  useEffect(() => {
+    setAuthSettingsTarget(null);
+  }, [appId, open]);
 
   const handleUniversalProviderSave = useCallback(
     async (provider: UniversalProvider) => {
@@ -114,6 +123,23 @@ export function AddProviderDialog({
     setUniversalFormOpen(false);
     setSelectedUniversalPreset(null);
   }, []);
+
+  const handleProviderPanelClose = () => {
+    if (authSettingsTarget) {
+      setAuthSettingsTarget(null);
+      return;
+    }
+    onOpenChange(false);
+  };
+
+  const onManageAuthProviders = useCallback(
+    (targetProvider: ManagedAuthProvider) => {
+      if (target.type === "local") {
+        setAuthSettingsTarget(targetProvider);
+      }
+    },
+    [target.type],
+  );
 
   const handleSubmit = useCallback(
     async (values: ProviderFormValues) => {
@@ -371,7 +397,7 @@ export function AddProviderDialog({
     <FullScreenPanel
       isOpen={open}
       title={t("provider.addNewProvider")}
-      onClose={() => onOpenChange(false)}
+      onClose={handleProviderPanelClose}
       footer={footer}
       contentClassName="pt-3"
     >
@@ -396,6 +422,7 @@ export function AddProviderDialog({
               onSubmit={handleSubmit}
               onCancel={() => onOpenChange(false)}
               onSubmittingChange={setIsFormSubmitting}
+              onManageAuthAccounts={onManageAuthProviders}
               target={target}
               showButtons={false}
             />
@@ -413,6 +440,7 @@ export function AddProviderDialog({
           onSubmit={handleSubmit}
           onCancel={() => onOpenChange(false)}
           onSubmittingChange={setIsFormSubmitting}
+          onManageAuthAccounts={onManageAuthProviders}
           target={target}
           showButtons={false}
         />
@@ -427,6 +455,11 @@ export function AddProviderDialog({
           target={target}
         />
       )}
+
+      <AuthSettingsPanel
+        target={authSettingsTarget}
+        onClose={() => setAuthSettingsTarget(null)}
+      />
     </FullScreenPanel>
   );
 }

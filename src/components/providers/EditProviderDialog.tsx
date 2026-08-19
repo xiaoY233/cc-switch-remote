@@ -3,6 +3,8 @@ import { useTranslation } from "react-i18next";
 import { Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FullScreenPanel } from "@/components/common/FullScreenPanel";
+import { AuthSettingsPanel } from "@/components/providers/AuthSettingsPanel";
+import type { ManagedAuthProvider } from "@/lib/api";
 import type { Provider } from "@/types";
 import {
   ProviderForm,
@@ -48,6 +50,12 @@ export function EditProviderDialog({
 }: EditProviderDialogProps) {
   const { t } = useTranslation();
   const [isFormSubmitting, setIsFormSubmitting] = useState(false);
+  const [authSettingsTarget, setAuthSettingsTarget] =
+    useState<ManagedAuthProvider | null>(null);
+
+  useEffect(() => {
+    setAuthSettingsTarget(null);
+  }, [appId, open]);
 
   // 默认使用传入的 provider.settingsConfig，若当前编辑对象是"当前生效供应商"，则尝试读取实时配置替换初始值
   const [liveSettings, setLiveSettings] = useState<Record<
@@ -85,7 +93,7 @@ export function EditProviderDialog({
       // OpenCode uses additive mode - each provider's config is stored independently in DB
       // Reading live config would return the full opencode.json (with $schema, provider, mcp etc.)
       // instead of just the provider fragment, causing incorrect nested structure on save
-      if (appId === "opencode") {
+      if (appId === "opencode" || appId === "pi") {
         if (!cancelled) {
           setLiveSettings(null);
           setHasLoadedLive(true);
@@ -224,7 +232,7 @@ export function EditProviderDialog({
             )
           : parsedConfig;
       const nextProviderId =
-        (appId === "opencode" || appId === "openclaw") &&
+        (appId === "opencode" || appId === "openclaw" || appId === "pi") &&
         values.providerKey?.trim()
           ? values.providerKey.trim()
           : provider.id;
@@ -263,11 +271,20 @@ export function EditProviderDialog({
     return null;
   }
 
+  const handleProviderPanelClose = () => {
+    if (authSettingsTarget) {
+      setAuthSettingsTarget(null);
+      return;
+    }
+    onOpenChange(false);
+  };
+
   return (
     <FullScreenPanel
       isOpen={open}
       title={t("provider.editProvider")}
-      onClose={() => onOpenChange(false)}
+      onClose={handleProviderPanelClose}
+      contentClassName={appId === "pi" ? "pb-0" : undefined}
       footer={
         <Button
           type="submit"
@@ -287,10 +304,18 @@ export function EditProviderDialog({
         onSubmit={handleSubmit}
         onCancel={() => onOpenChange(false)}
         onSubmittingChange={setIsFormSubmitting}
+        onManageAuthAccounts={
+          target.type === "local" ? setAuthSettingsTarget : undefined
+        }
         initialData={initialData}
         target={target}
         showButtons={false}
         isProxyTakeover={isProxyTakeover}
+      />
+
+      <AuthSettingsPanel
+        target={authSettingsTarget}
+        onClose={() => setAuthSettingsTarget(null)}
       />
     </FullScreenPanel>
   );

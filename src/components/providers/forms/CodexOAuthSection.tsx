@@ -21,6 +21,7 @@ import {
   X,
   Sparkles,
   User,
+  Settings2,
 } from "lucide-react";
 import { useCodexOauth } from "./hooks/useCodexOauth";
 import { copyText } from "@/lib/clipboard";
@@ -41,6 +42,8 @@ interface CodexOAuthSectionProps {
   /** FAST mode 切换回调 */
   onFastModeChange?: (enabled: boolean) => void;
   onBusyChange?: (busy: boolean) => void;
+  /** 打开托管账号管理入口（本地目标） */
+  onManageAccounts?: () => void;
 }
 
 /**
@@ -58,6 +61,7 @@ export const CodexOAuthSection: React.FC<CodexOAuthSectionProps> = ({
   fastModeEnabled = false,
   onFastModeChange,
   onBusyChange,
+  onManageAccounts,
 }) => {
   const { t } = useTranslation();
   const [copied, setCopied] = React.useState(false);
@@ -116,19 +120,33 @@ export const CodexOAuthSection: React.FC<CodexOAuthSectionProps> = ({
   return (
     <div className={`space-y-4 ${className || ""}`}>
       {/* 认证状态标题 */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <Label>{t("codexOauth.authStatus", "认证状态")}</Label>
-        <Badge
-          variant={hasAnyAccount ? "default" : "secondary"}
-          className={hasAnyAccount ? "bg-green-500 hover:bg-green-600" : ""}
-        >
-          {hasAnyAccount
-            ? t("codexOauth.accountCount", {
-                count: accounts.length,
-                defaultValue: `${accounts.length} 个账号`,
-              })
-            : t("codexOauth.notAuthenticated", "未认证")}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge
+            variant={hasAnyAccount ? "default" : "secondary"}
+            className={hasAnyAccount ? "bg-green-500 hover:bg-green-600" : ""}
+          >
+            {hasAnyAccount
+              ? t("codexOauth.accountCount", {
+                  count: accounts.length,
+                  defaultValue: `${accounts.length} 个账号`,
+                })
+              : t("codexOauth.notAuthenticated", "未认证")}
+          </Badge>
+          {onManageAccounts && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onManageAccounts}
+              className="h-7 shrink-0"
+            >
+              <Settings2 className="h-3.5 w-3.5" />
+              {t("codexOauth.manageAccounts", "管理账号")}
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* 账号选择器 */}

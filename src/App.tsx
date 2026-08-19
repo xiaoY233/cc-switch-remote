@@ -37,6 +37,8 @@ import {
   useProvidersQuery,
   useRemoteSessionStatus,
   useSettingsQuery,
+  invalidatePiProviderCaches,
+  usePiCurrentState,
 } from "@/lib/query";
 import {
   providersApi,
@@ -62,6 +64,7 @@ import { useTargetQueryIdentityReset } from "@/hooks/useTargetQueryIdentityReset
 import {
   extractErrorMessage,
   isRemotePasswordRequiredError,
+  translatePiProviderMutationError,
 } from "@/utils/errorUtils";
 import { isTextEditableTarget } from "@/utils/domUtils";
 import { deepClone } from "@/utils/deepClone";
@@ -100,7 +103,9 @@ import { isProxyAppId } from "@/config/appConfig";
 import { useAppProxyConfig } from "@/lib/query/proxy";
 import UsageScriptModal from "@/components/UsageScriptModal";
 import UnifiedMcpPanel from "@/components/mcp/UnifiedMcpPanel";
-import PromptPanel from "@/components/prompts/PromptPanel";
+import PromptPanel, {
+  type PromptPrimaryAction,
+} from "@/components/prompts/PromptPanel";
 import {
   SkillsPage,
   getSkillsPageHeaderActions,
@@ -488,8 +493,16 @@ function App() {
       sharedFeatureApp !== "opencode" &&
       sharedFeatureApp !== "openclaw" &&
       sharedFeatureApp !== "gemini" &&
-      sharedFeatureApp !== "hermes"
+      sharedFeatureApp !== "hermes" &&
+      sharedFeatureApp !== "pi"
     ) {
+      setCurrentView("providers");
+    }
+  }, [sharedFeatureApp, currentView]);
+
+  // Pi 没有 MCP 管理视图：误入时回退到供应商首页
+  useEffect(() => {
+    if (currentView === "mcp" && sharedFeatureApp === "pi") {
       setCurrentView("providers");
     }
   }, [sharedFeatureApp, currentView]);
@@ -509,6 +522,8 @@ function App() {
   useUsageCacheBridge();
 
   const promptPanelRef = useRef<any>(null);
+  const [promptPrimaryAction, setPromptPrimaryAction] =
+    useState<PromptPrimaryAction>("prompt");
   const mcpPanelRef = useRef<any>(null);
   const skillsPageRef = useRef<any>(null);
   const unifiedSkillsPanelRef = useRef<any>(null);
@@ -525,6 +540,8 @@ function App() {
     status: proxyStatus,
   } = useProxyStatus(managementTarget);
   const proxyAppId = isProxyAppId(activeApp) ? activeApp : null;
+  const currentAppUsesProxy =
+    proxyAppId !== null || activeApp === "claude-desktop";
   const isCurrentAppTakeoverActive = proxyAppId
     ? (takeoverStatus?.[proxyAppId] ?? false)
     : false;
@@ -587,6 +604,10 @@ function App() {
 
   const providers = useMemo(() => data?.providers ?? {}, [data]);
   const currentProviderId = data?.currentProviderId ?? "";
+  // Pi 全局默认提示需要读取 Pi 当前状态；远程目标无该命令，仅本地启用。
+  const { data: piCurrentState } = usePiCurrentState(
+    activeApp === "pi" && managementTarget.type === "local",
+  );
   const isOpenClawView =
     activeApp === "openclaw" &&
     (currentView === "providers" ||
@@ -607,7 +628,10 @@ function App() {
     sharedFeatureApp === "opencode" ||
     sharedFeatureApp === "openclaw" ||
     sharedFeatureApp === "gemini" ||
-    sharedFeatureApp === "hermes";
+    sharedFeatureApp === "hermes" ||
+    sharedFeatureApp === "pi";
+  // Pi 不提供 MCP 管理视图；从工具栏隐藏入口，避免进入后又被回退。
+  const hasMcpSupport = sharedFeatureApp !== "pi";
   const canOpenSessions = hasSessionSupport;
 
   const {
@@ -623,6 +647,38 @@ function App() {
     isProxyRunning && isCurrentAppRouteActive,
     managementTarget,
   );
+
+  // Pi 供应商在首页直接点「启用」就把该供应商写入 Pi 原生配置。
+  const handleEnablePiProvider = async (provider: Provider) => {
+    try {
+      await providersApi.switch(provider.id, "pi");
+      await invalidatePiProviderCaches(queryClient);
+      await providersApi.updateTrayMenu().catch((error) => {
+        console.error(
+          "Failed to update tray menu after enabling Pi provider",
+          error,
+        );
+      });
+      toast.success(
+        t("pi.provider.enabled", {
+          defaultValue: "已在 Pi 中启用",
+        }),
+        { closeButton: true },
+      );
+    } catch (error) {
+      const detail = extractErrorMessage(error);
+      toast.error(
+        t("pi.provider.enableFailed", {
+          defaultValue: "无法在 Pi 中启用此供应商",
+        }),
+        {
+          description:
+            translatePiProviderMutationError(detail, t) || detail || undefined,
+          closeButton: true,
+        },
+      );
+    }
+  };
 
   const disableOmoMutation = useDisableCurrentOmo(managementTarget);
   const handleDisableOmo = () => {
@@ -668,6 +724,9 @@ function App() {
           async (event: ProviderSwitchEvent) => {
             if (event.appType === activeApp) {
               await refetch();
+            }
+            if (event.appType === "pi") {
+              await invalidatePiProviderCaches(queryClient);
             }
           },
         );
@@ -985,11 +1044,31 @@ function App() {
     if (action === "remove") {
       // Remove from live config only (for additive mode apps like OpenCode/OpenClaw)
       // Does NOT delete from database - provider remains in the list
-      await providersApi.removeFromLiveConfig(
-        provider.id,
-        activeApp,
-        managementTarget,
-      );
+      try {
+        await providersApi.removeFromLiveConfig(
+          provider.id,
+          activeApp,
+          managementTarget,
+        );
+      } catch (error) {
+        const detail = extractErrorMessage(error);
+        const description =
+          activeApp === "pi" && managementTarget.type === "local"
+            ? translatePiProviderMutationError(detail, t) || detail
+            : detail;
+        if (activeApp === "pi" && managementTarget.type === "local") {
+          void invalidatePiProviderCaches(queryClient).catch(() => undefined);
+        }
+        setConfirmAction(null);
+        toast.error(t("notifications.removeFromConfigFailed"), {
+          description: description || t("common.unknown"),
+          closeButton: true,
+        });
+        return;
+      }
+      if (activeApp === "pi") {
+        await invalidatePiProviderCaches(queryClient);
+      }
       // Invalidate queries to refresh the isInConfig state
       if (activeApp === "opencode") {
         await queryClient.invalidateQueries({
@@ -1015,9 +1094,13 @@ function App() {
         });
       }
       toast.success(
-        t("notifications.removeFromConfigSuccess", {
-          defaultValue: "已从配置移除",
-        }),
+        activeApp === "pi" && managementTarget.type === "local"
+          ? t("pi.provider.removed", {
+              defaultValue: "已从 Pi 移除",
+            })
+          : t("notifications.removeFromConfigSuccess", {
+              defaultValue: "已从配置移除",
+            }),
         { closeButton: true },
       );
     } else {
@@ -1064,7 +1147,8 @@ function App() {
     if (
       activeApp === "opencode" ||
       activeApp === "openclaw" ||
-      activeApp === "hermes"
+      activeApp === "hermes" ||
+      activeApp === "pi"
     ) {
       let liveProviderIds: string[] = [];
       try {
@@ -1287,6 +1371,7 @@ function App() {
               onOpenChange={() => setCurrentView("providers")}
               appId={sharedFeatureApp}
               target={managementTarget}
+              onPrimaryActionChange={setPromptPrimaryAction}
               onInteractionBlockedChange={setPromptManagementBusy}
               onNavigationBlockedChange={setPromptNavigationBusy}
             />
@@ -1389,14 +1474,18 @@ function App() {
                       currentProviderId={currentProviderId}
                       appId={activeApp}
                       isLoading={isLoading}
-                      isProxyRunning={isProxyRunning}
+                      isProxyRunning={currentAppUsesProxy && isProxyRunning}
                       isProxyTakeover={
                         isProxyRunning && isCurrentAppRouteActive
                       }
                       loadError={providerLoadError}
                       activeProviderId={activeProviderId}
                       target={managementTarget}
-                      onSwitch={switchProvider}
+                      onSwitch={
+                        activeApp === "pi" && managementTarget.type === "local"
+                          ? handleEnablePiProvider
+                          : switchProvider
+                      }
                       onEdit={(provider) => {
                         setEditingProvider(provider);
                       }}
@@ -1406,7 +1495,8 @@ function App() {
                       onRemoveFromConfig={
                         activeApp === "opencode" ||
                         activeApp === "openclaw" ||
-                        activeApp === "hermes"
+                        activeApp === "hermes" ||
+                        activeApp === "pi"
                           ? (provider) =>
                               setConfirmAction({ provider, action: "remove" })
                           : undefined
@@ -1776,26 +1866,39 @@ function App() {
               >
                 {currentView === "prompts" && (
                   <>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={promptManagementBusy}
-                      onClick={() => promptPanelRef.current?.openImport()}
-                      className="hover:bg-black/5 disabled:opacity-100 dark:hover:bg-white/5"
-                    >
-                      <Download className="w-4 h-4 mr-2" />
-                      {t("prompts.import")}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={promptManagementBusy}
-                      onClick={() => promptPanelRef.current?.openAdd()}
-                      className="hover:bg-black/5 disabled:opacity-100 dark:hover:bg-white/5"
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      {t("prompts.add")}
-                    </Button>
+                    {!(
+                      sharedFeatureApp === "pi" &&
+                      managementTarget.type === "local"
+                    ) && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={promptManagementBusy}
+                        onClick={() => promptPanelRef.current?.openImport()}
+                        className="hover:bg-black/5 disabled:opacity-100 dark:hover:bg-white/5"
+                      >
+                        <Download className="w-4 h-4 mr-2" />
+                        {t("prompts.import")}
+                      </Button>
+                    )}
+                    {(sharedFeatureApp !== "pi" ||
+                      managementTarget.type === "remote" ||
+                      promptPrimaryAction) && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={promptManagementBusy}
+                        onClick={() => promptPanelRef.current?.openAdd()}
+                        className="hover:bg-black/5 disabled:opacity-100 dark:hover:bg-white/5"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        {sharedFeatureApp === "pi" &&
+                        managementTarget.type === "local" &&
+                        promptPrimaryAction === "template"
+                          ? t("pi.prompts.newTemplate")
+                          : t("prompts.add")}
+                      </Button>
+                    )}
                   </>
                 )}
                 {currentView === "mcp" && (
@@ -1983,15 +2086,17 @@ function App() {
                                   </Button>
                                 </>
                               )}
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setCurrentView("mcp")}
-                                className="text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 w-8 px-2"
-                                title={t("mcp.title")}
-                              >
-                                <McpIcon size={16} />
-                              </Button>
+                              {hasMcpSupport && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setCurrentView("mcp")}
+                                  className="text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 w-8 px-2"
+                                  title={t("mcp.title")}
+                                >
+                                  <McpIcon size={16} />
+                                </Button>
+                              )}
                             </>
                           ) : activeApp === "openclaw" ? (
                             <>
@@ -2088,15 +2193,17 @@ function App() {
                                   <History className="flex-shrink-0 w-4 h-4" />
                                 </Button>
                               )}
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setCurrentView("mcp")}
-                                className="text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 w-8 px-2"
-                                title={t("mcp.title")}
-                              >
-                                <McpIcon size={16} />
-                              </Button>
+                              {hasMcpSupport && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setCurrentView("mcp")}
+                                  className="text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 w-8 px-2"
+                                  title={t("mcp.title")}
+                                >
+                                  <McpIcon size={16} />
+                                </Button>
+                              )}
                             </>
                           )}
                         </motion.div>
@@ -2172,13 +2279,24 @@ function App() {
         }
         message={
           confirmAction
-            ? confirmAction.action === "remove"
-              ? t("confirm.removeProviderMessage", {
-                  name: confirmAction.provider.name,
-                })
-              : t("confirm.deleteProviderMessage", {
-                  name: confirmAction.provider.name,
-                })
+            ? activeApp === "pi" &&
+              piCurrentState?.defaultProviderId === confirmAction.provider.id
+              ? `${
+                  confirmAction.action === "remove"
+                    ? t("confirm.removeProviderMessage", {
+                        name: confirmAction.provider.name,
+                      })
+                    : t("confirm.deleteProviderMessage", {
+                        name: confirmAction.provider.name,
+                      })
+                }\n\n${t("confirm.piDefaultProviderWarning")}`
+              : confirmAction.action === "remove"
+                ? t("confirm.removeProviderMessage", {
+                    name: confirmAction.provider.name,
+                  })
+                : t("confirm.deleteProviderMessage", {
+                    name: confirmAction.provider.name,
+                  })
             : ""
         }
         onConfirm={() => void handleConfirmAction()}

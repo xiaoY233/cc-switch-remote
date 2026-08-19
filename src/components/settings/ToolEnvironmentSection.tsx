@@ -24,6 +24,7 @@ export const TOOL_NAMES = [
   "opencode",
   "openclaw",
   "hermes",
+  "pi",
 ] as const;
 
 export type ToolName = (typeof TOOL_NAMES)[number];
@@ -52,6 +53,7 @@ export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
   opencode: "OpenCode",
   openclaw: "OpenClaw",
   hermes: "Hermes",
+  pi: "Pi",
 };
 
 const TOOL_APP_IDS: Record<ToolName, AppId> = {
@@ -62,6 +64,7 @@ const TOOL_APP_IDS: Record<ToolName, AppId> = {
   opencode: "opencode",
   openclaw: "openclaw",
   hermes: "hermes",
+  pi: "pi",
 };
 
 const ENV_BADGE_CONFIG: Record<
@@ -202,11 +205,11 @@ export function ToolEnvironmentSection({
             const action: ToolLifecycleAction | null =
               isToolVersionLoading || installedButBroken
                 ? null
-                : !tool?.version
-                  ? "install"
-                  : isOutdated
+                : tool?.version
+                  ? isOutdated
                     ? "update"
-                    : null;
+                    : null
+                  : "install";
             const runningAction = toolActions[toolName];
             const titleText =
               tool?.version || tool?.error || t("common.unknown");

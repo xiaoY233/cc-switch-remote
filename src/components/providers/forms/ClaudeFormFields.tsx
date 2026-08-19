@@ -48,6 +48,7 @@ import {
   type FetchedModel,
 } from "@/lib/api/model-fetch";
 import type { ManagementTarget } from "@/lib/api/remote";
+import type { ManagedAuthProvider } from "@/lib/api";
 import { CustomUserAgentField } from "./CustomUserAgentField";
 import { LocalProxyRequestOverridesField } from "./LocalProxyRequestOverridesField";
 import type {
@@ -92,6 +93,8 @@ interface ClaudeFormFieldsProps {
   selectedGitHubAccountId?: string | null;
   /** GitHub 账号选择回调（多账号支持） */
   onGitHubAccountSelect?: (accountId: string | null) => void;
+  /** 打开托管账号管理入口（本地目标） */
+  onManageAuthAccounts?: (target: ManagedAuthProvider) => void;
 
   // Codex OAuth (ChatGPT Plus/Pro)
   isCodexOauthPreset?: boolean;
@@ -189,6 +192,7 @@ export function ClaudeFormFields({
   isXaiOauthAuthenticated,
   selectedXaiAccountId,
   onXaiAccountSelect,
+  onManageAuthAccounts,
   templateValueEntries,
   templateValues,
   templatePresetName,
@@ -709,6 +713,11 @@ export function ClaudeFormFields({
           target={modelFetchTarget}
           selectedAccountId={selectedGitHubAccountId}
           onAccountSelect={onGitHubAccountSelect}
+          onManageAccounts={
+            onManageAuthAccounts
+              ? () => onManageAuthAccounts("github_copilot")
+              : undefined
+          }
         />
       )}
 
@@ -720,6 +729,11 @@ export function ClaudeFormFields({
           onAccountSelect={onCodexAccountSelect}
           fastModeEnabled={codexFastMode}
           onFastModeChange={onCodexFastModeChange}
+          onManageAccounts={
+            onManageAuthAccounts
+              ? () => onManageAuthAccounts("codex_oauth")
+              : undefined
+          }
         />
       )}
 

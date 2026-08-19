@@ -8,6 +8,10 @@ import { ManagementListSearch } from "@/components/common/ManagementListSearch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import PromptListItem from "./PromptListItem";
 import PromptFormPanel from "./PromptFormPanel";
+import PiPromptPanel, {
+  type PromptPrimaryAction,
+  type PiPromptPanelHandle,
+} from "./PiPromptPanel";
 import { ConfirmDialog } from "../ConfirmDialog";
 import type { ManagementTarget } from "@/lib/api/remote";
 
@@ -17,6 +21,7 @@ interface PromptPanelProps {
   appId: AppId;
   onInteractionBlockedChange?: (blocked: boolean) => void;
   onNavigationBlockedChange?: (blocked: boolean) => void;
+  onPrimaryActionChange?: (action: PromptPrimaryAction) => void;
   target?: ManagementTarget;
 }
 
@@ -27,7 +32,10 @@ export interface PromptPanelHandle {
   openImport: () => Promise<void>;
 }
 
-const PromptPanel = React.forwardRef<PromptPanelHandle, PromptPanelProps>(
+const StandardPromptPanel = React.forwardRef<
+  PromptPanelHandle,
+  PromptPanelProps
+>(
   (
     {
       open,
@@ -381,6 +389,30 @@ const PromptPanel = React.forwardRef<PromptPanelHandle, PromptPanelProps>(
   },
 );
 
+StandardPromptPanel.displayName = "StandardPromptPanel";
+
+const PromptPanel = React.forwardRef<PromptPanelHandle, PromptPanelProps>(
+  (props, ref) => {
+    // Pi 原生提示词面板只适用于本地目标：它读写的是本机 Pi 的
+    // 提示词/规则文件；远程目标继续走标准的远端 prompts 链路。
+    if (props.appId === "pi" && props.target?.type !== "remote") {
+      return (
+        <PiPromptPanel
+          ref={ref as React.ForwardedRef<PiPromptPanelHandle>}
+          open={props.open}
+          onInteractionBlockedChange={props.onInteractionBlockedChange}
+          onNavigationBlockedChange={props.onNavigationBlockedChange}
+          onPrimaryActionChange={props.onPrimaryActionChange}
+        />
+      );
+    }
+
+    return <StandardPromptPanel ref={ref} {...props} />;
+  },
+);
+
 PromptPanel.displayName = "PromptPanel";
+
+export type { PromptPrimaryAction } from "./PiPromptPanel";
 
 export default PromptPanel;

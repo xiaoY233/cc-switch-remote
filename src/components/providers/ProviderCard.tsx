@@ -31,6 +31,7 @@ import {
 import { useProviderHealth } from "@/lib/query/failover";
 import { useUsageQuery } from "@/lib/query/queries";
 import { resolveProviderIcon } from "@/utils/providerIcon";
+import { ProviderStatusBadge } from "@/components/providers/ProviderStatusBadge";
 
 interface DragHandleProps {
   attributes: DraggableAttributes;
@@ -379,6 +380,16 @@ export function ProviderCard({
                       defaultValue: "需要路由",
                     })}
                   </span>
+                )}
+
+              {appId === "claude-desktop" &&
+                providerNeedsRouting(appId, provider) && (
+                  <ProviderStatusBadge
+                    tone="info"
+                    label={t("provider.needsRouting", {
+                      defaultValue: "需要路由",
+                    })}
+                  />
                 )}
 
               {appId === "claude" && providerNeedsRouting(appId, provider) && (

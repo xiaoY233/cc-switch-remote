@@ -21,6 +21,7 @@ import {
   Plus,
   X,
   User,
+  Settings2,
 } from "lucide-react";
 import { useCopilotAuth } from "./hooks/useCopilotAuth";
 import { copyText } from "@/lib/clipboard";
@@ -35,6 +36,8 @@ interface CopilotAuthSectionProps {
   /** 账号选择回调 */
   onAccountSelect?: (accountId: string | null) => void;
   onBusyChange?: (busy: boolean) => void;
+  /** 打开托管账号管理入口（本地目标） */
+  onManageAccounts?: () => void;
 }
 
 /**
@@ -48,6 +51,7 @@ export const CopilotAuthSection: React.FC<CopilotAuthSectionProps> = ({
   selectedAccountId,
   onAccountSelect,
   onBusyChange,
+  onManageAccounts,
 }) => {
   const { t } = useTranslation();
   const [copied, setCopied] = React.useState(false);
@@ -129,19 +133,33 @@ export const CopilotAuthSection: React.FC<CopilotAuthSectionProps> = ({
   return (
     <div className={`space-y-4 ${className || ""}`}>
       {/* 认证状态标题 */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <Label>{t("copilot.authStatus", "GitHub Copilot 认证")}</Label>
-        <Badge
-          variant={hasAnyAccount ? "default" : "secondary"}
-          className={hasAnyAccount ? "bg-green-500 hover:bg-green-600" : ""}
-        >
-          {hasAnyAccount
-            ? t("copilot.accountCount", {
-                count: accounts.length,
-                defaultValue: `${accounts.length} 个账号`,
-              })
-            : t("copilot.notAuthenticated", "未认证")}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge
+            variant={hasAnyAccount ? "default" : "secondary"}
+            className={hasAnyAccount ? "bg-green-500 hover:bg-green-600" : ""}
+          >
+            {hasAnyAccount
+              ? t("copilot.accountCount", {
+                  count: accounts.length,
+                  defaultValue: `${accounts.length} 个账号`,
+                })
+              : t("copilot.notAuthenticated", "未认证")}
+          </Badge>
+          {onManageAccounts && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onManageAccounts}
+              className="h-7 shrink-0"
+            >
+              <Settings2 className="h-3.5 w-3.5" />
+              {t("copilot.manageAccounts", "管理账号")}
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* GitHub 部署类型选择 */}

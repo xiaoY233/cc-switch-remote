@@ -376,6 +376,7 @@ export function CodexFormFields({
   isXaiOauthAuthenticated,
   selectedXaiAccountId,
   onXaiAccountSelect,
+  onManageAuthAccounts,
   codexApiKey,
   onApiKeyChange,
   apiKeyPlaceholder,
@@ -727,6 +728,11 @@ export function CodexFormFields({
         <CodexOAuthSection
           selectedAccountId={selectedCodexAccountId}
           onAccountSelect={onCodexAccountSelect}
+          onManageAccounts={
+            onManageAuthAccounts
+              ? () => onManageAuthAccounts("codex_oauth")
+              : undefined
+          }
         />
       )}
 
