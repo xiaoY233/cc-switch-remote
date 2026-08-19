@@ -5,7 +5,20 @@ All notable changes to CC Switch will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.20.0] - 2026-08-18
+
+CC Switch Remote v3.20.0 uses the exact upstream `v3.20.0` tag as its stable baseline, then adds fork-specific remote-target parity for the new account-aware Codex OAuth, Pi, and schema-v17 reconciliation. The upstream tag remains traceable locally as `upstream-v3.20.0`; the fork release tag points to the reviewed CC Switch Remote release commit.
+
+The upstream changes include Pi joining as the ninth managed app (provider management over `~/.pi/agent/models.json`, a prompt library, Skills, a session browser, and a schema v16 → v17 migration adding a device-local `session_usage_dedup` table), Codex multi-account ChatGPT management (per-card account binding in the Auth Center), Claude Code hosted WebSearch and Codex standalone Alpha Search through the local proxy, per-model Codex reasoning levels and corrected thinking-switch dialects, Windows WSL-path and CLI-detection fixes, the no-more-startup-flash fix, backup/sync hardening, the macOS IME fix, and DeepSeek V4 repricing. Full upstream reference notes are preserved in:
+
+- `docs/release-notes/v3.20.0-en.md`
+- `docs/release-notes/v3.20.0-ja.md`
+- `docs/release-notes/v3.20.0-zh.md`
+
+Fork-specific release details are recorded in `docs/release-notes/v3.20.0-remote-zh.md`.
+
 ## [3.19.2] - 2026-08-10
+
 
 CC Switch Remote v3.19.2 uses the exact upstream `v3.19.2` tag as its stable baseline, then adds fork-specific remote-target parity, connection-isolation, helper-runtime, settings-transaction, updater-boundary, and release-safety fixes. The upstream tag remains traceable locally as `upstream-v3.19.2`; the fork release tag points to the reviewed CC Switch Remote release commit.
 

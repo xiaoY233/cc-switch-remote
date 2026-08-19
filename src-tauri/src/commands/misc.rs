@@ -226,20 +226,8 @@ fn resolve_launch_cwd(cwd: Option<String>) -> Result<Option<PathBuf>, String> {
         return Err(format!("选择的路径不是文件夹: {}", resolved.display()));
     }
 
-    // Strip Windows extended-length prefix that canonicalize produces,
-    // as it can break batch scripts and other shell commands.
-    // Special-case \\?\UNC\server\share -> \\server\share for network/WSL paths.
     #[cfg(target_os = "windows")]
-    let resolved = {
-        let s = resolved.to_string_lossy();
-        if let Some(unc) = s.strip_prefix(r"\\?\UNC\") {
-            PathBuf::from(format!(r"\\{unc}"))
-        } else if let Some(stripped) = s.strip_prefix(r"\\?\") {
-            PathBuf::from(stripped)
-        } else {
-            resolved
-        }
-    };
+    let resolved = windows_shell_compatible_path(&resolved);
 
     Ok(Some(resolved))
 }
@@ -1291,6 +1279,7 @@ mod tests {
     }
 
     #[test]
+
     fn resolve_launch_cwd_accepts_existing_directory() {
         let resolved =
             resolve_launch_cwd(Some(std::env::temp_dir().to_string_lossy().into_owned()))

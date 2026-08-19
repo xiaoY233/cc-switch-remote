@@ -356,6 +356,7 @@ describe("App integration with MSW", () => {
         opencode: true,
         openclaw: true,
         hermes: true,
+        pi: true,
       },
     });
     setRemoteProfiles([
@@ -992,6 +993,7 @@ describe("App integration with MSW", () => {
         opencode: false,
         openclaw: false,
         hermes: false,
+        pi: false,
       },
     });
     setRemoteSettings({
@@ -1004,6 +1006,7 @@ describe("App integration with MSW", () => {
         opencode: false,
         openclaw: false,
         hermes: false,
+        pi: false,
       },
     });
     setRemoteProfiles([
@@ -1058,6 +1061,7 @@ describe("App integration with MSW", () => {
         opencode: false,
         openclaw: false,
         hermes: false,
+        pi: false,
       },
     });
     setRemoteProfiles([

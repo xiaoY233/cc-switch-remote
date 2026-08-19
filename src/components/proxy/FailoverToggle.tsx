@@ -14,12 +14,13 @@ import { useAppProxyConfig } from "@/lib/query/proxy";
 import { useProxyStatus } from "@/hooks/useProxyStatus";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
-import type { AppId, ManagementTarget } from "@/lib/api";
+import type { ManagementTarget } from "@/lib/api";
+import { type ProxyAppId } from "@/config/appConfig";
 import { LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
 
 interface FailoverToggleProps {
   className?: string;
-  activeApp: AppId;
+  activeApp: ProxyAppId;
   target?: ManagementTarget;
 }
 

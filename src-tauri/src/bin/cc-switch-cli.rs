@@ -57,6 +57,9 @@ mod openclaw_config;
 #[path = "../opencode_config.rs"]
 #[cfg(not(feature = "desktop"))]
 mod opencode_config;
+#[path = "../pi_config/mod.rs"]
+#[cfg(not(feature = "desktop"))]
+mod pi_config;
 #[path = "../prompt.rs"]
 #[cfg(not(feature = "desktop"))]
 mod prompt;
@@ -126,6 +129,17 @@ fn redact_known_secrets(text: &str, known_secrets: &[String]) -> String {
     let mut output = text.to_string();
     for secret in known_secrets {
         if secret.chars().count() >= MIN_KNOWN_SECRET_LEN {
+            output = output.replace(secret.as_str(), "[REDACTED]");
+        }
+    }
+    output
+}
+
+#[cfg(not(feature = "desktop"))]
+fn redact_known_secrets_strict(text: &str, known_secrets: &[String]) -> String {
+    let mut output = text.to_string();
+    for secret in known_secrets {
+        if secret.chars().count() >= 1 {
             output = output.replace(secret.as_str(), "[REDACTED]");
         }
     }

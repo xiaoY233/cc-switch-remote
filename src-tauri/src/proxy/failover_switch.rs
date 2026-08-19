@@ -7,7 +7,9 @@
 
 use crate::database::Database;
 use crate::error::AppError;
-use crate::proxy::ProxyAppHandle;
+use crate::proxy::{
+    providers::codex_oauth_auth::CodexOAuthManager, switch_lock::SwitchLockManager, ProxyAppHandle,
+};
 use std::collections::HashSet;
 use std::sync::Arc;
 #[cfg(feature = "desktop")]
@@ -22,13 +24,29 @@ pub struct FailoverSwitchManager {
     /// 正在处理中的切换（key = "app_type:provider_id"）
     pending_switches: Arc<RwLock<HashSet<String>>>,
     db: Arc<Database>,
+    codex_oauth_manager: Arc<CodexOAuthManager>,
+    switch_locks: SwitchLockManager,
 }
 
 impl FailoverSwitchManager {
     pub fn new(db: Arc<Database>) -> Self {
+        Self::new_with_dependencies(
+            db,
+            Arc::new(CodexOAuthManager::new(crate::config::get_app_config_dir())),
+            SwitchLockManager::new(),
+        )
+    }
+
+    pub fn new_with_dependencies(
+        db: Arc<Database>,
+        codex_oauth_manager: Arc<CodexOAuthManager>,
+        switch_locks: SwitchLockManager,
+    ) -> Self {
         Self {
             pending_switches: Arc::new(RwLock::new(HashSet::new())),
             db,
+            codex_oauth_manager,
+            switch_locks,
         }
     }
 
@@ -138,7 +156,12 @@ impl FailoverSwitchManager {
         #[cfg(not(feature = "desktop"))]
         {
             let _ = app_handle;
-            let proxy_service = crate::services::ProxyService::new(self.db.clone());
+            let proxy_service =
+                crate::services::ProxyService::new_with_codex_oauth_manager_and_switch_locks(
+                    self.db.clone(),
+                    self.codex_oauth_manager.clone(),
+                    self.switch_locks.clone(),
+                );
             switched = proxy_service
                 .hot_switch_provider(app_type, provider_id)
                 .await

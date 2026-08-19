@@ -70,6 +70,7 @@ const installedSkill: InstalledSkill = {
     opencode: false,
     openclaw: false,
     hermes: false,
+    pi: false,
   },
   installedAt: 1,
   updatedAt: 1,

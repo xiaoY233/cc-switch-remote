@@ -28,6 +28,8 @@ import {
   fetchModelsDevPricing,
   flattenModels,
   formatPrice,
+  MODELS_DEV_QUERY_KEY,
+  MODELS_DEV_STALE_TIME_MS,
   type ModelsDevEntry,
 } from "@/lib/modelsDevPricing";
 import { isTextEditableTarget } from "@/utils/domUtils";
@@ -73,10 +75,10 @@ export function ModelsDevPickerDialog({
   }, [open]);
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ["models-dev-pricing"],
+    queryKey: MODELS_DEV_QUERY_KEY,
     queryFn: fetchModelsDevPricing,
     enabled: open,
-    staleTime: 60 * 60 * 1000,
+    staleTime: MODELS_DEV_STALE_TIME_MS,
     retry: 1,
   });
 

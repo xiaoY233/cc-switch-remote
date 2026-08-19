@@ -21,6 +21,7 @@ export function usePromptActions(
     null,
   );
   const [loading, setLoading] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
   const [currentFileContent, setCurrentFileContent] = useState<string | null>(
     null,
   );
@@ -211,6 +212,8 @@ export function usePromptActions(
       const previousPrompts = visiblePrompts;
       const mutationGeneration = reloadGenerationRef.current;
 
+      if (appId === "pi") setTogglingId(id);
+
       if (enabled) {
         const updatedPrompts = Object.keys(visiblePrompts).reduce(
           (acc, key) => {
@@ -268,6 +271,8 @@ export function usePromptActions(
           enabled ? t("prompts.enableFailed") : t("prompts.disableFailed"),
         );
         throw error;
+      } finally {
+        if (appId === "pi") setTogglingId(null);
       }
     },
     [
@@ -304,6 +309,7 @@ export function usePromptActions(
     prompts: visiblePrompts,
     loading,
     currentFileContent: visibleCurrentFileContent,
+    togglingId,
     reload,
     savePrompt,
     deletePrompt,

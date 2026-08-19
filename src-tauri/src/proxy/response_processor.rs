@@ -1029,6 +1029,11 @@ mod tests {
             gemini_shadow: Arc::new(GeminiShadowStore::default()),
             codex_chat_history: Arc::new(CodexChatHistoryStore::default()),
             app_handle: None,
+            codex_oauth_manager: Arc::new(
+                crate::proxy::providers::codex_oauth_auth::CodexOAuthManager::new(
+                    crate::config::get_app_config_dir(),
+                ),
+            ),
             managed_auth_runtime: crate::proxy::managed_auth_runtime::ManagedAuthRuntime::default(),
             failover_manager: Arc::new(FailoverSwitchManager::new(db)),
         }

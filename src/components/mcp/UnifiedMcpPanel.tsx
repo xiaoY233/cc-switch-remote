@@ -18,7 +18,7 @@ import { ConfirmDialog } from "../ConfirmDialog";
 import { settingsApi } from "@/lib/api";
 import { mcpPresets } from "@/config/mcpPresets";
 import { toast } from "sonner";
-import { MCP_APP_IDS } from "@/config/appConfig";
+import { isMcpAppId, MCP_APP_IDS } from "@/config/appConfig";
 import { AppCountBar } from "@/components/common/AppCountBar";
 import { AppToggleGroup } from "@/components/common/AppToggleGroup";
 import { ListItemRow } from "@/components/common/ListItemRow";
@@ -174,7 +174,7 @@ const UnifiedMcpPanel = React.forwardRef<
       app: AppId,
       enabled: boolean,
     ) => {
-      if (!beginWrite()) return;
+      if (!isMcpAppId(app) || !beginWrite()) return;
       try {
         await toggleAppMutation.mutateAsync({ serverId, app, enabled });
       } catch (error) {
@@ -185,7 +185,7 @@ const UnifiedMcpPanel = React.forwardRef<
     };
 
     const handleToggleAll = async (app: AppId, enabled: boolean) => {
-      if (!beginWrite()) return;
+      if (!isMcpAppId(app) || !beginWrite()) return;
 
       // AppCountBar summarizes the complete collection, so its bulk action must
       // use the complete collection too, even while a search filter is active.

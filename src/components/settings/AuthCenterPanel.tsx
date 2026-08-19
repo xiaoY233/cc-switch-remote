@@ -7,9 +7,10 @@ import { CopilotAuthSection } from "@/components/providers/forms/CopilotAuthSect
 import { CodexOAuthSection } from "@/components/providers/forms/CodexOAuthSection";
 import { XaiOAuthSection } from "@/components/providers/forms/XaiOAuthSection";
 import { ProviderIcon } from "@/components/ProviderIcon";
-import type { ManagementTarget } from "@/lib/api";
+import type { ManagedAuthProvider, ManagementTarget } from "@/lib/api";
 
 interface AuthCenterPanelProps {
+  authScrollTarget?: ManagedAuthProvider | null;
   target?: ManagementTarget;
   onBusyChange?: (busy: boolean) => void;
 }

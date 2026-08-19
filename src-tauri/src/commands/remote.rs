@@ -67,6 +67,8 @@ pub struct RemoteFetchModelsOptions {
     pub is_full_url: Option<bool>,
     pub models_url: Option<String>,
     pub custom_user_agent: Option<String>,
+    pub api_format: Option<String>,
+    pub request_headers: Option<std::collections::BTreeMap<String, String>>,
 }
 
 #[derive(Clone, serde::Serialize)]

@@ -36,10 +36,15 @@ export function useProxyStatus(
   };
 
   // 查询状态（自动轮询）
-  const { data: status, isLoading, refetch } = useProxyStatusQuery(target);
+  const {
+    data: status,
+    isLoading: isProxyStatusPending,
+    refetch,
+  } = useProxyStatusQuery(target);
 
   // 查询各应用接管状态
-  const { data: takeoverStatus } = useProxyTakeoverStatus(target, false);
+  const { data: takeoverStatus, isLoading: isTakeoverStatusPending } =
+    useProxyTakeoverStatus(target, false);
 
   // 启动服务器（总开关：仅启动服务，不接管）
   const startProxyServerMutation = useMutation({
@@ -192,10 +197,11 @@ export function useProxyStatus(
 
   return {
     status,
-    isLoading,
+    isLoading: isProxyStatusPending,
     refetch,
     isRunning: status?.running || false,
     takeoverStatus,
+    isInitialStatusPending: isProxyStatusPending || isTakeoverStatusPending,
 
     // 启动/停止（总开关）
     startProxyServer: startProxyServerMutation.mutateAsync,

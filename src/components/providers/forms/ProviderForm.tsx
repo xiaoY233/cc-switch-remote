@@ -237,6 +237,7 @@ export interface ProviderFormProps {
   onUniversalPresetSelect?: (preset: UniversalProviderPreset) => void;
   onManageUniversalProviders?: () => void;
   onSubmittingChange?: (isSubmitting: boolean) => void;
+  onSubmitReadyChange?: (isReady: boolean) => void;
   target?: ManagementTarget;
   initialData?: {
     name?: string;
@@ -845,7 +846,9 @@ function ProviderFormFull({
         }
         config.env[key] = value;
         form.setValue("settingsConfig", JSON.stringify(config, null, 2));
-      } catch {}
+      } catch {
+        // The user may be editing malformed raw JSON; preserve the form value.
+      }
     },
     [form],
   );

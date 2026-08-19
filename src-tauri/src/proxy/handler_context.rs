@@ -232,6 +232,7 @@ impl RequestContext {
             state.codex_chat_history.clone(),
             state.failover_manager.clone(),
             state.app_handle.clone(),
+            state.codex_oauth_manager.clone(),
             state.managed_auth_runtime.clone(),
             self.current_provider_id.clone(),
             self.session_id.clone(),

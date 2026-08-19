@@ -4,6 +4,8 @@
 
 use crate::services::model_fetch::{self, FetchedModel};
 
+use std::collections::BTreeMap;
+
 #[tauri::command]
 pub async fn get_opencode_models() -> Result<Vec<model_fetch::OpenCodeModelRef>, String> {
     model_fetch::get_opencode_models().await
@@ -20,6 +22,8 @@ pub async fn fetch_models_for_config(
     is_full_url: Option<bool>,
     models_url: Option<String>,
     custom_user_agent: Option<String>,
+    api_format: Option<String>,
+    request_headers: Option<BTreeMap<String, String>>,
 ) -> Result<Vec<FetchedModel>, String> {
     // 与转发 / 检测路径共用 parse_custom_user_agent：非法 UA 静默忽略（不阻断取模型）。
     let user_agent = crate::provider::parse_custom_user_agent(custom_user_agent.as_deref())
@@ -31,6 +35,8 @@ pub async fn fetch_models_for_config(
         is_full_url.unwrap_or(false),
         models_url.as_deref(),
         user_agent,
+        api_format.as_deref(),
+        request_headers.as_ref(),
     )
     .await
 }

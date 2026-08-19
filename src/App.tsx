@@ -96,6 +96,7 @@ import { ClaudeDesktopRouteToggle } from "@/components/proxy/ClaudeDesktopRouteT
 import { FailoverToggle } from "@/components/proxy/FailoverToggle";
 import { RemoteAppRoutingToggle } from "@/components/proxy/RemoteAppRoutingToggle";
 import { isRemoteRoutableApp } from "@/lib/remoteRoutingApps";
+import { isProxyAppId } from "@/config/appConfig";
 import { useAppProxyConfig } from "@/lib/query/proxy";
 import UsageScriptModal from "@/components/UsageScriptModal";
 import UnifiedMcpPanel from "@/components/mcp/UnifiedMcpPanel";
@@ -216,6 +217,7 @@ const DEFAULT_VISIBLE_APPS: VisibleApps = {
   opencode: true,
   openclaw: true,
   hermes: true,
+  pi: true,
 };
 
 const getInitialView = (): View => {
@@ -522,7 +524,10 @@ function App() {
     takeoverStatus,
     status: proxyStatus,
   } = useProxyStatus(managementTarget);
-  const isCurrentAppTakeoverActive = takeoverStatus?.[activeApp] || false;
+  const proxyAppId = isProxyAppId(activeApp) ? activeApp : null;
+  const isCurrentAppTakeoverActive = proxyAppId
+    ? (takeoverStatus?.[proxyAppId] ?? false)
+    : false;
   const remoteRoutableActiveApp = isRemoteRoutableApp(activeApp)
     ? activeApp
     : null;
@@ -1040,7 +1045,7 @@ function App() {
 
   const handleDuplicateProvider = async (provider: Provider) => {
     const newSortIndex =
-      provider.sortIndex !== undefined ? provider.sortIndex + 1 : undefined;
+      provider.sortIndex === undefined ? undefined : provider.sortIndex + 1;
 
     const duplicatedProvider: Omit<Provider, "id" | "createdAt"> & {
       providerKey?: string;
@@ -1241,7 +1246,7 @@ function App() {
   const renderContent = () => {
     const content = (() => {
       switch (currentView) {
-        case "settings":
+        case "settings": {
           const settingsTarget: ManagementTarget = forceLocalSettings
             ? { type: "local" }
             : managementTarget;
@@ -1273,6 +1278,7 @@ function App() {
               target={settingsTarget}
             />
           );
+        }
         case "prompts":
           return (
             <PromptPanel
@@ -1553,65 +1559,7 @@ function App() {
             className="flex items-center gap-1"
             style={{ WebkitAppRegion: "no-drag" } as any}
           >
-            {currentView !== "providers" ? (
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  disabled={managementBusy}
-                  onClick={() =>
-                    setCurrentView(
-                      currentView === "skillsDiscovery"
-                        ? "skills"
-                        : "providers",
-                    )
-                  }
-                  className={cn(
-                    "mr-2 rounded-lg",
-                    managementBusy && "disabled:opacity-100",
-                  )}
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                </Button>
-                <h1 className="text-lg font-semibold">
-                  {currentView === "settings" && t("settings.title")}
-                  {currentView === "prompts" &&
-                    t("prompts.title", {
-                      appName: t(`apps.${sharedFeatureApp}`),
-                    })}
-                  {currentView === "skills" && t("skills.title")}
-                  {currentView === "skillsDiscovery" && t("skills.title")}
-                  {currentView === "mcp" && t("mcp.unifiedPanel.title")}
-                  {currentView === "agents" && t("agents.title")}
-                  {currentView === "universal" &&
-                    t("universalProvider.title", {
-                      defaultValue: "统一供应商",
-                    })}
-                  {currentView === "sessions" && t("sessionManager.title")}
-                  {currentView === "workspace" && t("workspace.title")}
-                  {currentView === "openclawEnv" && t("openclaw.env.title")}
-                  {currentView === "openclawTools" && t("openclaw.tools.title")}
-                  {currentView === "openclawAgents" &&
-                    t("openclaw.agents.title")}
-                  {currentView === "hermesMemory" && t("hermes.memory.title")}
-                  {currentView === "remoteServers" &&
-                    t("remote.title", { defaultValue: "远程服务器" })}
-                </h1>
-                {TARGET_AWARE_VIEWS.has(currentView) && (
-                  <ManagementTargetSwitcher
-                    profiles={remoteProfiles}
-                    activeTargetKey={activeTargetKey}
-                    onTargetChange={handleManagementTargetChange}
-                    onManageServers={handleOpenRemoteServers}
-                    className={cn(
-                      "ml-2",
-                      managementBusy && "pointer-events-none opacity-50",
-                    )}
-                    style={{ WebkitAppRegion: "no-drag" } as any}
-                  />
-                )}
-              </div>
-            ) : (
+            {currentView === "providers" ? (
               <div className="flex items-center gap-2">
                 <div className="relative inline-flex items-center">
                   <a
@@ -1694,30 +1642,87 @@ function App() {
                   </Button>
                 )}
               </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  disabled={managementBusy}
+                  onClick={() =>
+                    setCurrentView(
+                      currentView === "skillsDiscovery"
+                        ? "skills"
+                        : "providers",
+                    )
+                  }
+                  className={cn(
+                    "mr-2 rounded-lg",
+                    managementBusy && "disabled:opacity-100",
+                  )}
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </Button>
+                <h1 className="text-lg font-semibold">
+                  {currentView === "settings" && t("settings.title")}
+                  {currentView === "prompts" &&
+                    t("prompts.title", {
+                      appName: t(`apps.${sharedFeatureApp}`),
+                    })}
+                  {currentView === "skills" && t("skills.title")}
+                  {currentView === "skillsDiscovery" && t("skills.title")}
+                  {currentView === "mcp" && t("mcp.unifiedPanel.title")}
+                  {currentView === "agents" && t("agents.title")}
+                  {currentView === "universal" &&
+                    t("universalProvider.title", {
+                      defaultValue: "统一供应商",
+                    })}
+                  {currentView === "sessions" && t("sessionManager.title")}
+                  {currentView === "workspace" && t("workspace.title")}
+                  {currentView === "openclawEnv" && t("openclaw.env.title")}
+                  {currentView === "openclawTools" && t("openclaw.tools.title")}
+                  {currentView === "openclawAgents" &&
+                    t("openclaw.agents.title")}
+                  {currentView === "hermesMemory" && t("hermes.memory.title")}
+                  {currentView === "remoteServers" &&
+                    t("remote.title", { defaultValue: "远程服务器" })}
+                </h1>
+                {TARGET_AWARE_VIEWS.has(currentView) && (
+                  <ManagementTargetSwitcher
+                    profiles={remoteProfiles}
+                    activeTargetKey={activeTargetKey}
+                    onTargetChange={handleManagementTargetChange}
+                    onManageServers={handleOpenRemoteServers}
+                    className={cn(
+                      "ml-2",
+                      managementBusy && "pointer-events-none opacity-50",
+                    )}
+                    style={{ WebkitAppRegion: "no-drag" } as any}
+                  />
+                )}
+              </div>
             )}
           </div>
 
           <div className="flex flex-1 min-w-0 items-center justify-end gap-1.5">
             {currentView === "providers" &&
               managementTarget.type === "local" &&
-              activeApp !== "opencode" &&
-              activeApp !== "openclaw" &&
-              activeApp !== "hermes" && (
+              (activeApp === "claude-desktop" || proxyAppId) && (
                 <div
                   className="flex shrink-0 items-center gap-1.5"
                   style={{ WebkitAppRegion: "no-drag" } as any}
                 >
                   {activeApp === "claude-desktop" ? (
                     <ClaudeDesktopRouteToggle />
-                  ) : (
-                    settingsData?.enableLocalProxy && (
-                      <ProxyToggle activeApp={activeApp} />
-                    )
-                  )}
-                  {activeApp !== "claude-desktop" &&
-                    settingsData?.enableFailoverToggle && (
-                      <FailoverToggle activeApp={activeApp} />
-                    )}
+                  ) : proxyAppId ? (
+                    <>
+                      {settingsData?.enableLocalProxy && (
+                        <ProxyToggle activeApp={proxyAppId} />
+                      )}
+                      {settingsData?.enableFailoverToggle && (
+                        <FailoverToggle activeApp={proxyAppId} />
+                      )}
+                    </>
+                  ) : null}
                 </div>
               )}
             {currentView === "providers" &&

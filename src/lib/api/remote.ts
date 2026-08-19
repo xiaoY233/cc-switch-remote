@@ -154,6 +154,8 @@ export interface RemoteFetchModelsOptions {
   isFullUrl?: boolean;
   modelsUrl?: string;
   customUserAgent?: string;
+  apiFormat?: string;
+  requestHeaders?: Record<string, string>;
 }
 
 export interface RemoteTestUsageScriptOptions {

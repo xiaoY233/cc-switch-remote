@@ -153,6 +153,7 @@ const settings: Settings = {
     opencode: true,
     openclaw: true,
     hermes: true,
+    pi: true,
   },
   skillSyncMethod: "auto",
   skillStorageLocation: "cc_switch",

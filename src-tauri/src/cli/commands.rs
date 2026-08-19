@@ -43,14 +43,7 @@ static ROUTING_RUNTIME: Lazy<Result<tokio::runtime::Runtime, String>> =
 #[cfg(feature = "proxy-runtime")]
 static ROUTING_STATE: Lazy<Result<AppState, String>> = Lazy::new(|| {
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
-    Ok(AppState::new_with_managed_auth_runtime(
-        db,
-        crate::proxy::managed_auth_runtime::ManagedAuthRuntime {
-            copilot: Some(COPILOT_AUTH_MANAGER.clone()),
-            codex_oauth: Some(CODEX_OAUTH_MANAGER.clone()),
-            xai_oauth: Some(XAI_OAUTH_MANAGER.clone()),
-        },
-    ))
+    Ok(build_remote_app_state(db))
 });
 
 static AUTH_RUNTIME: Lazy<Result<tokio::runtime::Runtime, String>> =
@@ -61,6 +54,17 @@ static CODEX_OAUTH_MANAGER: Lazy<Arc<CodexOAuthManager>> =
     Lazy::new(|| Arc::new(CodexOAuthManager::new(crate::config::get_app_config_dir())));
 static XAI_OAUTH_MANAGER: Lazy<Arc<XaiOAuthManager>> =
     Lazy::new(|| Arc::new(XaiOAuthManager::new(crate::config::get_app_config_dir())));
+
+fn build_remote_app_state(db: Arc<Database>) -> AppState {
+    AppState::new_with_codex_oauth_manager_and_managed_auth_runtime(
+        db,
+        CODEX_OAUTH_MANAGER.clone(),
+        crate::proxy::managed_auth_runtime::ManagedAuthRuntime {
+            copilot: Some(COPILOT_AUTH_MANAGER.clone()),
+            xai_oauth: Some(XAI_OAUTH_MANAGER.clone()),
+        },
+    )
+}
 
 const AUTH_PROVIDER_GITHUB_COPILOT: &str = "github_copilot";
 const AUTH_PROVIDER_CODEX_OAUTH: &str = "codex_oauth";
@@ -190,6 +194,8 @@ pub struct RemoteFetchModelsOptions {
     pub is_full_url: Option<bool>,
     pub models_url: Option<String>,
     pub custom_user_agent: Option<String>,
+    pub api_format: Option<String>,
+    pub request_headers: Option<std::collections::BTreeMap<String, String>>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -258,19 +264,14 @@ pub fn fetch_models_for_provider(
         options.is_full_url.unwrap_or(false),
         options.models_url.as_deref(),
         user_agent,
+        options.api_format.as_deref(),
+        options.request_headers.as_ref(),
     ))
 }
 
 fn build_command_state() -> Result<AppState, String> {
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
-    Ok(AppState::new_with_managed_auth_runtime(
-        db,
-        crate::proxy::managed_auth_runtime::ManagedAuthRuntime {
-            copilot: Some(COPILOT_AUTH_MANAGER.clone()),
-            codex_oauth: Some(CODEX_OAUTH_MANAGER.clone()),
-            xai_oauth: Some(XAI_OAUTH_MANAGER.clone()),
-        },
-    ))
+    Ok(build_remote_app_state(db))
 }
 
 pub fn query_provider_usage(
@@ -1865,7 +1866,7 @@ fn map_s3_sync_result(
 }
 
 fn run_cli_post_import_sync(db: Arc<Database>) -> Result<(), String> {
-    let state = AppState::new(db);
+    let state = build_remote_app_state(db);
     ProviderService::sync_current_to_live(&state)
         .and_then(|_| crate::settings::reload_settings())
         .map_err(|e| e.to_string())
@@ -2043,7 +2044,7 @@ pub fn set_hermes_memory_enabled(
 
 pub fn list_providers(app: AppType) -> Result<serde_json::Value, String> {
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
-    let state = AppState::new(db);
+    let state = build_remote_app_state(db);
     let providers = ProviderService::list(&state, app).map_err(|e| e.to_string())?;
     let mut value = serde_json::to_value(providers).map_err(|e| e.to_string())?;
     redact_provider_map_secret_values(&mut value);
@@ -2052,7 +2053,7 @@ pub fn list_providers(app: AppType) -> Result<serde_json::Value, String> {
 
 pub fn current_provider(app: AppType) -> Result<String, String> {
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
-    let state = AppState::new(db);
+    let state = build_remote_app_state(db);
     ProviderService::current(&state, app).map_err(|e| e.to_string())
 }
 
@@ -2095,14 +2096,14 @@ pub fn switch_provider(app: AppType, id: &str) -> Result<crate::services::Switch
     }
 
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
-    let state = AppState::new(db);
+    let state = build_remote_app_state(db);
     ProviderService::switch(&state, app, id).map_err(|e| e.to_string())
 }
 
 pub fn add_provider(app: AppType, provider_json: &str, add_to_live: bool) -> Result<bool, String> {
     let provider: Provider = serde_json::from_str(provider_json).map_err(|e| e.to_string())?;
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
-    let state = AppState::new(db);
+    let state = build_remote_app_state(db);
     ProviderService::add(&state, app, provider, add_to_live).map_err(|e| e.to_string())
 }
 
@@ -2113,7 +2114,7 @@ pub fn update_provider(
 ) -> Result<bool, String> {
     let mut provider: Provider = serde_json::from_str(provider_json).map_err(|e| e.to_string())?;
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
-    let state = AppState::new(db);
+    let state = build_remote_app_state(db);
     let provider_id = original_id.unwrap_or(provider.id.as_str());
     if let Some(existing_provider) = state
         .db
@@ -2128,7 +2129,7 @@ pub fn update_provider(
 
 pub fn delete_provider(app: AppType, id: &str) -> Result<bool, String> {
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
-    let state = AppState::new(db);
+    let state = build_remote_app_state(db);
     ProviderService::delete(&state, app, id)
         .map(|_| true)
         .map_err(|e| e.to_string())
@@ -2136,7 +2137,7 @@ pub fn delete_provider(app: AppType, id: &str) -> Result<bool, String> {
 
 pub fn remove_provider_from_live_config(app: AppType, id: &str) -> Result<bool, String> {
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
-    let state = AppState::new(db);
+    let state = build_remote_app_state(db);
     ProviderService::remove_from_live_config(&state, app, id)
         .map(|_| true)
         .map_err(|e| e.to_string())
@@ -2165,7 +2166,7 @@ pub fn stream_check_provider(
     provider_id: &str,
 ) -> Result<crate::services::stream_check::StreamCheckResult, String> {
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
-    let state = AppState::new(db);
+    let state = build_remote_app_state(db);
     let config = state
         .db
         .get_stream_check_config()
@@ -2448,13 +2449,13 @@ pub fn sort_providers(app: AppType, updates_json: &str) -> Result<bool, String> 
     let updates: Vec<ProviderSortUpdate> =
         serde_json::from_str(updates_json).map_err(|e| e.to_string())?;
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
-    let state = AppState::new(db);
+    let state = build_remote_app_state(db);
     ProviderService::update_sort_order(&state, app, updates).map_err(|e| e.to_string())
 }
 
 pub fn import_providers(app: AppType) -> Result<bool, String> {
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
-    let state = AppState::new(db);
+    let state = build_remote_app_state(db);
     match app {
         AppType::OpenCode => crate::services::provider::import_opencode_providers_from_live(&state)
             .map(|count| count > 0)
@@ -2476,7 +2477,7 @@ pub fn import_providers(app: AppType) -> Result<bool, String> {
 
 pub fn list_universal_providers() -> Result<IndexMap<String, UniversalProvider>, String> {
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
-    let state = AppState::new(db);
+    let state = build_remote_app_state(db);
     let providers = ProviderService::list_universal(&state).map_err(|e| e.to_string())?;
     let mut value = serde_json::to_value(providers).map_err(|e| e.to_string())?;
     redact_provider_map_secret_values(&mut value);
@@ -2487,7 +2488,7 @@ pub fn list_universal_providers() -> Result<IndexMap<String, UniversalProvider>,
 
 pub fn get_universal_provider(id: &str) -> Result<Option<UniversalProvider>, String> {
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
-    let state = AppState::new(db);
+    let state = build_remote_app_state(db);
     let provider = ProviderService::get_universal(&state, id).map_err(|e| e.to_string())?;
     let Some(provider) = provider else {
         return Ok(None);
@@ -2503,7 +2504,7 @@ pub fn upsert_universal_provider(provider_json: &str) -> Result<bool, String> {
     let mut provider: UniversalProvider =
         serde_json::from_str(provider_json).map_err(|e| e.to_string())?;
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
-    let state = AppState::new(db);
+    let state = build_remote_app_state(db);
     if let Some(existing_provider) =
         ProviderService::get_universal(&state, &provider.id).map_err(|e| e.to_string())?
     {
@@ -2515,13 +2516,13 @@ pub fn upsert_universal_provider(provider_json: &str) -> Result<bool, String> {
 
 pub fn delete_universal_provider(id: &str) -> Result<bool, String> {
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
-    let state = AppState::new(db);
+    let state = build_remote_app_state(db);
     ProviderService::delete_universal(&state, id).map_err(|e| e.to_string())
 }
 
 pub fn sync_universal_provider(id: &str) -> Result<bool, String> {
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
-    let state = AppState::new(db);
+    let state = build_remote_app_state(db);
     ProviderService::sync_universal_to_apps(&state, id).map_err(|e| e.to_string())
 }
 
@@ -3028,7 +3029,7 @@ pub fn import_database_sql_b64(encoded_sql: &str) -> Result<Value, String> {
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
     let backup_id = db.import_sql_string(&sql).map_err(|e| e.to_string())?;
     let sync_warning = {
-        let state = AppState::new(db);
+        let state = build_remote_app_state(db);
         ProviderService::sync_current_to_live(&state)
             .and_then(|_| crate::settings::reload_settings())
             .err()
@@ -3214,63 +3215,63 @@ pub fn scan_openclaw_health() -> Result<Vec<crate::openclaw_config::OpenClawHeal
 
 pub fn list_mcp_servers() -> Result<IndexMap<String, McpServer>, String> {
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
-    let state = AppState::new(db);
+    let state = build_remote_app_state(db);
     McpService::get_all_servers(&state).map_err(|e| e.to_string())
 }
 
 pub fn upsert_mcp_server(server_json: &str) -> Result<(), String> {
     let server: McpServer = serde_json::from_str(server_json).map_err(|e| e.to_string())?;
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
-    let state = AppState::new(db);
+    let state = build_remote_app_state(db);
     McpService::upsert_server(&state, server).map_err(|e| e.to_string())
 }
 
 pub fn delete_mcp_server(id: &str) -> Result<bool, String> {
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
-    let state = AppState::new(db);
+    let state = build_remote_app_state(db);
     McpService::delete_server(&state, id).map_err(|e| e.to_string())
 }
 
 pub fn toggle_mcp_app(server_id: &str, app: AppType, enabled: bool) -> Result<(), String> {
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
-    let state = AppState::new(db);
+    let state = build_remote_app_state(db);
     McpService::toggle_app(&state, server_id, app, enabled).map_err(|e| e.to_string())
 }
 
 pub fn import_mcp_from_apps() -> Result<usize, String> {
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
-    let state = AppState::new(db);
+    let state = build_remote_app_state(db);
     McpService::import_from_supported_apps(&state).map_err(|e| e.to_string())
 }
 
 pub fn list_prompts(app: AppType) -> Result<IndexMap<String, Prompt>, String> {
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
-    let state = AppState::new(db);
+    let state = build_remote_app_state(db);
     PromptService::get_prompts(&state, app).map_err(|e| e.to_string())
 }
 
 pub fn upsert_prompt(app: AppType, id: &str, prompt_json: &str) -> Result<(), String> {
     let prompt: Prompt = serde_json::from_str(prompt_json).map_err(|e| e.to_string())?;
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
-    let state = AppState::new(db);
+    let state = build_remote_app_state(db);
     PromptService::upsert_prompt(&state, app, id, prompt).map_err(|e| e.to_string())
 }
 
 pub fn delete_prompt(app: AppType, id: &str) -> Result<(), String> {
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
-    let state = AppState::new(db);
+    let state = build_remote_app_state(db);
     PromptService::delete_prompt(&state, app, id).map_err(|e| e.to_string())
 }
 
 pub fn enable_prompt(app: AppType, id: &str) -> Result<(), String> {
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
-    let state = AppState::new(db);
+    let state = build_remote_app_state(db);
     PromptService::enable_prompt(&state, app, id).map_err(|e| e.to_string())
 }
 
 pub fn import_prompt_from_file(app: AppType) -> Result<String, String> {
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
-    let state = AppState::new(db);
+    let state = build_remote_app_state(db);
     PromptService::import_from_file(&state, app).map_err(|e| e.to_string())
 }
 

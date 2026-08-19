@@ -263,7 +263,7 @@ export function CommonConfigEditor({
   }
 }`}
           darkMode={isDarkMode}
-          rows={14}
+          rows={3}
           showValidation={true}
           language="json"
         />

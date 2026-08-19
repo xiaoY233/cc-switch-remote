@@ -37,6 +37,20 @@ export const extractErrorMessage = (error: unknown): string => {
   return "";
 };
 
+export const translatePiProviderMutationError = (
+  message: string,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string => {
+  if (!message) return "";
+  if (message.includes("models.json changed")) {
+    return t("pi.provider.writeConflict");
+  }
+  if (message.includes("provider key") && message.includes("already exists")) {
+    return t("pi.form.providerKeyDuplicate");
+  }
+  return "";
+};
+
 export const isRemotePasswordRequiredError = (error: unknown): boolean => {
   const message = extractErrorMessage(error);
   return (

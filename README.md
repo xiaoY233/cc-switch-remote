@@ -17,7 +17,9 @@ CC Switch Remote is a remote-management focused fork of CC Switch. It keeps the 
 
 </div>
 
+
 ## Project Direction
+
 
 - `main` is the CC Switch Remote product branch and is used for application releases.
 - `upstream-main` mirrors `farion1231/cc-switch/main` and is used only as the upstream sync baseline.
