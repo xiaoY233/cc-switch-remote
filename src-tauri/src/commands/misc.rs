@@ -232,6 +232,22 @@ fn resolve_launch_cwd(cwd: Option<String>) -> Result<Option<PathBuf>, String> {
     Ok(Some(resolved))
 }
 
+/// `std::fs::canonicalize` prefixes local paths with `\\?\` (and UNC paths
+/// with `\\?\UNC\`), but `cmd.exe` cannot `call` a batch file through those
+/// verbatim paths and reports "The system cannot find the path specified."
+/// Direct Win32 executable launches accept the prefix; batch scripts do not.
+#[cfg(target_os = "windows")]
+fn windows_shell_compatible_path(path: &Path) -> PathBuf {
+    let raw = path.to_string_lossy();
+    if let Some(unc) = raw.strip_prefix(r"\\?\UNC\") {
+        PathBuf::from(format!(r"\\{unc}"))
+    } else if let Some(local) = raw.strip_prefix(r"\\?\") {
+        PathBuf::from(local)
+    } else {
+        path.to_path_buf()
+    }
+}
+
 #[cfg(not(target_os = "windows"))]
 fn is_valid_shell(shell: &str) -> bool {
     matches!(
