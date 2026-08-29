@@ -14,7 +14,7 @@ export interface ManagedAuthAccount {
   authenticated_at: number;
   is_default: boolean;
   github_domain: string;
-  /** Codex-only: the account predates persisted id_token support. */
+  /** Codex-only: the account lacks identity or workspace metadata required for binding. */
   reauth_required?: boolean;
   /** xAI-only: the refresh credential is invalid and the account is unusable. */
   requires_reauth: boolean;
@@ -41,8 +41,14 @@ export async function authStartLogin(
   authProvider: ManagedAuthProvider,
   githubDomain?: string,
   target: ManagementTarget = { type: "local" },
+  targetAccountId?: string,
 ): Promise<ManagedAuthDeviceCodeResponse> {
   if (target.type === "remote") {
+    if (targetAccountId) {
+      throw new Error(
+        "The selected remote helper does not support account reauthentication.",
+      );
+    }
     return remoteApi.authStartLogin(
       target.profile,
       authProvider,
@@ -53,6 +59,7 @@ export async function authStartLogin(
   return invoke<ManagedAuthDeviceCodeResponse>("auth_start_login", {
     authProvider,
     githubDomain: githubDomain || null,
+    targetAccountId: targetAccountId || null,
   });
 }
 
@@ -75,6 +82,20 @@ export async function authPollForAccount(
     authProvider,
     deviceCode,
     githubDomain: githubDomain || null,
+  });
+}
+
+export async function authCancelLogin(
+  authProvider: ManagedAuthProvider,
+  deviceCode: string,
+  target: ManagementTarget = { type: "local" },
+): Promise<boolean> {
+  // Existing helpers do not expose a cancellation command. Keep the remote
+  // flow local to the selected profile rather than falling back to Tauri.
+  if (target.type === "remote") return false;
+  return invoke<boolean>("auth_cancel_login", {
+    authProvider,
+    deviceCode,
   });
 }
 
@@ -159,6 +180,7 @@ export async function authLogout(
 export const authApi = {
   authStartLogin,
   authPollForAccount,
+  authCancelLogin,
   authListAccounts,
   authGetStatus,
   authRemoveAccount,

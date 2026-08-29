@@ -683,7 +683,7 @@ pub fn auth_start_login(
             }
             AUTH_PROVIDER_CODEX_OAUTH => {
                 let response = CODEX_OAUTH_MANAGER
-                    .start_device_flow()
+                    .start_device_flow(None)
                     .await
                     .map_err(|e| e.to_string())?;
                 Ok(map_device_code_response(auth_provider, response))
@@ -725,7 +725,12 @@ pub fn auth_poll_for_account(
                 }
             }
             AUTH_PROVIDER_CODEX_OAUTH => {
-                match CODEX_OAUTH_MANAGER.poll_for_token(device_code).await {
+                // The long-lived helper dispatcher executes JSON commands serially, so
+                // the command boundary already excludes concurrent provider mutations.
+                match CODEX_OAUTH_MANAGER
+                    .poll_for_token(device_code, || async {})
+                    .await
+                {
                     Ok(account) => {
                         let default_account_id =
                             CODEX_OAUTH_MANAGER.get_status().await.default_account_id;

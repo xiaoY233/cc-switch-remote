@@ -375,6 +375,11 @@ pub struct AppSettings {
     pub usage_confirmed: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage_dashboard_refresh_interval_ms: Option<u32>,
+    /// 会话用量自动扫描开关（默认开启=自动模式）。关闭后停止后台定时扫描
+    /// 各客户端会话日志，仅在用户点击"立即同步"时手动扫描；只管扫描时机，
+    /// 代理接管记账与启动费用回填（不读会话文件）不受此开关影响。
+    #[serde(default = "default_session_auto_sync_enabled")]
+    pub session_auto_sync_enabled: bool,
     /// Whether to show the failover toggle independently on the main page
     #[serde(default)]
     pub enable_failover_toggle: bool,
@@ -491,7 +496,7 @@ pub struct AppSettings {
 
     // ===== 终端设置 =====
     /// 首选终端应用（可选，默认使用系统默认终端）
-    /// - macOS: "terminal" | "iterm2" | "warp" | "alacritty" | "kitty" | "ghostty" | "wezterm" | "kaku"
+    /// - macOS: "terminal" | "iterm2" | "warp" | "alacritty" | "kitty" | "ghostty" | "otty" | "wezterm" | "kaku"
     /// - Windows: "cmd" | "powershell" | "wt" (Windows Terminal)
     /// - Linux: "gnome-terminal" | "konsole" | "xfce4-terminal" | "alacritty" | "kitty" | "ghostty"
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -514,6 +519,10 @@ fn default_show_profile_switcher() -> bool {
     true
 }
 
+fn default_session_auto_sync_enabled() -> bool {
+    true
+}
+
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
@@ -528,6 +537,7 @@ impl Default for AppSettings {
             proxy_confirmed: None,
             usage_confirmed: None,
             usage_dashboard_refresh_interval_ms: None,
+            session_auto_sync_enabled: true,
             enable_failover_toggle: false,
             enable_remote_routing_toggle: false,
             enable_remote_failover_toggle: false,
