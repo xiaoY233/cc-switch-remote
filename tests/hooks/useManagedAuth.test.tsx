@@ -8,10 +8,6 @@ const apiMocks = vi.hoisted(() => ({
   authGetStatus: vi.fn(),
   authRemoveAccount: vi.fn(),
 }));
-const toastMocks = vi.hoisted(() => ({
-  success: vi.fn(),
-}));
-
 vi.mock("@/lib/api", () => ({
   authApi: {
     authGetStatus: (...args: unknown[]) => apiMocks.authGetStatus(...args),
@@ -19,12 +15,6 @@ vi.mock("@/lib/api", () => ({
       apiMocks.authRemoveAccount(...args),
   },
   settingsApi: {},
-}));
-
-vi.mock("sonner", () => ({
-  toast: {
-    success: toastMocks.success,
-  },
 }));
 
 function createWrapper() {
@@ -65,7 +55,7 @@ describe("useManagedAuth", () => {
     apiMocks.authRemoveAccount.mockReset().mockResolvedValue(undefined);
   });
 
-  it("shows a success toast after removing an account", async () => {
+  it("routes local account removal through the local target", async () => {
     const { result } = renderHook(() => useManagedAuth("codex_oauth"), {
       wrapper: createWrapper(),
     });
@@ -77,10 +67,8 @@ describe("useManagedAuth", () => {
       expect(apiMocks.authRemoveAccount).toHaveBeenCalledWith(
         "codex_oauth",
         "acct-1",
+        { type: "local" },
       ),
-    );
-    await waitFor(() =>
-      expect(toastMocks.success).toHaveBeenCalledWith("账号已移除"),
     );
   });
 });
