@@ -1882,7 +1882,7 @@ command = "legacy-cmd"
 
     #[test]
     #[serial]
-    fn switch_to_official_cleans_disabled_takeover_residue_before_blocking() {
+    fn switch_to_official_cleans_disabled_takeover_residue_after_commit() {
         let _home = TempHome::new();
         crate::settings::reload_settings().expect("reload settings");
 
@@ -1952,7 +1952,7 @@ command = "legacy-cmd"
         .expect("seed stale taken-over live");
 
         ProviderService::switch(&state, AppType::Claude, "openai-official")
-            .expect("switch should self-heal disabled takeover residue before official block");
+            .expect("switch should self-heal disabled takeover residue after commit");
 
         assert!(
             futures::executor::block_on(db.get_live_backup("claude"))
@@ -5282,46 +5282,41 @@ impl ProviderService {
         // Backup or live placeholders mean the live file is owned by proxy
         // takeover, even if the proxy server is temporarily stopped or is in the
         // activation window before enabled=true is committed.
-        let mut is_app_taken_over =
+        let is_app_taken_over =
             futures::executor::block_on(state.db.get_live_backup(app_type.as_str()))
                 .ok()
                 .flatten()
                 .is_some();
-        let mut live_taken_over = state
+        let live_taken_over = state
             .proxy_service
             .detect_takeover_in_live_config_for_app(&app_type);
 
         let mut should_hot_switch = is_app_taken_over || live_taken_over;
 
-        if should_hot_switch {
+        // A disabled route with a leftover backup is not an active takeover.
+        // Do not restore that backup before the new provider commits: restoring
+        // a Codex backup can intentionally migrate its direct auth into
+        // config.toml, and a rejected switch must leave the original direct
+        // Live bundle untouched. Clear this residue only after the normal
+        // switch has committed successfully.
+        let clear_disabled_takeover_residue = if should_hot_switch {
             let routing_enabled =
                 futures::executor::block_on(state.db.get_proxy_config_for_app(app_type.as_str()))
                     .map(|config| config.enabled)
                     .unwrap_or(true);
-
             if !routing_enabled {
                 log::warn!(
-                    "{} 路由配置已关闭但仍检测到接管残留 backup={} live_taken_over={}，切换前先清理残留",
-                    app_type.as_str(),
-                    is_app_taken_over,
-                    live_taken_over
+                    "{} 路由配置已关闭但仍检测到接管残留；将在供应商切换提交后清理",
+                    app_type.as_str()
                 );
-                state
-                    .proxy_service
-                    .disable_takeover_for_app_sync(&app_type)
-                    .map_err(|e| AppError::Message(format!("清理接管残留失败: {e}")))?;
-
-                is_app_taken_over =
-                    futures::executor::block_on(state.db.get_live_backup(app_type.as_str()))
-                        .ok()
-                        .flatten()
-                        .is_some();
-                live_taken_over = state
-                    .proxy_service
-                    .detect_takeover_in_live_config_for_app(&app_type);
-                should_hot_switch = is_app_taken_over || live_taken_over;
+                should_hot_switch = false;
+                true
+            } else {
+                false
             }
-        }
+        } else {
+            false
+        };
 
         // Block switching to unsupported official providers when proxy takeover
         // is active. Codex official account cards use native auth passthrough.
@@ -5358,8 +5353,30 @@ impl ProviderService {
             return Ok(SwitchResult::default());
         }
 
-        // Normal mode: full switch with Live config write
-        Self::switch_normal(state, app_type, id, &providers)
+        // Normal mode: full switch with Live config write. A disabled-route
+        // residue is removed only after this succeeds, so a rejected switch
+        // cannot expose the restore path's config-only Codex migration.
+        let mut result = Self::switch_normal(state, app_type.clone(), id, &providers)?;
+        if clear_disabled_takeover_residue {
+            let cleanup_result = futures::executor::block_on(async {
+                state.db.delete_live_backup(app_type.as_str()).await?;
+                state
+                    .db
+                    .clear_provider_health_for_app(app_type.as_str())
+                    .await?;
+                Ok::<(), AppError>(())
+            });
+            if let Err(error) = cleanup_result {
+                log::warn!(
+                    "{} 供应商切换已提交，但清理已关闭接管残留失败: {error}",
+                    app_type.as_str()
+                );
+                result
+                    .warnings
+                    .push("disabled_takeover_residue_cleanup_failed".to_string());
+            }
+        }
+        Ok(result)
     }
 
     /// Normal switch flow (non-proxy mode)

@@ -79,14 +79,20 @@ fn sync_codex_provider_writes_config_and_auth_when_live_auth_missing() {
     let mut config = MultiAppConfig::default();
 
     // 注意：v3.7.0 后 MCP 同步由 McpService 独立处理，不再通过 provider 切换触发。
-    // 没有现存 Codex 登录态时，provider sync 必须写入 provider auth，避免 Codex CLI
-    // 启动后继续要求登录；已有官方 OAuth 登录态的保留路径由 provider_service 覆盖。
+    // 第三方 Codex 密钥必须只投影到自定义 provider 表，不能创建 auth.json。
 
     let provider_config = json!({
         "auth": {
             "OPENAI_API_KEY": "codex-key"
         },
-        "config": r#"base_url = "https://codex.test""#
+        "config": r#"model_provider = "custom"
+
+[model_providers.custom]
+name = "Codex Test"
+base_url = "https://codex.test"
+wire_api = "responses"
+requires_openai_auth = true
+"#
     });
 
     let provider = Provider::with_id(
@@ -108,8 +114,8 @@ fn sync_codex_provider_writes_config_and_auth_when_live_auth_missing() {
     let config_path = cc_switch_lib::get_codex_config_path();
 
     assert!(
-        auth_path.exists(),
-        "auth.json should be created from provider auth when no live auth exists at {}",
+        !auth_path.exists(),
+        "third-party Codex sync must not create auth.json at {}",
         auth_path.display()
     );
     assert!(
@@ -118,23 +124,14 @@ fn sync_codex_provider_writes_config_and_auth_when_live_auth_missing() {
         config_path.display()
     );
 
-    let auth_json: serde_json::Value = read_json_file(&auth_path).expect("read auth.json");
-    assert_eq!(
-        auth_json
-            .pointer("/OPENAI_API_KEY")
-            .and_then(|v| v.as_str()),
-        Some("codex-key"),
-        "auth.json should contain provider auth when no live login material exists"
-    );
-
     let toml_text = fs::read_to_string(&config_path).expect("read config.toml");
     assert!(
         toml_text.contains("base_url"),
         "config.toml should contain base_url from provider config"
     );
     assert!(
-        !toml_text.contains("experimental_bearer_token"),
-        "config.toml should not duplicate provider auth once auth.json is written"
+        toml_text.contains("experimental_bearer_token = \"codex-key\""),
+        "config.toml should carry the provider-scoped bearer token"
     );
 
     let manager = config.get_manager(&AppType::Codex).expect("codex manager");
@@ -149,8 +146,8 @@ fn sync_codex_provider_writes_config_and_auth_when_live_auth_missing() {
         "provider storage should not persist generated live bearer token"
     );
     assert!(
-        !toml_text.contains("experimental_bearer_token"),
-        "live config should not duplicate provider auth once auth.json is written"
+        toml_text.contains("experimental_bearer_token = \"codex-key\""),
+        "live config should retain provider-scoped authentication"
     );
 }
 

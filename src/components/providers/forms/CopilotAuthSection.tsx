@@ -77,6 +77,8 @@ export const CopilotAuthSection: React.FC<CopilotAuthSectionProps> = ({
     pollingState,
     deviceCode,
     error,
+    isAuthSupported = true,
+    isLoadingStatus = false,
     isStatusError,
     refetchStatus,
     isPolling,
@@ -132,6 +134,17 @@ export const CopilotAuthSection: React.FC<CopilotAuthSectionProps> = ({
     return <CopilotAccountAvatar account={account} />;
   };
 
+  if (isLoadingStatus) {
+    return (
+      <div className={`flex items-center gap-2 ${className || ""}`}>
+        <Loader2 className="h-4 w-4 animate-spin" />
+        <span className="text-sm text-muted-foreground">
+          {t("common.loading", "加载中...")}
+        </span>
+      </div>
+    );
+  }
+
   if (isStatusError) {
     return (
       <div className={`space-y-3 ${className || ""}`} role="alert">
@@ -148,6 +161,19 @@ export const CopilotAuthSection: React.FC<CopilotAuthSectionProps> = ({
         >
           {t("copilot.retry", "重试")}
         </Button>
+      </div>
+    );
+  }
+
+  if (!isAuthSupported) {
+    return (
+      <div className={`space-y-2 ${className || ""}`} role="status">
+        <p className="text-sm text-muted-foreground">
+          {t("remote.settings.auth.unsupported", {
+            defaultValue:
+              "当前远程 Helper 不支持认证管理。请更新到包含 auth capability 的新版 Helper。",
+          })}
+        </p>
       </div>
     );
   }

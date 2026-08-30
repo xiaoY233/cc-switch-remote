@@ -211,14 +211,22 @@ describe("UsageDashboard", () => {
     );
   });
 
-  it("keeps manual sync and the automatic scan toggle on the local dashboard", () => {
-    renderDashboard();
+  it("hides local manual sync while automatic scanning is enabled", () => {
+    renderDashboard({ sessionAutoSyncEnabled: true });
+
+    expect(
+      screen.queryByRole("button", { name: "usage.sessionSync.syncNow" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("switch", { name: "usage.sessionSync.title" }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows local manual sync when automatic scanning is disabled", () => {
+    renderDashboard({ sessionAutoSyncEnabled: false });
 
     expect(
       screen.getByRole("button", { name: "usage.sessionSync.syncNow" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("switch", { name: "usage.sessionSync.title" }),
     ).toBeInTheDocument();
   });
 

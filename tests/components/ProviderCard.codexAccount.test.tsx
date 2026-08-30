@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ProviderCard } from "@/components/providers/ProviderCard";
-import type { ManagedAuthStatus } from "@/lib/api";
+import type { ManagedAuthStatus, ManagementTarget } from "@/lib/api";
 import type { Provider } from "@/types";
 import { createTestQueryClient } from "../utils/testQueryClient";
 
@@ -94,14 +94,27 @@ function renderCard(
     isCurrent?: boolean;
     onEdit?: (provider: Provider) => void;
     onConfigureUsage?: (provider: Provider) => void;
+    target?: ManagementTarget;
+    capabilities?: string[];
   } = {},
 ) {
   const queryClient = createTestQueryClient();
+  const target = options.target ?? { type: "local" };
+  const targetKey =
+    target.type === "remote" ? `remote:${target.profile.id}` : "local";
   if (options.status) {
     queryClient.setQueryData(
-      ["managed-auth-status", "codex_oauth"],
+      ["managed-auth-status", targetKey, "codex_oauth"],
       options.status,
     );
+  }
+  if (target.type === "remote") {
+    queryClient.setQueryData(["remote-health", targetKey, 0], {
+      reachable: true,
+      helperInstalled: true,
+      helperUpdateAvailable: false,
+      capabilities: options.capabilities ?? ["auth"],
+    });
   }
 
   return render(
@@ -117,6 +130,7 @@ function renderCard(
         onConfigureUsage={options.onConfigureUsage ?? vi.fn()}
         onOpenWebsite={vi.fn()}
         onDuplicate={vi.fn()}
+        target={target}
       />
     </QueryClientProvider>,
   );
@@ -173,6 +187,34 @@ describe("ProviderCard Codex Official account identity", () => {
     );
   });
 
+  it("uses the selected remote target for managed account identity and quota", () => {
+    const remoteTarget: ManagementTarget = {
+      type: "remote",
+      profile: {
+        id: "server-a",
+        name: "Server A",
+        host: "192.0.2.10",
+        port: 22,
+        username: "root",
+        authMethod: { type: "sshAgent" },
+        helperPath: "/root/.local/bin/cc-switch-remote-helper",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      secret: { password: "secret" },
+    };
+
+    renderCard(managedProvider("Work account"), {
+      status: authStatus("remote@example.com"),
+      target: remoteTarget,
+    });
+
+    expect(screen.getByText("remote@example.com")).toBeInTheDocument();
+    expect(codexQuotaFooterProps).toHaveBeenCalledWith(
+      expect.objectContaining({ target: remoteTarget }),
+    );
+  });
+
   it("keeps a custom nickname and safely truncates a long account login", () => {
     const login =
       "a-very-long-personal-account-name-that-must-not-expand-the-card@example.com";
@@ -201,7 +243,7 @@ describe("ProviderCard Codex Official account identity", () => {
 
     const queryClient = createTestQueryClient();
     queryClient.setQueryData(
-      ["managed-auth-status", "codex_oauth"],
+      ["managed-auth-status", "local", "codex_oauth"],
       authStatus(login),
     );
     rerender(
@@ -287,7 +329,7 @@ describe("ProviderCard Codex Official account identity", () => {
     };
     renderCard(provider, { isCurrent: true });
 
-expect(
+    expect(
       screen.getByText("账号会随 Codex CLI 当前登录变化"),
     ).toBeInTheDocument();
     expect(

@@ -1,13 +1,23 @@
 import { useMemo, useState, useEffect } from "react";
-import { GripVertical, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  AlertTriangle,
+  GripVertical,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useQuery } from "@tanstack/react-query";
 import type {
   DraggableAttributes,
   DraggableSyntheticListeners,
 } from "@dnd-kit/core";
 import type { Provider } from "@/types";
 import type { AppId, ManagementTarget } from "@/lib/api";
-import { LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
+import { authApi, remoteApi } from "@/lib/api";
+import {
+  getManagementTargetKey,
+  LOCAL_MANAGEMENT_TARGET,
+} from "@/lib/managementTarget";
 import { cn } from "@/lib/utils";
 import { ProviderActions } from "@/components/providers/ProviderActions";
 import { ProviderIcon } from "@/components/ProviderIcon";
@@ -24,7 +34,9 @@ import {
   extractCodexBaseUrl,
   extractCodexExperimentalBearerToken,
 } from "@/utils/providerConfigUtils";
+import { resolveManagedAccountId } from "@/lib/authBinding";
 import {
+  resolveCodexOfficialIdentity,
   supportsOfficialProxyTakeover,
   providerNeedsRouting,
 } from "@/utils/providerCapabilities";
@@ -32,6 +44,7 @@ import { useProviderHealth } from "@/lib/query/failover";
 import { useUsageQuery } from "@/lib/query/queries";
 import { resolveProviderIcon } from "@/utils/providerIcon";
 import { ProviderStatusBadge } from "@/components/providers/ProviderStatusBadge";
+import { useTargetQueryIdentityReset } from "@/hooks/useTargetQueryIdentityReset";
 
 interface DragHandleProps {
   attributes: DraggableAttributes;
@@ -172,6 +185,62 @@ export function ProviderCard({
   onSetAsDefault,
 }: ProviderCardProps) {
   const { t } = useTranslation();
+  const codexOfficialIdentity = resolveCodexOfficialIdentity(appId, provider);
+  const managedCodexAccountId = resolveManagedAccountId(
+    provider.meta,
+    "codex_oauth",
+  )?.trim();
+  const targetKey = getManagementTargetKey(target);
+  const connectionGeneration = useTargetQueryIdentityReset(
+    "all",
+    target,
+    targetKey,
+  );
+  const remoteHealthQuery = useQuery({
+    queryKey: ["remote-health", targetKey, connectionGeneration],
+    queryFn: () => {
+      if (target.type !== "remote") return null;
+      return remoteApi.checkHealth(target.profile, target.secret);
+    },
+    enabled:
+      target.type === "remote" &&
+      codexOfficialIdentity === "managed_account" &&
+      Boolean(managedCodexAccountId),
+    retry: false,
+    staleTime: 30_000,
+  });
+  const authCapabilitySupported =
+    target.type === "local" ||
+    remoteHealthQuery.data?.capabilities.includes("auth") === true;
+  const {
+    data: codexAuthStatus,
+    isSuccess: isCodexAuthStatusSuccess,
+    isError: isCodexAuthStatusError,
+  } = useQuery({
+    queryKey: ["managed-auth-status", targetKey, "codex_oauth"],
+    queryFn: () => authApi.authGetStatus("codex_oauth", target),
+    enabled:
+      codexOfficialIdentity === "managed_account" &&
+      Boolean(managedCodexAccountId) &&
+      authCapabilitySupported,
+    staleTime: 30_000,
+  });
+  const authCapabilityUnsupported =
+    target.type === "remote" &&
+    remoteHealthQuery.isSuccess &&
+    !authCapabilitySupported;
+  const managedCodexAccount = authCapabilitySupported
+    ? codexAuthStatus?.accounts.find(
+        (account) => account.id === managedCodexAccountId,
+      )
+    : undefined;
+  const manualNote = provider.notes?.trim() || undefined;
+  const providerNameIncludesAccountLogin = Boolean(
+    managedCodexAccount?.login &&
+      (provider.name.trim() === managedCodexAccount.login ||
+        provider.name.trim() ===
+          `OpenAI Official (${managedCodexAccount.login})`),
+  );
 
   // OMO and OMO Slim share the same card behavior
   const isAnyOmo = isOmo || isOmoSlim;
@@ -198,7 +267,10 @@ export function ProviderCard({
     return true;
   }, [provider.notes, displayUrl, fallbackUrlText]);
 
-  const usageEnabled = provider.meta?.usage_script?.enabled ?? false;
+  const isBoundCodexOfficial = codexOfficialIdentity === "managed_account";
+  const usageEnabled =
+    (provider.meta?.usage_script?.enabled ?? isBoundCodexOfficial) &&
+    (!isBoundCodexOfficial || authCapabilitySupported);
   const isOfficial = isOfficialProvider(provider, appId);
   const supportsOfficialSubscription =
     isOfficial && ["claude", "codex", "gemini", "grokbuild"].includes(appId);
@@ -231,7 +303,9 @@ export function ProviderCard({
   const isHermesReadOnly =
     appId === "hermes" && isHermesReadOnlyProvider(provider.settingsConfig);
   const isCodexOauth =
-    provider.meta?.providerType === PROVIDER_TYPES.CODEX_OAUTH;
+    appId === "codex"
+      ? isBoundCodexOfficial
+      : provider.meta?.providerType === PROVIDER_TYPES.CODEX_OAUTH;
   // xAI OAuth (SuperGrok 反代)：额度经自管 OAuth token 自动显示，与 codex_oauth 同构
   const isXaiOauth = provider.meta?.providerType === PROVIDER_TYPES.XAI_OAUTH;
   // 统一权威谓词（详见 providerNeedsRouting）：以 providerType 为准，不受
@@ -357,7 +431,13 @@ export function ProviderCard({
 
           <div className="min-w-0 flex-1 space-y-1">
             <div className="flex flex-wrap items-center gap-2 min-h-7">
-              <h3 className="text-base font-semibold leading-none">
+              <h3
+                className={cn(
+                  "text-base font-semibold leading-none",
+                  codexOfficialIdentity && "min-w-0 flex-1 truncate",
+                )}
+                title={codexOfficialIdentity ? provider.name : undefined}
+              >
                 {provider.name}
               </h3>
 
@@ -477,7 +557,72 @@ export function ProviderCard({
               )}
             </div>
 
-            {displayUrl && (
+            {codexOfficialIdentity && codexOfficialIdentity !== "api_key" ? (
+              <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+                {codexOfficialIdentity === "native_login" ? (
+                  <span className="min-w-0 truncate" title={manualNote}>
+                    {manualNote ??
+                      t("codex.followCodexLoginDescription", {
+                        defaultValue: "账号会随 Codex CLI 当前登录变化",
+                      })}
+                  </span>
+                ) : authCapabilityUnsupported ? (
+                  <span className="inline-flex min-w-0 items-center gap-1 text-amber-700 dark:text-amber-300">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">
+                      {t("remote.settings.auth.unsupported", {
+                        defaultValue:
+                          "当前远程 Helper 不支持认证管理。请更新 Helper。",
+                      })}
+                    </span>
+                  </span>
+                ) : managedCodexAccount ? (
+                  <>
+                    <span
+                      className="min-w-0 truncate"
+                      title={manualNote ?? managedCodexAccount.login}
+                    >
+                      {manualNote ??
+                        (providerNameIncludesAccountLogin
+                          ? t("codex.openAiAccount", {
+                              defaultValue: "OpenAI 账号",
+                            })
+                          : managedCodexAccount.login)}
+                    </span>
+                    {managedCodexAccount.reauth_required && (
+                      <span className="inline-flex shrink-0 items-center gap-1 text-amber-700 dark:text-amber-300">
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                        {t("codexOauth.reauthBadge", "需要重新登录")}
+                      </span>
+                    )}
+                  </>
+                ) : isCodexAuthStatusError ? (
+                  <span className="inline-flex min-w-0 items-center gap-1 text-amber-700 dark:text-amber-300">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">
+                      {t("codex.accountStatusUnavailable", {
+                        defaultValue: "无法读取账号信息",
+                      })}
+                    </span>
+                  </span>
+                ) : isCodexAuthStatusSuccess ? (
+                  <span className="inline-flex min-w-0 items-center gap-1 text-sm text-amber-700 dark:text-amber-300">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">
+                      {t("codex.boundAccountUnavailable", {
+                        defaultValue: "绑定的账号不可用",
+                      })}
+                    </span>
+                  </span>
+                ) : (
+                  <span className="min-w-0 truncate">
+                    {t("codex.accountLoading", {
+                      defaultValue: "正在加载账号…",
+                    })}
+                  </span>
+                )}
+              </div>
+            ) : displayUrl ? (
               <button
                 type="button"
                 onClick={handleOpenWebsite}
@@ -492,7 +637,7 @@ export function ProviderCard({
               >
                 <span className="min-w-0 truncate">{displayUrl}</span>
               </button>
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -507,12 +652,17 @@ export function ProviderCard({
                   target={target}
                 />
               ) : isCodexOauth ? (
-                <CodexOauthQuotaFooter
-                  meta={provider.meta}
-                  inline={true}
-                  isCurrent={isCurrent}
-                  target={target}
-                />
+                usageEnabled ? (
+                  <CodexOauthQuotaFooter
+                    meta={provider.meta}
+                    inline={true}
+                    isCurrent={isCurrent}
+                    autoQueryInterval={
+                      provider.meta?.usage_script?.autoQueryInterval ?? 5
+                    }
+                    target={target}
+                  />
+                ) : null
               ) : isXaiOauth ? (
                 <XaiOauthQuotaFooter
                   meta={provider.meta}
@@ -602,7 +752,7 @@ export function ProviderCard({
               onConfigureUsage={
                 (isOfficial && !supportsOfficialSubscription) ||
                 isCopilot ||
-                isCodexOauth ||
+                (isCodexOauth && !isBoundCodexOfficial) ||
                 isXaiOauth
                   ? undefined
                   : () => onConfigureUsage(provider)

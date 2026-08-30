@@ -72,30 +72,45 @@ export function useManagedAuth(
       if (target.type !== "remote") return null;
       return remoteApi.checkHealth(target.profile, target.secret);
     },
-    enabled: target.type === "remote" && authProvider === "codex_oauth",
+    enabled: target.type === "remote",
+    retry: false,
     staleTime: 30_000,
   });
-  const canTargetedReauth =
+  const isAuthSupported =
     target.type === "local" ||
-    (authProvider === "codex_oauth" &&
-      remoteHealthQuery.data?.capabilities.includes("auth-targeted-relogin") ===
-        true);
+    remoteHealthQuery.data?.capabilities.includes("auth") === true;
+  const canTargetedReauth =
+    isAuthSupported &&
+    (target.type === "local" ||
+      (authProvider === "codex_oauth" &&
+        remoteHealthQuery.data?.capabilities.includes(
+          "auth-targeted-relogin",
+        ) === true));
 
   const {
     data: authStatus,
-    isLoading: isLoadingStatus,
-    isSuccess: isStatusSuccess,
-    isError: isStatusError,
+    isLoading: isAuthStatusLoading,
+    isSuccess: isAuthStatusSuccess,
+    isError: isAuthStatusError,
     refetch: refetchStatus,
   } = useQuery<ManagedAuthStatus>({
     queryKey,
     queryFn: () => authApi.authGetStatus(authProvider, target),
+    enabled: isAuthSupported,
     staleTime: 30000,
     // A rejected xAI refresh token is persisted as `requires_reauth` by the
     // proxy hot path. Periodically refresh local status so an already-open Auth
     // Center stops showing the account as logged in without requiring a reload.
     refetchInterval: authProvider === "xai_oauth" ? 15_000 : false,
   });
+
+  const refetchManagedAuthStatus = useCallback(async () => {
+    if (target.type === "remote") {
+      const health = await remoteHealthQuery.refetch();
+      if (health.data?.capabilities.includes("auth") !== true) return health;
+    }
+    return refetchStatus();
+  }, [refetchStatus, remoteHealthQuery, target.type]);
 
   const stopPolling = useCallback(() => {
     if (pollingIntervalRef.current) {
@@ -455,9 +470,12 @@ export function useManagedAuth(
 
   return {
     authStatus,
-    isLoadingStatus,
-    isStatusSuccess,
-    isStatusError,
+    isAuthSupported,
+    isLoadingStatus:
+      isAuthStatusLoading ||
+      (target.type === "remote" && remoteHealthQuery.isLoading),
+    isStatusSuccess: isAuthSupported && isAuthStatusSuccess,
+    isStatusError: remoteHealthQuery.isError || isAuthStatusError,
     accounts,
     hasAnyAccount: accounts.length > 0,
     isAuthenticated: authStatus?.authenticated ?? false,
@@ -480,6 +498,6 @@ export function useManagedAuth(
     logout,
     removeAccount,
     setDefaultAccount,
-    refetchStatus,
+    refetchStatus: refetchManagedAuthStatus,
   };
 }

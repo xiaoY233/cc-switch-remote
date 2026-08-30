@@ -13,6 +13,7 @@ const apiMocks = vi.hoisted(() => ({
   authRemoveAccount: vi.fn(),
   authSetDefaultAccount: vi.fn(),
   authLogout: vi.fn(),
+  checkHealth: vi.fn(),
   openExternal: vi.fn(),
 }));
 vi.mock("@/lib/api", () => ({
@@ -27,6 +28,9 @@ vi.mock("@/lib/api", () => ({
     authSetDefaultAccount: (...args: unknown[]) =>
       apiMocks.authSetDefaultAccount(...args),
     authLogout: (...args: unknown[]) => apiMocks.authLogout(...args),
+  },
+  remoteApi: {
+    checkHealth: (...args: unknown[]) => apiMocks.checkHealth(...args),
   },
   settingsApi: {
     openExternal: (...args: unknown[]) => apiMocks.openExternal(...args),
@@ -96,6 +100,12 @@ describe("useManagedAuth", () => {
     apiMocks.authRemoveAccount.mockReset().mockResolvedValue(undefined);
     apiMocks.authSetDefaultAccount.mockReset().mockResolvedValue(undefined);
     apiMocks.authLogout.mockReset().mockResolvedValue(undefined);
+    apiMocks.checkHealth.mockReset().mockResolvedValue({
+      reachable: true,
+      helperInstalled: true,
+      helperUpdateAvailable: false,
+      capabilities: ["auth", "auth-targeted-relogin"],
+    });
     apiMocks.openExternal.mockReset().mockResolvedValue(undefined);
   });
 

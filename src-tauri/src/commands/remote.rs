@@ -485,6 +485,8 @@ pub async fn remote_auth_start_login(
     target_account_id: Option<String>,
     secret: Option<RemoteConnectionSecret>,
 ) -> Result<Value, String> {
+    ensure_remote_helper_capability(profile.clone(), secret.clone(), REMOTE_AUTH_CAPABILITY)
+        .await?;
     let has_target_account = target_account_id.is_some();
     settle_remote_auth_start_login(
         run_remote_helper_json(
@@ -509,6 +511,8 @@ pub async fn remote_auth_cancel_login(
     device_code: String,
     secret: Option<RemoteConnectionSecret>,
 ) -> Result<bool, String> {
+    ensure_remote_helper_capability(profile.clone(), secret.clone(), REMOTE_AUTH_CAPABILITY)
+        .await?;
     settle_remote_auth_cancel_login(
         run_remote_helper_json(
             profile,
@@ -533,6 +537,8 @@ pub async fn remote_auth_poll_for_account(
     github_domain: Option<String>,
     secret: Option<RemoteConnectionSecret>,
 ) -> Result<Option<Value>, String> {
+    ensure_remote_helper_capability(profile.clone(), secret.clone(), REMOTE_AUTH_CAPABILITY)
+        .await?;
     let mut args = vec![
         "auth".to_string(),
         "poll".to_string(),
@@ -549,6 +555,8 @@ pub async fn remote_auth_list_accounts(
     auth_provider: String,
     secret: Option<RemoteConnectionSecret>,
 ) -> Result<Vec<Value>, String> {
+    ensure_remote_helper_capability(profile.clone(), secret.clone(), REMOTE_AUTH_CAPABILITY)
+        .await?;
     run_remote_helper_json(
         profile,
         vec!["auth".to_string(), "list".to_string(), auth_provider],
@@ -564,6 +572,8 @@ pub async fn remote_auth_get_status(
     auth_provider: String,
     secret: Option<RemoteConnectionSecret>,
 ) -> Result<Value, String> {
+    ensure_remote_helper_capability(profile.clone(), secret.clone(), REMOTE_AUTH_CAPABILITY)
+        .await?;
     run_remote_helper_json(
         profile,
         vec!["auth".to_string(), "status".to_string(), auth_provider],
@@ -580,6 +590,8 @@ pub async fn remote_auth_remove_account(
     account_id: String,
     secret: Option<RemoteConnectionSecret>,
 ) -> Result<bool, String> {
+    ensure_remote_helper_capability(profile.clone(), secret.clone(), REMOTE_AUTH_CAPABILITY)
+        .await?;
     run_remote_helper_json(
         profile,
         vec![
@@ -601,6 +613,8 @@ pub async fn remote_auth_set_default_account(
     account_id: String,
     secret: Option<RemoteConnectionSecret>,
 ) -> Result<bool, String> {
+    ensure_remote_helper_capability(profile.clone(), secret.clone(), REMOTE_AUTH_CAPABILITY)
+        .await?;
     run_remote_helper_json(
         profile,
         vec![
@@ -621,6 +635,8 @@ pub async fn remote_auth_logout(
     auth_provider: String,
     secret: Option<RemoteConnectionSecret>,
 ) -> Result<bool, String> {
+    ensure_remote_helper_capability(profile.clone(), secret.clone(), REMOTE_AUTH_CAPABILITY)
+        .await?;
     run_remote_helper_json(
         profile,
         vec!["auth".to_string(), "logout".to_string(), auth_provider],
@@ -1643,6 +1659,7 @@ pub async fn remote_get_provider_state(
     .map_err(|e| format!("Remote provider state task failed: {e}"))?
 }
 
+const REMOTE_AUTH_CAPABILITY: &str = "auth";
 const REMOTE_CODEX_CONFIG_ONLY_CAPABILITY: &str = "codex-config-only";
 const REMOTE_USAGE_MANUAL_SESSION_SYNC_CAPABILITY: &str = "usage-manual-session-sync";
 const REMOTE_HELPER_UPGRADE_REQUIRED: &str = "remote_helper_upgrade_required";
@@ -4287,6 +4304,10 @@ mod tests {
         );
         assert!(validate_remote_codex_provider_mutation("codex", &current_helper).is_ok());
         assert!(validate_remote_codex_provider_mutation("claude", &old_helper).is_ok());
+        assert_eq!(
+            validate_remote_helper_capability(&old_helper, REMOTE_AUTH_CAPABILITY),
+            Err(remote_helper_upgrade_required(REMOTE_AUTH_CAPABILITY))
+        );
         assert_eq!(
             validate_remote_helper_capability(
                 &old_helper,

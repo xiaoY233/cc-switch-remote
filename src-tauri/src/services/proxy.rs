@@ -8961,10 +8961,11 @@ requires_openai_auth = true
             .expect("set current provider a");
         crate::settings::set_current_provider(&AppType::Codex, Some("a"))
             .expect("set local current provider a");
-        state
-            .proxy_service
-            .write_codex_live_for_provider(&provider_a.settings_config, Some(&provider_a))
-            .expect("seed direct live config");
+        crate::codex_config::write_codex_live_atomic(
+            &provider_a.settings_config["auth"],
+            provider_a.settings_config["config"].as_str(),
+        )
+        .expect("seed exact direct live config");
         db.save_live_backup(
             "codex",
             &serde_json::to_string(&provider_a.settings_config).expect("serialize backup"),
@@ -8975,6 +8976,16 @@ requires_openai_auth = true
             .proxy_service
             .read_codex_live()
             .expect("read original live config");
+        let original_provider_a = db
+            .get_provider_by_id("a", "codex")
+            .expect("read original provider a")
+            .expect("provider a exists")
+            .settings_config;
+        let original_backup = db
+            .get_live_backup("codex")
+            .await
+            .expect("read original backup")
+            .expect("backup exists");
 
         {
             let conn = db.conn.lock().expect("lock database");
@@ -8996,13 +9007,42 @@ requires_openai_auth = true
         assert!(error
             .to_string()
             .contains("forced current-provider commit failure"));
+        let restored_live = state
+            .proxy_service
+            .read_codex_live()
+            .expect("read rolled-back live config");
         assert_eq!(
-            state
-                .proxy_service
-                .read_codex_live()
-                .expect("read rolled-back live config"),
-            original_live,
+            restored_live, original_live,
             "commit failure must restore the exact direct Live snapshot"
+        );
+        assert_eq!(
+            restored_live["auth"]["OPENAI_API_KEY"],
+            json!("key-a"),
+            "a rejected switch must not migrate direct auth into config.toml"
+        );
+        assert!(
+            restored_live["config"].as_str().is_some_and(|config| {
+                config.contains("requires_openai_auth = true")
+                    && !config.contains("experimental_bearer_token")
+            }),
+            "a rejected switch must not apply the config-only migration"
+        );
+        assert_eq!(
+            db.get_provider_by_id("a", "codex")
+                .expect("read rolled-back provider a")
+                .expect("provider a remains")
+                .settings_config,
+            original_provider_a,
+            "a rejected switch must not mutate the previous provider"
+        );
+        assert_eq!(
+            db.get_live_backup("codex")
+                .await
+                .expect("read rolled-back backup")
+                .expect("backup remains")
+                .original_config,
+            original_backup.original_config,
+            "a rejected switch must not remove the takeover backup"
         );
         assert_eq!(
             db.get_current_provider("codex")

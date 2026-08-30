@@ -1,9 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchCodexOauthModels, getOpenCodeModels } from "./model-fetch";
+import {
+  fetchCodexOauthModels,
+  fetchModelsForProviderConfig,
+  getOpenCodeModels,
+} from "./model-fetch";
 import type { ManagementTarget, RemoteHostProfile } from "./remote";
 
 const invokeMock = vi.hoisted(() => vi.fn());
 const remoteFetchCodexOauthModelsMock = vi.hoisted(() => vi.fn());
+const remoteFetchModelsForProviderMock = vi.hoisted(() => vi.fn());
 const remoteGetOpenCodeModelsMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -18,6 +23,8 @@ vi.mock("./remote", async () => {
       ...actual.remoteApi,
       fetchCodexOauthModels: (...args: unknown[]) =>
         remoteFetchCodexOauthModelsMock(...args),
+      fetchModelsForProvider: (...args: unknown[]) =>
+        remoteFetchModelsForProviderMock(...args),
       getOpenCodeModels: (...args: unknown[]) =>
         remoteGetOpenCodeModelsMock(...args),
     },
@@ -41,6 +48,59 @@ const remoteTarget: ManagementTarget = {
   profile: remoteProfile,
   secret: { password: "secret" },
 };
+
+describe("fetchModelsForProviderConfig", () => {
+  beforeEach(() => {
+    invokeMock.mockReset();
+    remoteFetchModelsForProviderMock.mockReset();
+  });
+
+  it("keeps remote model fetches on the helper even when the form contains a key", async () => {
+    remoteFetchModelsForProviderMock.mockResolvedValueOnce([
+      { id: "remote-model", ownedBy: null },
+    ]);
+
+    await expect(
+      fetchModelsForProviderConfig({
+        app: "pi",
+        providerId: " remote-provider ",
+        target: remoteTarget,
+        baseUrl: "https://api.example.com",
+        apiKey: "unsaved-secret",
+        modelsUrl: "https://api.example.com/models",
+      }),
+    ).resolves.toEqual([{ id: "remote-model", ownedBy: null }]);
+
+    expect(remoteFetchModelsForProviderMock).toHaveBeenCalledWith(
+      remoteProfile,
+      "pi",
+      "remote-provider",
+      {
+        baseUrl: "https://api.example.com",
+        isFullUrl: undefined,
+        modelsUrl: "https://api.example.com/models",
+        customUserAgent: undefined,
+      },
+      remoteTarget.secret,
+    );
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects unsaved remote providers without falling back to local invoke", async () => {
+    await expect(
+      fetchModelsForProviderConfig({
+        app: "pi",
+        providerId: undefined,
+        target: remoteTarget,
+        baseUrl: "https://api.example.com",
+        apiKey: "unsaved-secret",
+      }),
+    ).rejects.toThrow("Remote model fetch requires a saved provider");
+
+    expect(remoteFetchModelsForProviderMock).not.toHaveBeenCalled();
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+});
 
 describe("fetchCodexOauthModels", () => {
   beforeEach(() => {

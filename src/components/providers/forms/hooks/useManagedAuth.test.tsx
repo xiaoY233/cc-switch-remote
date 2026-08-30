@@ -110,6 +110,25 @@ describe("useManagedAuth connection generation", () => {
     await waitFor(() => expect(result.current.canTargetedReauth).toBe(false));
   });
 
+  it("does not call remote auth commands when the helper lacks auth capability", async () => {
+    vi.spyOn(remoteApi, "checkHealth").mockResolvedValue(
+      remoteHealth(["providers"]),
+    );
+    const getStatus = vi.mocked(authApi.authGetStatus);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const { result } = renderHook(
+      () =>
+        useManagedAuth("codex_oauth", undefined, target("host-a", "secret-a")),
+      { wrapper: wrapper(queryClient) },
+    );
+
+    await waitFor(() => expect(result.current.isLoadingStatus).toBe(false));
+    expect(result.current.isAuthSupported).toBe(false);
+    expect(getStatus).not.toHaveBeenCalled();
+  });
+
   it("does not cancel a remote Codex flow when an equivalent target object rerenders", async () => {
     vi.spyOn(authApi, "authStartLogin").mockResolvedValue({
       ...deviceCode,

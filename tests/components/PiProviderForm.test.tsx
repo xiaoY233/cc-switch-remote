@@ -14,6 +14,19 @@ import { server } from "../msw/server";
 
 const TAURI_ENDPOINT = "http://tauri.local";
 
+const remoteFetchModelsForProviderMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/api/remote", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api/remote")>();
+  return {
+    ...actual,
+    remoteApi: {
+      ...actual.remoteApi,
+      fetchModelsForProvider: remoteFetchModelsForProviderMock,
+    },
+  };
+});
+
 function completeModel(id: string, name = id.trim() || "Model") {
   return {
     id,
@@ -49,6 +62,7 @@ vi.mock("@/components/JsonEditor", () => ({
 describe("PiProviderForm", () => {
   beforeEach(() => {
     Element.prototype.scrollIntoView = vi.fn();
+    remoteFetchModelsForProviderMock.mockReset();
   });
 
   it("starts in the same editable custom state as OpenCode", async () => {
@@ -981,10 +995,6 @@ describe("PiProviderForm", () => {
         baseUrl: "https://models.example/v1",
         apiKey: "literal-key",
         customUserAgent: "pi-test-agent/1.0",
-        apiFormat: "openai-completions",
-        requestHeaders: {
-          "user-agent": "pi-test-agent/1.0",
-        },
       }),
     );
 
@@ -1001,6 +1011,69 @@ describe("PiProviderForm", () => {
     );
     expect(screen.getByLabelText("pi.form.maxTokens")).toHaveValue(777);
     expect(screen.getByLabelText("pi.form.contextWindow")).toHaveValue(null);
+  });
+
+  it("fetches Pi models from the selected remote provider when its key is stored remotely", async () => {
+    const user = userEvent.setup();
+    const target = {
+      type: "remote" as const,
+      profile: {
+        id: "remote-host",
+        name: "Remote Host",
+        host: "192.0.2.10",
+        port: 22,
+        username: "root",
+        authMethod: { type: "sshAgent" as const },
+        helperPath: "/root/.local/bin/cc-switch-remote-helper",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    };
+    remoteFetchModelsForProviderMock.mockResolvedValue([
+      { id: "remote-pi-model", ownedBy: "remote" },
+    ]);
+
+    render(
+      <PiProviderForm
+        appId="pi"
+        providerId="remote-pi"
+        target={target}
+        submitLabel="Save remote provider"
+        onSubmit={vi.fn()}
+        onCancel={() => {}}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "providerPreset.custom" }),
+    );
+    fireEvent.change(
+      screen.getByPlaceholderText("https://api.example.com/v1"),
+      { target: { value: "https://remote.example/v1" } },
+    );
+    await user.click(screen.getByRole("button", { name: "pi.form.addModel" }));
+    await user.click(
+      screen.getByRole("button", { name: "providerForm.fetchModels" }),
+    );
+
+    await waitFor(() =>
+      expect(remoteFetchModelsForProviderMock).toHaveBeenCalledWith(
+        target.profile,
+        "pi",
+        "remote-pi",
+        expect.objectContaining({ baseUrl: "https://remote.example/v1" }),
+        undefined,
+      ),
+    );
+
+    const modelIdInput = screen.getByLabelText("pi.form.modelId");
+    await user.click(
+      within(modelIdInput.parentElement as HTMLElement).getByRole("button"),
+    );
+    await user.click(
+      await screen.findByRole("option", { name: "remote-pi-model" }),
+    );
+    expect(modelIdInput).toHaveValue("remote-pi-model");
   });
 
   it("ignores a stale model-list response after the request config changes", async () => {
