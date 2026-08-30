@@ -1,13 +1,10 @@
 import { useTranslation } from "react-i18next";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { usageApi } from "@/lib/api/usage";
 import { usageKeys } from "@/lib/query/usage";
 import { LOCAL_MANAGEMENT_TARGET } from "@/lib/managementTarget";
 import type { ManagementTarget } from "@/lib/api/remote";
-import { Database, FileText, RefreshCw, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { useState } from "react";
-import { toast } from "sonner";
+import { Database, FileText } from "lucide-react";
 
 interface DataSourceBarProps {
   refreshIntervalMs: number;
@@ -28,9 +25,6 @@ export function DataSourceBar({
   target = LOCAL_MANAGEMENT_TARGET,
 }: DataSourceBarProps) {
   const { t } = useTranslation();
-  const queryClient = useQueryClient();
-  const [syncing, setSyncing] = useState(false);
-
   const { data: sources } = useQuery({
     queryKey: [...usageKeys.all(target), "data-sources"],
     queryFn: () => usageApi.getDataSourceBreakdown(target),
@@ -38,44 +32,9 @@ export function DataSourceBar({
     refetchIntervalInBackground: false,
   });
 
-  const handleSync = async () => {
-    setSyncing(true);
-    try {
-      const result = await usageApi.syncSessionUsage(target);
-      if (result.imported > 0) {
-        toast.success(
-          t("usage.sessionSync.imported", {
-            count: result.imported,
-            defaultValue: "Imported {{count}} records from session logs",
-          }),
-        );
-        // Refresh all usage data
-        queryClient.invalidateQueries({
-          queryKey: usageKeys.all(target),
-        });
-      } else {
-        toast.info(
-          t("usage.sessionSync.upToDate", {
-            defaultValue: "Session logs are up to date",
-          }),
-        );
-      }
-    } catch {
-      toast.error(
-        t("usage.sessionSync.failed", {
-          defaultValue: "Session sync failed",
-        }),
-      );
-    } finally {
-      setSyncing(false);
-    }
-  };
-
   if (!sources || sources.length === 0) {
     return null;
   }
-
-  const hasNonProxy = sources.some((s) => s.dataSource !== "proxy");
 
   return (
     <div className="flex items-center gap-3 text-xs text-muted-foreground bg-muted/30 rounded-lg px-4 py-2">
@@ -101,32 +60,6 @@ export function DataSourceBar({
             </span>
           </div>
         ))}
-      </div>
-
-      <div className="ml-auto">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 px-2 text-xs"
-          onClick={handleSync}
-          disabled={syncing}
-          title={t("usage.sessionSync.trigger", {
-            defaultValue: "Sync session logs",
-          })}
-        >
-          {syncing ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <RefreshCw className="h-3.5 w-3.5" />
-          )}
-          <span className="ml-1">
-            {hasNonProxy
-              ? t("usage.sessionSync.resync", { defaultValue: "Sync" })
-              : t("usage.sessionSync.import", {
-                  defaultValue: "Import Sessions",
-                })}
-          </span>
-        </Button>
       </div>
     </div>
   );

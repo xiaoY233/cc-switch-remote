@@ -75,11 +75,15 @@ export async function fetchModelsForProviderConfig({
   modelsUrl,
   customUserAgent,
 }: FetchModelsForProviderConfigOptions): Promise<FetchedModel[]> {
-  if (target.type === "remote" && providerId?.trim() && !apiKey.trim()) {
+  if (target.type === "remote") {
+    const remoteProviderId = providerId?.trim();
+    if (!remoteProviderId) {
+      throw new Error("Remote model fetch requires a saved provider");
+    }
     return remoteApi.fetchModelsForProvider(
       target.profile,
       app,
-      providerId,
+      remoteProviderId,
       {
         baseUrl,
         isFullUrl,

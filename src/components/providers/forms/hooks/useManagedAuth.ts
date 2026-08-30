@@ -1,6 +1,6 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { authApi, settingsApi } from "@/lib/api";
+import { authApi, remoteApi, settingsApi } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
 import {
   getManagementTargetKey,
@@ -15,6 +15,11 @@ import type {
 import { useTargetQueryIdentityReset } from "@/hooks/useTargetQueryIdentityReset";
 
 type PollingState = "idle" | "polling" | "success" | "error";
+type LoginRequest = {
+  targetAccountId?: string;
+  generation: number;
+  connectionGeneration: number;
+};
 
 export function useManagedAuth(
   authProvider: ManagedAuthProvider,
@@ -23,12 +28,23 @@ export function useManagedAuth(
 ) {
   const queryClient = useQueryClient();
   const targetKey = getManagementTargetKey(target);
-  const queryKey = ["managed-auth-status", targetKey, authProvider];
+  const queryKey = useMemo(
+    () => ["managed-auth-status", targetKey, authProvider],
+    [authProvider, targetKey],
+  );
   const connectionGeneration = useTargetQueryIdentityReset(
     "all",
     target,
     targetKey,
   );
+  const connectionTargetRef = useRef({
+    generation: connectionGeneration,
+    target,
+  });
+  if (connectionTargetRef.current.generation !== connectionGeneration) {
+    connectionTargetRef.current = { generation: connectionGeneration, target };
+  }
+  const connectionTarget = connectionTargetRef.current.target;
   const connectionGenerationRef = useRef(connectionGeneration);
   connectionGenerationRef.current = connectionGeneration;
   const isCurrentGeneration = useCallback(
@@ -45,21 +61,56 @@ export function useManagedAuth(
     null,
   );
   const pollingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flowGenerationRef = useRef(0);
+  const activeDeviceCodeRef = useRef<string | null>(null);
+  const retryTargetAccountIdRef = useRef<string | undefined>(undefined);
+  const flowTransitionRef = useRef<Promise<void>>(Promise.resolve());
+
+  const remoteHealthQuery = useQuery({
+    queryKey: ["remote-health", targetKey, connectionGeneration],
+    queryFn: () => {
+      if (target.type !== "remote") return null;
+      return remoteApi.checkHealth(target.profile, target.secret);
+    },
+    enabled: target.type === "remote",
+    retry: false,
+    staleTime: 30_000,
+  });
+  const isAuthSupported =
+    target.type === "local" ||
+    remoteHealthQuery.data?.capabilities.includes("auth") === true;
+  const canTargetedReauth =
+    isAuthSupported &&
+    (target.type === "local" ||
+      (authProvider === "codex_oauth" &&
+        remoteHealthQuery.data?.capabilities.includes(
+          "auth-targeted-relogin",
+        ) === true));
 
   const {
     data: authStatus,
-    isLoading: isLoadingStatus,
-    isSuccess: isStatusSuccess,
+    isLoading: isAuthStatusLoading,
+    isSuccess: isAuthStatusSuccess,
+    isError: isAuthStatusError,
     refetch: refetchStatus,
   } = useQuery<ManagedAuthStatus>({
     queryKey,
     queryFn: () => authApi.authGetStatus(authProvider, target),
+    enabled: isAuthSupported,
     staleTime: 30000,
     // A rejected xAI refresh token is persisted as `requires_reauth` by the
     // proxy hot path. Periodically refresh local status so an already-open Auth
     // Center stops showing the account as logged in without requiring a reload.
     refetchInterval: authProvider === "xai_oauth" ? 15_000 : false,
   });
+
+  const refetchManagedAuthStatus = useCallback(async () => {
+    if (target.type === "remote") {
+      const health = await remoteHealthQuery.refetch();
+      if (health.data?.capabilities.includes("auth") !== true) return health;
+    }
+    return refetchStatus();
+  }, [refetchStatus, remoteHealthQuery, target.type]);
 
   const stopPolling = useCallback(() => {
     if (pollingIntervalRef.current) {
@@ -72,11 +123,47 @@ export function useManagedAuth(
     }
   }, []);
 
+  const cancelBackendFlow = useCallback(
+    async (activeDeviceCode: string | null): Promise<boolean> => {
+      if (authProvider !== "codex_oauth" || !activeDeviceCode) return true;
+      try {
+        const cancelled = await authApi.authCancelLogin(
+          authProvider,
+          activeDeviceCode,
+          connectionTarget,
+        );
+        if (!cancelled) {
+          await queryClient.invalidateQueries({ queryKey });
+        }
+        return cancelled;
+      } catch (e) {
+        console.debug("[ManagedAuth] Failed to cancel device flow:", e);
+        await queryClient.invalidateQueries({ queryKey });
+        return false;
+      }
+    },
+    [authProvider, connectionTarget, queryClient, queryKey],
+  );
+
+  const queueBackendCancellation = useCallback(
+    (activeDeviceCode: string | null) => {
+      const transition = flowTransitionRef.current.then(async () => {
+        await cancelBackendFlow(activeDeviceCode);
+      });
+      flowTransitionRef.current = transition;
+      return transition;
+    },
+    [cancelBackendFlow],
+  );
+
   useEffect(() => {
     return () => {
+      flowGenerationRef.current += 1;
+      void cancelBackendFlow(activeDeviceCodeRef.current);
+      activeDeviceCodeRef.current = null;
       stopPolling();
     };
-  }, [stopPolling]);
+  }, [cancelBackendFlow, stopPolling]);
 
   useEffect(() => {
     stopPolling();
@@ -86,16 +173,30 @@ export function useManagedAuth(
   }, [connectionGeneration, stopPolling]);
 
   const startLoginMutation = useMutation({
-    mutationFn: async () => ({
+    mutationFn: async ({
+      targetAccountId,
+      connectionGeneration: requestConnectionGeneration,
+    }: LoginRequest) => ({
       response: await authApi.authStartLogin(
         authProvider,
         githubDomain,
         target,
+        targetAccountId,
       ),
-      generation: connectionGeneration,
+      connectionGeneration: requestConnectionGeneration,
     }),
-    onSuccess: async ({ response, generation }) => {
-      if (!isCurrentGeneration(generation)) return;
+    onSuccess: async (
+      { response, connectionGeneration: requestGeneration },
+      request,
+    ) => {
+      if (
+        !isCurrentGeneration(requestGeneration) ||
+        request.generation !== flowGenerationRef.current
+      ) {
+        void cancelBackendFlow(response.device_code);
+        return;
+      }
+      activeDeviceCodeRef.current = response.device_code;
       setDeviceCode(response);
       setPollingState("polling");
       setError(null);
@@ -105,11 +206,27 @@ export function useManagedAuth(
       } catch (e) {
         console.debug("[ManagedAuth] Failed to copy user code:", e);
       }
+      if (
+        !isCurrentGeneration(requestGeneration) ||
+        request.generation !== flowGenerationRef.current
+      ) {
+        return;
+      }
 
-      try {
-        await settingsApi.openExternal(response.verification_uri);
-      } catch (e) {
-        console.debug("[ManagedAuth] Failed to open browser:", e);
+      // Device-code login can be completed in a browser, but only the local
+      // target may launch one. Remote users retain the verification URL in UI.
+      if (target.type === "local") {
+        try {
+          await settingsApi.openExternal(response.verification_uri);
+        } catch (e) {
+          console.debug("[ManagedAuth] Failed to open browser:", e);
+        }
+      }
+      if (
+        !isCurrentGeneration(requestGeneration) ||
+        request.generation !== flowGenerationRef.current
+      ) {
+        return;
       }
 
       // Add a small buffer on top of GitHub's suggested interval to avoid
@@ -118,12 +235,18 @@ export function useManagedAuth(
       const expiresAt = Date.now() + response.expires_in * 1000;
 
       const pollOnce = async () => {
-        if (!isCurrentGeneration(generation)) {
+        if (
+          !isCurrentGeneration(requestGeneration) ||
+          request.generation !== flowGenerationRef.current
+        ) {
           stopPolling();
           return;
         }
         if (Date.now() > expiresAt) {
           stopPolling();
+          activeDeviceCodeRef.current = null;
+          void cancelBackendFlow(response.device_code);
+          flowGenerationRef.current += 1;
           setPollingState("error");
           setError("Device code expired. Please try again.");
           return;
@@ -136,42 +259,76 @@ export function useManagedAuth(
             githubDomain,
             target,
           );
-          if (!isCurrentGeneration(generation)) {
+          if (
+            !isCurrentGeneration(requestGeneration) ||
+            request.generation !== flowGenerationRef.current
+          ) {
             stopPolling();
             return;
           }
           if (newAccount) {
             stopPolling();
+            activeDeviceCodeRef.current = null;
+            flowGenerationRef.current += 1;
+            const completionGeneration = flowGenerationRef.current;
             setPollingState("success");
             await refetchStatus();
             await queryClient.invalidateQueries({ queryKey });
+            if (
+              !isCurrentGeneration(requestGeneration) ||
+              completionGeneration !== flowGenerationRef.current
+            ) {
+              return;
+            }
             setPollingState("idle");
             setDeviceCode(null);
           }
         } catch (e) {
-          if (!isCurrentGeneration(generation)) return;
+          if (
+            !isCurrentGeneration(requestGeneration) ||
+            request.generation !== flowGenerationRef.current
+          ) {
+            return;
+          }
           const errorMessage = e instanceof Error ? e.message : String(e);
           if (
             !errorMessage.includes("pending") &&
             !errorMessage.includes("slow_down")
           ) {
             stopPolling();
+            activeDeviceCodeRef.current = null;
+            void cancelBackendFlow(response.device_code);
+            flowGenerationRef.current += 1;
             setPollingState("error");
             setError(errorMessage);
           }
         }
       };
 
-      void pollOnce();
       pollingIntervalRef.current = setInterval(pollOnce, interval);
       pollingTimeoutRef.current = setTimeout(() => {
-        if (!isCurrentGeneration(generation)) return;
+        if (
+          !isCurrentGeneration(requestGeneration) ||
+          request.generation !== flowGenerationRef.current
+        ) {
+          return;
+        }
         stopPolling();
+        activeDeviceCodeRef.current = null;
+        void cancelBackendFlow(response.device_code);
+        flowGenerationRef.current += 1;
         setPollingState("error");
         setError("Device code expired. Please try again.");
       }, response.expires_in * 1000);
+      void pollOnce();
     },
-    onError: (e) => {
+    onError: (e, request) => {
+      if (
+        !isCurrentGeneration(request.connectionGeneration) ||
+        request.generation !== flowGenerationRef.current
+      ) {
+        return;
+      }
       setPollingState("error");
       setError(e instanceof Error ? e.message : String(e));
     },
@@ -237,20 +394,59 @@ export function useManagedAuth(
     },
   });
 
-  const startAuth = useCallback(() => {
-    setPollingState("idle");
-    setDeviceCode(null);
-    setError(null);
-    stopPolling();
-    startLoginMutation.mutate();
-  }, [startLoginMutation, stopPolling]);
+  const beginLogin = useCallback(
+    (targetAccountId?: string) => {
+      const previousDeviceCode = activeDeviceCodeRef.current;
+      activeDeviceCodeRef.current = null;
+      const generation = flowGenerationRef.current + 1;
+      flowGenerationRef.current = generation;
+      retryTargetAccountIdRef.current = targetAccountId;
+      setPollingState("idle");
+      setDeviceCode(null);
+      setError(null);
+      stopPolling();
+      void queueBackendCancellation(previousDeviceCode).then(() => {
+        if (generation !== flowGenerationRef.current) return;
+        startLoginMutation.mutate({
+          targetAccountId,
+          generation,
+          connectionGeneration,
+        });
+      });
+    },
+    [
+      connectionGeneration,
+      queueBackendCancellation,
+      startLoginMutation,
+      stopPolling,
+    ],
+  );
+
+  const startAuth = useCallback(() => beginLogin(), [beginLogin]);
+
+  const reauthAccount = useCallback(
+    (accountId: string) => {
+      beginLogin(accountId);
+    },
+    [beginLogin],
+  );
+
+  const retryAuth = useCallback(
+    () => beginLogin(retryTargetAccountIdRef.current),
+    [beginLogin],
+  );
 
   const cancelAuth = useCallback(() => {
+    flowGenerationRef.current += 1;
+    const previousDeviceCode = activeDeviceCodeRef.current;
+    activeDeviceCodeRef.current = null;
+    retryTargetAccountIdRef.current = undefined;
     stopPolling();
     setPollingState("idle");
     setDeviceCode(null);
     setError(null);
-  }, [stopPolling]);
+    void queueBackendCancellation(previousDeviceCode);
+  }, [queueBackendCancellation, stopPolling]);
 
   const logout = useCallback(() => {
     logoutMutation.mutate();
@@ -274,8 +470,12 @@ export function useManagedAuth(
 
   return {
     authStatus,
-    isLoadingStatus,
-    isStatusSuccess,
+    isAuthSupported,
+    isLoadingStatus:
+      isAuthStatusLoading ||
+      (target.type === "remote" && remoteHealthQuery.isLoading),
+    isStatusSuccess: isAuthSupported && isAuthStatusSuccess,
+    isStatusError: remoteHealthQuery.isError || isAuthStatusError,
     accounts,
     hasAnyAccount: accounts.length > 0,
     isAuthenticated: authStatus?.authenticated ?? false,
@@ -291,10 +491,13 @@ export function useManagedAuth(
     isSettingDefaultAccount: setDefaultAccountMutation.isPending,
     startAuth,
     addAccount: startAuth,
+    canTargetedReauth,
+    reauthAccount,
+    retryAuth,
     cancelAuth,
     logout,
     removeAccount,
     setDefaultAccount,
-    refetchStatus,
+    refetchStatus: refetchManagedAuthStatus,
   };
 }

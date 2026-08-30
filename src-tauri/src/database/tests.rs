@@ -8,8 +8,39 @@ use crate::provider::{Provider, ProviderManager};
 use indexmap::IndexMap;
 use rusqlite::{params, Connection};
 use serde_json::json;
+use serial_test::serial;
 use std::collections::HashMap;
-use tempfile::NamedTempFile;
+use tempfile::{NamedTempFile, TempDir};
+
+struct TestHomeGuard {
+    previous_test_home: Option<std::ffi::OsString>,
+    temp_dir: TempDir,
+}
+
+impl TestHomeGuard {
+    fn new() -> Self {
+        let temp_dir = tempfile::tempdir().expect("create isolated test home");
+        let previous_test_home = std::env::var_os("CC_SWITCH_TEST_HOME");
+        std::env::set_var("CC_SWITCH_TEST_HOME", temp_dir.path());
+        Self {
+            previous_test_home,
+            temp_dir,
+        }
+    }
+
+    fn config_dir(&self) -> std::path::PathBuf {
+        self.temp_dir.path().join(".cc-switch-remote")
+    }
+}
+
+impl Drop for TestHomeGuard {
+    fn drop(&mut self) {
+        match self.previous_test_home.as_ref() {
+            Some(previous) => std::env::set_var("CC_SWITCH_TEST_HOME", previous),
+            None => std::env::remove_var("CC_SWITCH_TEST_HOME"),
+        }
+    }
+}
 
 const LEGACY_SCHEMA_SQL: &str = r#"
     CREATE TABLE providers (
@@ -213,6 +244,136 @@ fn schema_migration_rejects_future_version() {
         err.to_string().contains("数据库版本过新"),
         "unexpected error: {err}"
     );
+}
+
+#[test]
+fn future_schema_guard_rejects_before_caller_mutation() -> Result<(), AppError> {
+    let conn = Connection::open_in_memory()?;
+    conn.execute("CREATE TABLE sentinel (value TEXT NOT NULL)", [])?;
+    conn.execute("INSERT INTO sentinel VALUES ('keep')", [])?;
+    Database::set_user_version(&conn, 18)?;
+
+    let error = Database::ensure_schema_version_supported(18, 17)
+        .expect_err("a v17-compatible guard must reject a v18 database");
+
+    assert!(error.to_string().contains("数据库版本过新"));
+    assert_eq!(Database::get_user_version(&conn)?, 18);
+    assert_eq!(
+        conn.query_row("SELECT value FROM sentinel", [], |row| row
+            .get::<_, String>(0))?,
+        "keep"
+    );
+    Ok(())
+}
+
+#[test]
+#[serial]
+fn verified_pre_migration_backup_precedes_v17_schema_mutation() -> Result<(), AppError> {
+    let test_home = TestHomeGuard::new();
+    let config_dir = test_home.config_dir();
+    std::fs::create_dir_all(&config_dir).map_err(|error| AppError::io(&config_dir, error))?;
+    let db_path = config_dir.join("cc-switch.db");
+    let conn = Connection::open(&db_path)?;
+    conn.execute_batch(
+        "PRAGMA auto_vacuum = INCREMENTAL;
+         VACUUM;
+         CREATE TABLE session_log_sync (
+            file_path TEXT PRIMARY KEY,
+            last_modified INTEGER NOT NULL,
+            last_line_offset INTEGER NOT NULL DEFAULT 0,
+            last_synced_at INTEGER NOT NULL
+         );
+         INSERT INTO session_log_sync VALUES ('/tmp/session.jsonl', 1, 3, 1);",
+    )?;
+    Database::set_user_version(&conn, 17)?;
+    drop(conn);
+
+    let _db = Database::init()?;
+
+    let backup_dir = config_dir.join("backups");
+    let backup_path = std::fs::read_dir(&backup_dir)
+        .map_err(|error| AppError::io(&backup_dir, error))?
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .find(|path| path.extension().is_some_and(|extension| extension == "db"))
+        .expect("v17 upgrade must produce a database backup");
+    let backup_conn =
+        Connection::open_with_flags(&backup_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+    assert_eq!(Database::get_user_version(&backup_conn)?, 17);
+    assert!(
+        !Database::has_column(&backup_conn, "session_log_sync", "last_byte_offset")?,
+        "the backup must be captured before the v18 schema mutation"
+    );
+    assert!(
+        !Database::has_column(&backup_conn, "session_log_sync", "last_tail_fingerprint")?,
+        "the backup must be captured before the v18 schema mutation"
+    );
+    drop(backup_conn);
+
+    let upgraded_conn = Connection::open(&db_path)?;
+    assert_eq!(Database::get_user_version(&upgraded_conn)?, 18);
+    assert!(Database::has_column(
+        &upgraded_conn,
+        "session_log_sync",
+        "last_byte_offset"
+    )?);
+    assert!(Database::has_column(
+        &upgraded_conn,
+        "session_log_sync",
+        "last_tail_fingerprint"
+    )?);
+    Ok(())
+}
+
+#[test]
+fn pre_migration_backup_failure_leaves_v17_database_unchanged() -> Result<(), AppError> {
+    let temp_dir =
+        tempfile::tempdir().map_err(|error| AppError::io("temporary test directory", error))?;
+    let db_path = temp_dir.path().join("cc-switch.db");
+    let conn = Connection::open(&db_path)?;
+    conn.execute_batch(
+        "CREATE TABLE session_log_sync (
+            file_path TEXT PRIMARY KEY,
+            last_modified INTEGER NOT NULL,
+            last_line_offset INTEGER NOT NULL DEFAULT 0,
+            last_synced_at INTEGER NOT NULL
+         );
+         INSERT INTO session_log_sync VALUES ('/tmp/session.jsonl', 1, 3, 1);",
+    )?;
+    Database::set_user_version(&conn, 17)?;
+    drop(conn);
+    let bytes_before = std::fs::read(&db_path).map_err(|error| AppError::io(&db_path, error))?;
+
+    let error = match Database::init_at_path_with_pre_migration_backup(&db_path, |_| {
+        Err(AppError::Config(
+            "simulated pre-migration backup failure".to_string(),
+        ))
+    }) {
+        Ok(_) => panic!("migration must stop when its safety backup fails"),
+        Err(error) => error,
+    };
+
+    assert!(error
+        .to_string()
+        .contains("simulated pre-migration backup failure"));
+    assert_eq!(
+        std::fs::read(&db_path).map_err(|error| AppError::io(&db_path, error))?,
+        bytes_before,
+        "a failed backup must leave the original database byte-for-byte unchanged"
+    );
+    let unchanged_conn =
+        Connection::open_with_flags(&db_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+    assert_eq!(Database::get_user_version(&unchanged_conn)?, 17);
+    assert!(!Database::has_column(
+        &unchanged_conn,
+        "session_log_sync",
+        "last_byte_offset"
+    )?);
+    assert!(!Database::has_column(
+        &unchanged_conn,
+        "session_log_sync",
+        "last_tail_fingerprint"
+    )?);
+    Ok(())
 }
 
 #[test]

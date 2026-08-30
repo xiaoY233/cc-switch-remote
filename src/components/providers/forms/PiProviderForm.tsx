@@ -58,7 +58,8 @@ import {
   type PiThinkingLevelMap,
 } from "@/config/piThinkingProfiles";
 import {
-  fetchModelsForConfig,
+  canUseStoredRemoteProviderApiKey,
+  fetchModelsForProviderConfig,
   showFetchModelsError,
   type FetchedModel,
 } from "@/lib/api/model-fetch";
@@ -389,6 +390,7 @@ export function PiProviderForm({
   onCancel,
   onSubmittingChange,
   onSubmitReadyChange,
+  target,
   initialData,
   showButtons = true,
 }: ProviderFormProps) {
@@ -936,7 +938,9 @@ export function PiProviderForm({
     const endpoint = baseUrl.trim();
     const requestHeaders = normalizeRequestHeaders(providerHeaders);
     const hasCredentials =
-      Boolean(apiKey) || Object.keys(requestHeaders).length > 0;
+      Boolean(apiKey) ||
+      Object.keys(requestHeaders).length > 0 ||
+      canUseStoredRemoteProviderApiKey(target, providerId);
     if (!endpoint || !hasCredentials) {
       showFetchModelsError(null, t, {
         hasApiKey: hasCredentials,
@@ -953,13 +957,14 @@ export function PiProviderForm({
     const requestGeneration = ++modelFetchGenerationRef.current;
     setFetchedModels([]);
     setIsFetchingModels(true);
-    fetchModelsForConfig(
-      endpoint,
+    fetchModelsForProviderConfig({
+      app: "pi",
+      providerId,
+      target,
+      baseUrl: endpoint,
       apiKey,
-      undefined,
-      undefined,
       customUserAgent,
-    )
+    })
       .then((result) => {
         if (modelFetchGenerationRef.current !== requestGeneration) return;
         setFetchedModels(result);
@@ -981,7 +986,7 @@ export function PiProviderForm({
           setIsFetchingModels(false);
         }
       });
-  }, [api, apiKey, baseUrl, providerHeaders, t]);
+  }, [api, apiKey, baseUrl, providerHeaders, providerId, t, target]);
 
   const handleApiChange = useCallback(
     (value: string) => {

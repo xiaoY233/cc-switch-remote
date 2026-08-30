@@ -5,6 +5,7 @@ const invokeMock = vi.fn();
 const remoteAuthGetStatusMock = vi.fn();
 const remoteAuthStartLoginMock = vi.fn();
 const remoteAuthPollForAccountMock = vi.fn();
+const remoteAuthCancelLoginMock = vi.fn();
 const remoteAuthRemoveAccountMock = vi.fn();
 const remoteAuthSetDefaultAccountMock = vi.fn();
 const remoteAuthLogoutMock = vi.fn();
@@ -19,6 +20,7 @@ vi.mock("./remote", () => ({
     authStartLogin: (...args: unknown[]) => remoteAuthStartLoginMock(...args),
     authPollForAccount: (...args: unknown[]) =>
       remoteAuthPollForAccountMock(...args),
+    authCancelLogin: (...args: unknown[]) => remoteAuthCancelLoginMock(...args),
     authRemoveAccount: (...args: unknown[]) =>
       remoteAuthRemoveAccountMock(...args),
     authSetDefaultAccount: (...args: unknown[]) =>
@@ -51,6 +53,7 @@ describe("managed auth API", () => {
     remoteAuthGetStatusMock.mockReset();
     remoteAuthStartLoginMock.mockReset();
     remoteAuthPollForAccountMock.mockReset();
+    remoteAuthCancelLoginMock.mockReset();
     remoteAuthRemoveAccountMock.mockReset();
     remoteAuthSetDefaultAccountMock.mockReset();
     remoteAuthLogoutMock.mockReset();
@@ -75,6 +78,7 @@ describe("managed auth API", () => {
     remoteAuthGetStatusMock.mockResolvedValue(status);
     remoteAuthStartLoginMock.mockResolvedValue(deviceCode);
     remoteAuthPollForAccountMock.mockResolvedValue(null);
+    remoteAuthCancelLoginMock.mockResolvedValue(true);
     remoteAuthRemoveAccountMock.mockResolvedValue(undefined);
     remoteAuthSetDefaultAccountMock.mockResolvedValue(undefined);
     remoteAuthLogoutMock.mockResolvedValue(undefined);
@@ -86,6 +90,14 @@ describe("managed auth API", () => {
       authApi.authStartLogin("github_copilot", "github.com", remoteTarget),
     ).resolves.toEqual(deviceCode);
     await expect(
+      authApi.authStartLogin(
+        "codex_oauth",
+        undefined,
+        remoteTarget,
+        "account-1",
+      ),
+    ).resolves.toEqual(deviceCode);
+    await expect(
       authApi.authPollForAccount(
         "github_copilot",
         "device",
@@ -93,6 +105,9 @@ describe("managed auth API", () => {
         remoteTarget,
       ),
     ).resolves.toBeNull();
+    await expect(
+      authApi.authCancelLogin("codex_oauth", "device", remoteTarget),
+    ).resolves.toBe(true);
     await expect(
       authApi.authRemoveAccount("github_copilot", "account-1", remoteTarget),
     ).resolves.toBeUndefined();
@@ -116,6 +131,14 @@ describe("managed auth API", () => {
       profile,
       "github_copilot",
       "github.com",
+      undefined,
+      remoteTarget.secret,
+    );
+    expect(remoteAuthStartLoginMock).toHaveBeenCalledWith(
+      profile,
+      "codex_oauth",
+      undefined,
+      "account-1",
       remoteTarget.secret,
     );
     expect(remoteAuthPollForAccountMock).toHaveBeenCalledWith(
@@ -123,6 +146,12 @@ describe("managed auth API", () => {
       "github_copilot",
       "device",
       "github.com",
+      remoteTarget.secret,
+    );
+    expect(remoteAuthCancelLoginMock).toHaveBeenCalledWith(
+      profile,
+      "codex_oauth",
+      "device",
       remoteTarget.secret,
     );
     expect(remoteAuthRemoveAccountMock).toHaveBeenCalledWith(
@@ -143,5 +172,31 @@ describe("managed auth API", () => {
       remoteTarget.secret,
     );
     expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps targeted reauthentication and cancellation on the local Tauri target", async () => {
+    const { authApi } = await import("./auth");
+    invokeMock.mockResolvedValueOnce({ device_code: "device" });
+    invokeMock.mockResolvedValueOnce(true);
+
+    await authApi.authStartLogin(
+      "codex_oauth",
+      undefined,
+      { type: "local" },
+      "account-1",
+    );
+    await authApi.authCancelLogin("codex_oauth", "device", { type: "local" });
+
+    expect(invokeMock).toHaveBeenNthCalledWith(1, "auth_start_login", {
+      authProvider: "codex_oauth",
+      githubDomain: null,
+      targetAccountId: "account-1",
+    });
+    expect(invokeMock).toHaveBeenNthCalledWith(2, "auth_cancel_login", {
+      authProvider: "codex_oauth",
+      deviceCode: "device",
+    });
+    expect(remoteAuthStartLoginMock).not.toHaveBeenCalled();
+    expect(remoteAuthCancelLoginMock).not.toHaveBeenCalled();
   });
 });

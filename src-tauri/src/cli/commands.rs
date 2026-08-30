@@ -670,11 +670,17 @@ fn map_device_code_response(
 pub fn auth_start_login(
     auth_provider: &str,
     github_domain: Option<&str>,
+    target_account_id: Option<&str>,
 ) -> Result<ManagedAuthDeviceCodeResponse, String> {
     let auth_provider = ensure_auth_provider(auth_provider)?;
     auth_runtime()?.block_on(async {
         match auth_provider {
             AUTH_PROVIDER_GITHUB_COPILOT => {
+                if target_account_id.is_some() {
+                    return Err(
+                        "Targeted re-authentication is only supported for Codex OAuth".to_string(),
+                    );
+                }
                 let response = COPILOT_AUTH_MANAGER
                     .start_device_flow(github_domain)
                     .await
@@ -683,12 +689,17 @@ pub fn auth_start_login(
             }
             AUTH_PROVIDER_CODEX_OAUTH => {
                 let response = CODEX_OAUTH_MANAGER
-                    .start_device_flow()
+                    .start_device_flow(target_account_id)
                     .await
                     .map_err(|e| e.to_string())?;
                 Ok(map_device_code_response(auth_provider, response))
             }
             AUTH_PROVIDER_XAI_OAUTH => {
+                if target_account_id.is_some() {
+                    return Err(
+                        "Targeted re-authentication is only supported for Codex OAuth".to_string(),
+                    );
+                }
                 let response = XAI_OAUTH_MANAGER
                     .start_device_flow()
                     .await
@@ -725,7 +736,12 @@ pub fn auth_poll_for_account(
                 }
             }
             AUTH_PROVIDER_CODEX_OAUTH => {
-                match CODEX_OAUTH_MANAGER.poll_for_token(device_code).await {
+                // The long-lived helper dispatcher executes JSON commands serially, so
+                // the command boundary already excludes concurrent provider mutations.
+                match CODEX_OAUTH_MANAGER
+                    .poll_for_token(device_code, || async {})
+                    .await
+                {
                     Ok(account) => {
                         let default_account_id =
                             CODEX_OAUTH_MANAGER.get_status().await.default_account_id;
@@ -751,6 +767,15 @@ pub fn auth_poll_for_account(
             _ => unreachable!(),
         }
     })
+}
+
+pub fn auth_cancel_login(auth_provider: &str, device_code: &str) -> Result<bool, String> {
+    let auth_provider = ensure_auth_provider(auth_provider)?;
+    if auth_provider != AUTH_PROVIDER_CODEX_OAUTH {
+        return Err("Login cancellation is only supported for Codex OAuth".to_string());
+    }
+
+    Ok(auth_runtime()?.block_on(CODEX_OAUTH_MANAGER.cancel_device_flow(device_code)))
 }
 
 pub fn auth_list_accounts(auth_provider: &str) -> Result<Vec<ManagedAuthAccount>, String> {
@@ -1867,9 +1892,7 @@ fn map_s3_sync_result(
 
 fn run_cli_post_import_sync(db: Arc<Database>) -> Result<(), String> {
     let state = build_remote_app_state(db);
-    ProviderService::sync_current_to_live(&state)
-        .and_then(|_| crate::settings::reload_settings())
-        .map_err(|e| e.to_string())
+    crate::services::restore::sync_restored_state(&state).map_err(|e| e.to_string())
 }
 
 fn attach_cli_warning(value: &mut Value, warning: Option<String>) {
@@ -3028,13 +3051,7 @@ pub fn import_database_sql_b64(encoded_sql: &str) -> Result<Value, String> {
     let sql = String::from_utf8(sql_bytes).map_err(|e| e.to_string())?;
     let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
     let backup_id = db.import_sql_string(&sql).map_err(|e| e.to_string())?;
-    let sync_warning = {
-        let state = build_remote_app_state(db);
-        ProviderService::sync_current_to_live(&state)
-            .and_then(|_| crate::settings::reload_settings())
-            .err()
-            .map(|e| e.to_string())
-    };
+    let sync_warning = run_cli_post_import_sync(db).err();
 
     let mut payload = json!({
         "success": true,
@@ -3099,8 +3116,16 @@ pub fn list_database_backups() -> Result<Vec<crate::database::backup::BackupEntr
 }
 
 pub fn restore_database_backup(filename: &str) -> Result<String, String> {
-    let db = Database::init().map_err(|e| e.to_string())?;
-    db.restore_from_backup(filename).map_err(|e| e.to_string())
+    let db = Arc::new(Database::init().map_err(|e| e.to_string())?);
+    let restored = db
+        .restore_from_backup(filename)
+        .map_err(|e| e.to_string())?;
+    if let Err(error) = run_cli_post_import_sync(db) {
+        // Keep the established string-only Helper response stable while
+        // recording an incomplete derived-file projection for operators.
+        log::warn!("[Restore] post-restore sync warning: {error}");
+    }
+    Ok(restored)
 }
 
 pub fn rename_database_backup(old_filename: &str, new_name: &str) -> Result<String, String> {
@@ -3542,6 +3567,69 @@ mod tests {
         assert!(unit.contains("Restart=on-failure"));
         assert!(!unit.contains("npm"));
         assert!(!unit.contains("cargo"));
+    }
+
+    #[test]
+    #[serial]
+    fn helper_restore_projection_writes_enabled_prompt_from_restored_database() {
+        let home = tempfile::tempdir().expect("temporary home");
+        let _guard = TestHomeGuard::set(home.path());
+        let db = Arc::new(Database::init().expect("initialize helper database"));
+        let prompt = crate::prompt::Prompt {
+            id: "restored-prompt".to_string(),
+            name: "Restored prompt".to_string(),
+            content: "restored prompt content".to_string(),
+            description: None,
+            enabled: true,
+            created_at: Some(1),
+            updated_at: Some(1),
+        };
+        db.save_prompt("claude", &prompt)
+            .expect("save restored prompt");
+
+        let live_path = home.path().join(".claude/CLAUDE.md");
+        std::fs::create_dir_all(live_path.parent().expect("prompt directory"))
+            .expect("create prompt directory");
+        std::fs::write(&live_path, "unmanaged local prompt").expect("seed live prompt");
+
+        run_cli_post_import_sync(db).expect("project restored helper state");
+
+        assert_eq!(
+            std::fs::read_to_string(&live_path).expect("read projected prompt"),
+            "restored prompt content"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn helper_restore_projection_keeps_unmanaged_prompt_when_snapshot_enables_none() {
+        let home = tempfile::tempdir().expect("temporary home");
+        let _guard = TestHomeGuard::set(home.path());
+        let db = Arc::new(Database::init().expect("initialize helper database"));
+        let prompt = crate::prompt::Prompt {
+            id: "disabled-restored-prompt".to_string(),
+            name: "Disabled restored prompt".to_string(),
+            content: "snapshot prompt that is disabled".to_string(),
+            description: None,
+            enabled: false,
+            created_at: Some(1),
+            updated_at: Some(1),
+        };
+        db.save_prompt("claude", &prompt)
+            .expect("save restored prompt");
+
+        let live_path = home.path().join(".claude/CLAUDE.md");
+        std::fs::create_dir_all(live_path.parent().expect("prompt directory"))
+            .expect("create prompt directory");
+        let unmanaged = "unmanaged local prompt\nwith exact bytes";
+        std::fs::write(&live_path, unmanaged).expect("seed live prompt");
+
+        run_cli_post_import_sync(db).expect("project restored helper state");
+
+        assert_eq!(
+            std::fs::read_to_string(&live_path).expect("read preserved prompt"),
+            unmanaged
+        );
     }
 
     #[test]

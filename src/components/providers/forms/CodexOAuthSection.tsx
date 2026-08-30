@@ -22,6 +22,7 @@ import {
   Sparkles,
   User,
   Settings2,
+  RefreshCw,
 } from "lucide-react";
 import { useCodexOauth } from "./hooks/useCodexOauth";
 import { copyText } from "@/lib/clipboard";
@@ -73,12 +74,19 @@ export const CodexOAuthSection: React.FC<CodexOAuthSectionProps> = ({
     pollingState,
     deviceCode,
     error,
+    isAuthSupported = true,
+    isLoadingStatus = false,
+    isStatusError,
+    refetchStatus,
     isPolling,
     isAddingAccount,
     isLoggingOut,
     isRemovingAccount,
     isSettingDefaultAccount,
     addAccount,
+    canTargetedReauth,
+    reauthAccount,
+    retryAuth,
     removeAccount,
     setDefaultAccount,
     cancelAuth,
@@ -116,6 +124,50 @@ export const CodexOAuthSection: React.FC<CodexOAuthSectionProps> = ({
       onAccountSelect?.(null);
     }
   };
+
+  if (isLoadingStatus) {
+    return (
+      <div className={`flex items-center gap-2 ${className || ""}`}>
+        <Loader2 className="h-4 w-4 animate-spin" />
+        <span className="text-sm text-muted-foreground">
+          {t("common.loading", "加载中...")}
+        </span>
+      </div>
+    );
+  }
+
+  if (isStatusError) {
+    return (
+      <div className={`space-y-3 ${className || ""}`} role="alert">
+        <p className="text-sm text-destructive">
+          {t("codexOauth.statusLoadFailed", {
+            defaultValue: "无法加载 ChatGPT 账号状态，请重试。",
+          })}
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => refetchStatus()}
+        >
+          {t("codexOauth.retry", "重试")}
+        </Button>
+      </div>
+    );
+  }
+
+  if (!isAuthSupported) {
+    return (
+      <div className={`space-y-2 ${className || ""}`} role="status">
+        <p className="text-sm text-muted-foreground">
+          {t("remote.settings.auth.unsupported", {
+            defaultValue:
+              "当前远程 Helper 不支持认证管理。请更新到包含 auth capability 的新版 Helper。",
+          })}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className={`space-y-4 ${className || ""}`}>
@@ -234,7 +286,24 @@ export const CodexOAuthSection: React.FC<CodexOAuthSectionProps> = ({
                       </Badge>
                     )}
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex shrink-0 items-center gap-1">
+                    {canTargetedReauth && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className={`h-7 gap-1 px-2 text-xs ${
+                          account.reauth_required
+                            ? "border-amber-400/70 text-amber-700 hover:bg-amber-100 dark:border-amber-500/50 dark:text-amber-300 dark:hover:bg-amber-900/40"
+                            : "text-muted-foreground"
+                        }`}
+                        onClick={() => reauthAccount(account.id)}
+                        disabled={isAddingAccount}
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" />
+                        {t("codexOauth.reauthLogin", "重新登录")}
+                      </Button>
+                    )}
                     {defaultAccountId !== account.id && (
                       <Button
                         type="button"
@@ -363,7 +432,7 @@ export const CodexOAuthSection: React.FC<CodexOAuthSectionProps> = ({
           <div className="flex gap-2">
             <Button
               type="button"
-              onClick={addAccount}
+              onClick={retryAuth}
               variant="outline"
               size="sm"
             >

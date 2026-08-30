@@ -18,6 +18,7 @@ pub mod provider_secrets;
 pub mod proxy;
 #[cfg(not(any(feature = "desktop", feature = "proxy-runtime")))]
 mod proxy_stub;
+pub mod restore;
 pub mod s3;
 #[cfg(feature = "desktop")]
 pub mod s3_auto_sync;

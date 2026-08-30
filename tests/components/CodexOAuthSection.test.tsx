@@ -1,4 +1,5 @@
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CodexOAuthSection } from "@/components/providers/forms/CodexOAuthSection";
 import { AuthCenterPanel } from "@/components/settings/AuthCenterPanel";
@@ -62,6 +63,8 @@ const authState = (accountId: string) => ({
       authenticated_at: 0,
       is_default: true,
       github_domain: "",
+      reauth_required: false,
+      requires_reauth: false,
     },
   ],
   defaultAccountId: accountId,
@@ -74,6 +77,9 @@ const authState = (accountId: string) => ({
   isRemovingAccount: false,
   isSettingDefaultAccount: false,
   addAccount: vi.fn(),
+  canTargetedReauth: true,
+  reauthAccount: vi.fn(),
+  retryAuth: vi.fn(),
   removeAccount: vi.fn(),
   setDefaultAccount: vi.fn(),
   cancelAuth: vi.fn(),
@@ -112,5 +118,47 @@ describe("CodexOAuthSection", () => {
     expect(screen.getByTestId("account-quota")).toHaveTextContent(
       "remote-account",
     );
+  });
+
+  it("reauthenticates a local account in place", async () => {
+    const user = userEvent.setup();
+    const reauthAccount = vi.fn();
+    mocks.useCodexOauth.mockReturnValue({
+      ...authState("account-1"),
+      reauthAccount,
+    });
+
+    render(<CodexOAuthSection />);
+    await user.click(screen.getByRole("button", { name: "重新登录" }));
+
+    expect(reauthAccount).toHaveBeenCalledWith("account-1");
+  });
+
+  it("allows account reauthentication when the selected helper advertises support", async () => {
+    const user = userEvent.setup();
+    const reauthAccount = vi.fn();
+    mocks.useCodexOauth.mockReturnValue({
+      ...authState("remote-account"),
+      canTargetedReauth: true,
+      reauthAccount,
+    });
+
+    render(<CodexOAuthSection target={remoteTarget} />);
+    await user.click(screen.getByRole("button", { name: "重新登录" }));
+
+    expect(reauthAccount).toHaveBeenCalledWith("remote-account");
+  });
+
+  it("hides account reauthentication when the selected helper lacks that capability", () => {
+    mocks.useCodexOauth.mockReturnValue({
+      ...authState("remote-account"),
+      canTargetedReauth: false,
+    });
+
+    render(<CodexOAuthSection target={remoteTarget} />);
+
+    expect(
+      screen.queryByRole("button", { name: "重新登录" }),
+    ).not.toBeInTheDocument();
   });
 });

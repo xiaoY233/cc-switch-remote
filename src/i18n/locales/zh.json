@@ -292,6 +292,7 @@
     "openclawNoModels": "该供应商没有配置模型",
     "openclawModelNotFound": "所选模型已不存在，请刷新后重试",
     "backfillWarning": "切换成功，但旧供应商配置回填失败，您手动修改的配置可能未保存",
+    "codexAuthCleanupFailed": "切换成功，但未能删除 auth.json，官方登录凭据仍留在磁盘上；如需彻底移除请手动删除 Codex 配置目录中的 auth.json",
     "windowControlFailed": "窗口控制失败：{{error}}",
     "officialBlockedByProxy": "本地路由模式下不能切换到官方供应商，使用路由访问官方 API 可能导致账号被封禁",
     "proxyOfficialWarning": "当前供应商 {{name}} 是官方供应商，建议切换到第三方供应商后再使用本地路由",
@@ -762,6 +763,7 @@
           "alacritty": "Alacritty",
           "kitty": "Kitty",
           "ghostty": "Ghostty",
+          "otty": "Otty",
           "wezterm": "WezTerm",
           "kaku": "Kaku",
           "warp": "Warp"
@@ -785,7 +787,7 @@
     "configDirectoryDescription": "在 WSL 等环境使用 Claude Code 或 Codex 的时候，可手动指定为 WSL 里的配置目录，供应商数据与主环境保持一致。",
     "appConfigDir": "CC Switch Remote 配置目录",
     "appConfigDirDescription": "自定义 CC Switch Remote 的配置存储位置（指定到云同步文件夹即可云同步配置）",
-    "browsePlaceholderApp": "例如：C:\\Users\\Administrator\\.cc-switch",
+    "browsePlaceholderApp": "例如：C:\\Users\\Administrator\\.cc-switch-remote",
     "claudeConfigDir": "Claude Code 配置目录",
     "claudeConfigDirDescription": "覆盖 Claude 配置目录 (settings.json)。真正自定义目录会在目录内存放 Claude MCP 的 .claude.json；默认 ~/.claude 目录仍使用 Claude 默认的 ~/.claude.json。",
     "codexConfigDir": "Codex 配置目录",
@@ -1271,7 +1273,6 @@
       "teamorouter": "TeamoRouter 是企业级 Agentic LLM 网关，价格最高可达 90% 折扣。为 CC Switch Remote 的用户提供了特别福利：新用户通过此链接注册，首次充值享 10% 折扣！",
       "ppio": "PPIO 是国内领先的独立 Agentic Cloud 服务商，一个 API Key 调用全部旗舰开源模型。通过此链接注册并完成实名认证，即可获得 ¥10 代金券。",
       "xycai": "XycAi 企业级 Token 工厂：200+ 全球模型一键接入，SLA 自动赔付，异常缓存 100% 退还！"
-
     },
     "presets": {
       "ucloud": "优云智算",
@@ -1756,6 +1757,15 @@
       "pi": "Pi"
     },
     "rawInputLabel": "原始",
+    "sessionSync": {
+      "title": "自动扫描会话记录",
+      "description": "定期扫描本机桌面端的会话记录以统计用量；关闭后仅在手动同步时扫描",
+      "manualTitle": "会话记录同步",
+      "manualDescription": "同步所选远程主机上的会话记录；远程扫描仅在手动请求时运行。",
+      "syncNow": "立即同步",
+      "syncCompleted": "同步完成：新增 {{imported}} 条，扫描 {{files}} 个文件，错误 {{errors}}，暂缓 {{deferred}} 个",
+      "syncFailed": "会话用量同步失败：{{error}}"
+    },
     "rebuildCodex": {
       "title": "Codex 用量维护",
       "description": "从本地 rollout 日志重新构建 Codex 会话用量",

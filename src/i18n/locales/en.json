@@ -290,6 +290,7 @@
     "openclawNoModels": "No models configured",
     "openclawModelNotFound": "The selected model no longer exists. Refresh and try again.",
     "backfillWarning": "Switched successfully, but failed to save changes back to the previous provider",
+    "codexAuthCleanupFailed": "Switched successfully, but auth.json could not be removed — the official login credentials are still on disk; delete auth.json from the Codex config directory to remove them",
     "windowControlFailed": "Window control failed: {{error}}",
     "officialBlockedByProxy": "Cannot switch to official provider while local routing is active. Using routing with official APIs may cause account bans.",
     "proxyOfficialWarning": "Current provider {{name}} is official. Consider switching to a third-party provider before using local routing.",
@@ -758,6 +759,7 @@
           "alacritty": "Alacritty",
           "kitty": "Kitty",
           "ghostty": "Ghostty",
+          "otty": "Otty",
           "wezterm": "WezTerm",
           "kaku": "Kaku",
           "warp": "Warp"
@@ -781,7 +783,7 @@
     "configDirectoryDescription": "When using Claude Code or Codex in environments like WSL, you can manually specify the configuration directory to the one in WSL to keep provider data consistent with the main environment.",
     "appConfigDir": "CC Switch Remote Configuration Directory",
     "appConfigDirDescription": "Customize the storage location for CC Switch Remote configuration (point to cloud sync folder to enable config sync)",
-    "browsePlaceholderApp": "e.g., C:\\Users\\Administrator\\.cc-switch",
+    "browsePlaceholderApp": "e.g., C:\\Users\\Administrator\\.cc-switch-remote",
     "claudeConfigDir": "Claude Code Configuration Directory",
     "claudeConfigDirDescription": "Override Claude configuration directory (settings.json). Custom directories store .claude.json (MCP) inside the directory; the default ~/.claude directory keeps Claude Code's split ~/.claude.json path.",
     "codexConfigDir": "Codex Configuration Directory",
@@ -1747,6 +1749,15 @@
       "pi": "Pi"
     },
     "rawInputLabel": "Raw",
+    "sessionSync": {
+      "title": "Auto-Scan Session Logs",
+      "description": "Periodically scans this desktop's local session logs to track usage; when off, logs are only scanned on manual sync",
+      "manualTitle": "Session Log Sync",
+      "manualDescription": "Synchronize session logs on the selected remote host. Remote scans run only when requested.",
+      "syncNow": "Sync Now",
+      "syncCompleted": "Sync completed: {{imported}} imported, {{files}} files scanned, {{errors}} errors, {{deferred}} deferred",
+      "syncFailed": "Session usage sync failed: {{error}}"
+    },
     "rebuildCodex": {
       "title": "Codex Usage Maintenance",
       "description": "Rebuild Codex session usage from local rollout logs",

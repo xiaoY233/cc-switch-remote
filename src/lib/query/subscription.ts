@@ -138,8 +138,9 @@ export function useSubscriptionQuota(
 
 export interface UseCodexOauthQuotaOptions {
   enabled?: boolean;
-  /** 是否启用自动轮询（5 分钟）与窗口 focus 重取 */
+  /** 是否启用自动轮询与窗口 focus 重取 */
   autoQuery?: boolean;
+  autoQueryIntervalMinutes?: number;
   target?: ManagementTarget;
 }
 
@@ -159,6 +160,7 @@ export function useCodexOauthQuotaByAccountId(
   const {
     enabled = true,
     autoQuery = false,
+    autoQueryIntervalMinutes = 5,
     target = { type: "local" },
   } = options;
   const key = targetKey(target);
@@ -166,10 +168,16 @@ export function useCodexOauthQuotaByAccountId(
     queryKey: subscriptionKeys.codexOauthQuota(accountId, target),
     queryFn: () => subscriptionApi.getCodexOauthQuota(accountId, target),
     enabled,
-    refetchInterval: autoQuery ? REFETCH_INTERVAL : false,
-    refetchIntervalInBackground: autoQuery,
-    refetchOnWindowFocus: autoQuery,
-    staleTime: REFETCH_INTERVAL,
+    refetchInterval:
+      autoQuery && autoQueryIntervalMinutes > 0
+        ? Math.max(autoQueryIntervalMinutes, 1) * 60 * 1000
+        : false,
+    refetchIntervalInBackground: autoQuery && autoQueryIntervalMinutes > 0,
+    refetchOnWindowFocus: autoQuery && autoQueryIntervalMinutes > 0,
+    staleTime:
+      autoQueryIntervalMinutes > 0
+        ? Math.max(autoQueryIntervalMinutes, 1) * 60 * 1000
+        : REFETCH_INTERVAL,
     retry: 1,
   });
   const connectionRevision = useTargetQueryIdentityReset("quota", target, key);

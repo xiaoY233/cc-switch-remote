@@ -292,6 +292,7 @@
     "openclawNoModels": "該供應商沒有設定模型",
     "openclawModelNotFound": "所選模型已不存在，請重新整理後再試",
     "backfillWarning": "切換成功，但舊供應商設定回填失敗，您手動修改的設定可能未儲存",
+    "codexAuthCleanupFailed": "切換成功，但未能刪除 auth.json，官方登入憑證仍留在磁碟上；如需徹底移除請手動刪除 Codex 設定目錄中的 auth.json",
     "windowControlFailed": "視窗控制失敗：{{error}}",
     "officialBlockedByProxy": "本地路由模式下不能切換至官方供應商，使用路由存取官方 API 可能導致帳號被封鎖",
     "proxyOfficialWarning": "目前供應商 {{name}} 是官方供應商，建議切換至第三方供應商後再使用本地路由",
@@ -762,6 +763,7 @@
           "alacritty": "Alacritty",
           "kitty": "Kitty",
           "ghostty": "Ghostty",
+          "otty": "Otty",
           "wezterm": "WezTerm",
           "kaku": "Kaku",
           "warp": "Warp"
@@ -785,7 +787,7 @@
     "configDirectoryDescription": "在 WSL 等環境使用 Claude Code 或 Codex 的時候，可手動指定為 WSL 裡的設定目錄，供應商資料與主環境保持一致。",
     "appConfigDir": "CC Switch Remote 設定目錄",
     "appConfigDirDescription": "自訂 CC Switch Remote 的設定儲存位置（指定至雲端同步資料夾即可雲端同步設定）",
-    "browsePlaceholderApp": "例如：C:\\Users\\Administrator\\.cc-switch",
+    "browsePlaceholderApp": "例如：C:\\Users\\Administrator\\.cc-switch-remote",
     "claudeConfigDir": "Claude Code 設定目錄",
     "claudeConfigDirDescription": "覆寫 Claude 設定目錄 (settings.json)。真正自訂目錄會在目錄內存放 Claude MCP 的 .claude.json；預設 ~/.claude 目錄仍使用 Claude 預設的 ~/.claude.json。",
     "codexConfigDir": "Codex 設定目錄",
@@ -1272,7 +1274,6 @@
       "teamorouter": "TeamoRouter 是企業級 Agentic LLM 閘道，價格最高可達 90% 折扣。為 CC Switch Remote 的使用者提供了特別福利：新使用者透過此連結註冊，首次充值享 10% 折扣！",
       "ppio": "PPIO 是中國領先的獨立 Agentic Cloud 服務商，一個 API Key 調用全部旗艦開源模型。透過此連結註冊並完成實名認證，即可獲得 ¥10 代金券。",
       "xycai": "XycAi 企業級 Token 工廠：200+ 全球模型一鍵接入，SLA 自動賠付，異常快取 100% 退還！"
-
     },
     "presets": {
       "ucloud": "優雲智算",
@@ -1757,6 +1758,15 @@
       "pi": "Pi"
     },
     "rawInputLabel": "原始",
+    "sessionSync": {
+      "title": "自動掃描工作階段記錄",
+      "description": "定期掃描本機桌面端的工作階段記錄以統計用量；關閉後僅在手動同步時掃描",
+      "manualTitle": "工作階段記錄同步",
+      "manualDescription": "同步所選遠端主機上的工作階段記錄；遠端掃描僅在手動要求時執行。",
+      "syncNow": "立即同步",
+      "syncCompleted": "同步完成：新增 {{imported}} 筆，掃描 {{files}} 個檔案，錯誤 {{errors}}，暫緩 {{deferred}} 個",
+      "syncFailed": "工作階段用量同步失敗：{{error}}"
+    },
     "rebuildCodex": {
       "title": "Codex 用量維護",
       "description": "從本機 rollout 日誌重新建構 Codex 工作階段用量",

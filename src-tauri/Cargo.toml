@@ -1,6 +1,6 @@
 [package]
 name = "cc-switch-remote"
-version = "3.20.1"
+version = "3.20.2"
 description = "Remote-first CC Switch fork for Claude Code, Codex & Gemini CLI"
 authors = ["Jason Young"]
 license = "MIT"

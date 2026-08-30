@@ -14,6 +14,7 @@ import type { ManagementTarget } from "@/lib/api/remote";
 const useProviderStatsMock = vi.hoisted(() => vi.fn());
 const useModelStatsMock = vi.hoisted(() => vi.fn());
 const syncModelsDevPricingMock = vi.hoisted(() => vi.fn());
+const syncSessionUsageMock = vi.hoisted(() => vi.fn());
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -54,6 +55,13 @@ vi.mock("@/lib/modelsDevAutoSync", () => ({
   ],
   syncModelsDevPricing: (...args: unknown[]) =>
     syncModelsDevPricingMock(...args),
+}));
+
+vi.mock("@/lib/api/usage", () => ({
+  usageApi: {
+    syncSessionUsage: (...args: unknown[]) => syncSessionUsageMock(...args),
+    rebuildCodexUsage: vi.fn(),
+  },
 }));
 
 vi.mock("@/components/usage/UsageHero", () => ({
@@ -134,6 +142,7 @@ describe("UsageDashboard", () => {
       changed: 0,
       syncedAt: null,
     });
+    syncSessionUsageMock.mockReset();
   });
 
   it("uses the saved refresh interval when mounted", () => {
@@ -200,6 +209,89 @@ describe("UsageDashboard", () => {
     await waitFor(() =>
       expect(syncModelsDevPricingMock).toHaveBeenCalledWith(remoteTarget),
     );
+  });
+
+  it("hides local manual sync while automatic scanning is enabled", () => {
+    renderDashboard({ sessionAutoSyncEnabled: true });
+
+    expect(
+      screen.queryByRole("button", { name: "usage.sessionSync.syncNow" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("switch", { name: "usage.sessionSync.title" }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows local manual sync when automatic scanning is disabled", () => {
+    renderDashboard({ sessionAutoSyncEnabled: false });
+
+    expect(
+      screen.getByRole("button", { name: "usage.sessionSync.syncNow" }),
+    ).toBeInTheDocument();
+  });
+
+  it("routes a capability-gated remote manual session sync to the selected target", async () => {
+    const remoteTarget: ManagementTarget = {
+      type: "remote",
+      profile: {
+        id: "remote-a",
+        name: "Remote A",
+        host: "remote-a.example.com",
+        port: 22,
+        username: "root",
+        authMethod: { type: "sshAgent" },
+        helperPath: "~/.local/bin/cc-switch-remote-helper",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      secret: { password: "remote-secret" },
+    };
+    syncSessionUsageMock.mockResolvedValue({
+      imported: 1,
+      skipped: 0,
+      filesScanned: 1,
+      suspectedDuplicates: 0,
+      deferredFiles: 0,
+      errors: [],
+    });
+
+    renderDashboard({ target: remoteTarget, sessionManualSyncSupported: true });
+    expect(
+      screen.queryByRole("switch", { name: "usage.sessionSync.title" }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "usage.sessionSync.syncNow" }),
+    );
+
+    await waitFor(() =>
+      expect(syncSessionUsageMock).toHaveBeenCalledWith(remoteTarget),
+    );
+  });
+
+  it("hides remote manual session sync for an older helper", () => {
+    const remoteTarget: ManagementTarget = {
+      type: "remote",
+      profile: {
+        id: "remote-a",
+        name: "Remote A",
+        host: "remote-a.example.com",
+        port: 22,
+        username: "root",
+        authMethod: { type: "sshAgent" },
+        helperPath: "~/.local/bin/cc-switch-remote-helper",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    };
+
+    renderDashboard({
+      target: remoteTarget,
+      sessionManualSyncSupported: false,
+    });
+
+    expect(
+      screen.queryByRole("button", { name: "usage.sessionSync.syncNow" }),
+    ).not.toBeInTheDocument();
   });
 
   it("does not start models.dev synchronization for an older helper", async () => {

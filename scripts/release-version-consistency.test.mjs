@@ -5,9 +5,9 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const releaseVersion = '3.20.1';
+const releaseVersion = '3.20.2';
 
-test('release metadata uses the planned v3.20.1 version consistently', () => {
+test('release metadata uses the planned v3.20.2 version consistently', () => {
   const packageJson = JSON.parse(
     fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'),
   );

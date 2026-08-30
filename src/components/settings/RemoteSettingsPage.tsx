@@ -200,6 +200,8 @@ export function RemoteSettingsPage({
   const streamCheckCapability =
     health?.capabilities.includes("stream-check") ?? false;
   const usageCapability = health?.capabilities.includes("usage") ?? false;
+  const usageManualSessionSyncCapability =
+    health?.capabilities.includes("usage-manual-session-sync") ?? false;
   const usageModelPricingSyncCapability =
     health?.capabilities.includes("usage-model-pricing-sync") ?? false;
   const authCapability = health?.capabilities.includes("auth") ?? false;
@@ -720,6 +722,7 @@ export function RemoteSettingsPage({
               <UsageDashboard
                 target={target}
                 modelsDevSyncSupported={usageModelPricingSyncCapability}
+                sessionManualSyncSupported={usageManualSessionSyncCapability}
                 refreshIntervalMs={
                   remoteSettings?.usageDashboardRefreshIntervalMs
                 }

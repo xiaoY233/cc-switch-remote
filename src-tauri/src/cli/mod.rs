@@ -111,7 +111,7 @@ mod tests {
     }
 
     #[test]
-    fn status_advertises_usage_capability() {
+    fn status_advertises_usage_capabilities() {
         let response = run_command(&["status".to_string()]);
         let capabilities = response
             .get("data")
@@ -119,11 +119,16 @@ mod tests {
             .and_then(Value::as_array)
             .expect("status capabilities");
 
-        assert!(capabilities.iter().any(|capability| capability == "usage"));
+        for capability in ["usage", "usage-manual-session-sync"] {
+            assert!(
+                capabilities.iter().any(|value| value == capability),
+                "status must advertise {capability}",
+            );
+        }
     }
 
     #[test]
-    fn status_advertises_auth_capability() {
+    fn status_advertises_auth_capabilities() {
         let response = run_command(&["status".to_string()]);
         let capabilities = response
             .get("data")
@@ -131,7 +136,61 @@ mod tests {
             .and_then(Value::as_array)
             .expect("status capabilities");
 
-        assert!(capabilities.iter().any(|capability| capability == "auth"));
+        for capability in ["auth", "auth-targeted-relogin", "auth-cancel-login"] {
+            assert!(capabilities.iter().any(|value| value == capability));
+        }
+    }
+
+    #[test]
+    fn status_advertises_codex_config_only_capability() {
+        let response = run_command(&["status".to_string()]);
+        let capabilities = response
+            .get("data")
+            .and_then(|data| data.get("capabilities"))
+            .and_then(Value::as_array)
+            .expect("status capabilities");
+
+        assert!(capabilities
+            .iter()
+            .any(|capability| capability == "codex-config-only"));
+    }
+
+    #[test]
+    fn auth_start_login_accepts_legacy_and_targeted_wire_shapes() {
+        let legacy = run_command(&[
+            "auth".to_string(),
+            "start-login".to_string(),
+            "unsupported".to_string(),
+            "-".to_string(),
+        ]);
+        let targeted = run_command(&[
+            "auth".to_string(),
+            "start-login".to_string(),
+            "github_copilot".to_string(),
+            "-".to_string(),
+            "account-1".to_string(),
+        ]);
+
+        for response in [legacy, targeted] {
+            assert_eq!(response.get("ok").and_then(Value::as_bool), Some(false));
+            assert_eq!(
+                response.pointer("/error/code").and_then(Value::as_str),
+                Some("auth_start_login_failed")
+            );
+        }
+    }
+
+    #[test]
+    fn auth_cancel_returns_false_for_an_unknown_codex_device_code() {
+        let response = run_command(&[
+            "auth".to_string(),
+            "cancel".to_string(),
+            "codex_oauth".to_string(),
+            "missing-device-code".to_string(),
+        ]);
+
+        assert_eq!(response.get("ok").and_then(Value::as_bool), Some(true));
+        assert_eq!(response.get("data").and_then(Value::as_bool), Some(false));
     }
 
     #[test]
@@ -817,7 +876,8 @@ mod tests {
         std::env::set_var("OPENCODE_DB", dir.path().join("missing-opencode.db"));
         std::env::set_var("CC_SWITCH_DISABLE_SESSION_SYNC_FOR_TESTS", "1");
 
-        let response = run_command(&["usage".to_string(), "sync-session".to_string()]);
+        let response = run_command(&["usage".to_string(), "manual-session-sync".to_string()]);
+        let legacy_response = run_command(&["usage".to_string(), "sync-session".to_string()]);
 
         match previous_home {
             Some(value) => std::env::set_var("CC_SWITCH_TEST_HOME", value),
@@ -849,6 +909,11 @@ mod tests {
             .and_then(|data| data.get("errors"))
             .and_then(Value::as_array)
             .is_some());
+        assert_eq!(
+            legacy_response.get("ok").and_then(Value::as_bool),
+            Some(true),
+            "the legacy helper command remains compatible",
+        );
     }
 
     #[test]
@@ -1149,6 +1214,19 @@ fn parse_bool_arg(value: &str) -> Result<bool, String> {
         "true" | "1" => Ok(true),
         "false" | "0" => Ok(false),
         _ => Err(format!("Invalid boolean value: {value}")),
+    }
+}
+
+fn run_auth_start_login(
+    auth_provider: &str,
+    github_domain: &str,
+    target_account_id: Option<&str>,
+) -> Value {
+    let github_domain = (github_domain != "-").then_some(github_domain);
+    match commands::auth_start_login(auth_provider, github_domain, target_account_id) {
+        Ok(value) => serde_json::to_value(types::ok(value)).expect("serialize auth start login"),
+        Err(message) => serde_json::to_value(types::err::<()>("auth_start_login_failed", message))
+            .expect("serialize auth start login error"),
     }
 }
 
@@ -1604,7 +1682,9 @@ pub(crate) fn run_command(args: &[String]) -> Value {
                 }
             }
         }
-        [group, cmd] if group == "usage" && cmd == "sync-session" => {
+        [group, cmd]
+            if group == "usage" && matches!(cmd.as_str(), "sync-session" | "manual-session-sync") =>
+        {
             match commands::usage_sync_session() {
                 Ok(value) => {
                     serde_json::to_value(types::ok(value)).expect("serialize usage session sync")
@@ -1931,19 +2011,23 @@ pub(crate) fn run_command(args: &[String]) -> Value {
         [group, cmd, auth_provider, github_domain]
             if group == "auth" && cmd == "start-login" =>
         {
-            let github_domain = if github_domain == "-" {
-                None
-            } else {
-                Some(github_domain.as_str())
-            };
-            match commands::auth_start_login(auth_provider, github_domain) {
+            run_auth_start_login(auth_provider, github_domain, None)
+        }
+        [group, cmd, auth_provider, github_domain, target_account_id]
+            if group == "auth" && cmd == "start-login" =>
+        {
+            let target_account_id = (target_account_id != "-").then_some(target_account_id.as_str());
+            run_auth_start_login(auth_provider, github_domain, target_account_id)
+        }
+        [group, cmd, auth_provider, device_code] if group == "auth" && cmd == "cancel" => {
+            match commands::auth_cancel_login(auth_provider, device_code) {
                 Ok(value) => serde_json::to_value(types::ok(value))
-                    .expect("serialize auth start login"),
+                    .expect("serialize auth cancel"),
                 Err(message) => serde_json::to_value(types::err::<()>(
-                    "auth_start_login_failed",
+                    "auth_cancel_login_failed",
                     message,
                 ))
-                .expect("serialize auth start login error"),
+                .expect("serialize auth cancel error"),
             }
         }
         [group, cmd, auth_provider, device_code, github_domain]

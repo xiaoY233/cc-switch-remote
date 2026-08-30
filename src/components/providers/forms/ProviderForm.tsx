@@ -172,6 +172,10 @@ export const normalizeCodexCatalogModelsForSave = (
     );
 
     const baseInstructions = item.baseInstructions?.trim();
+    const reasoningLevels = item.reasoningLevels
+      ?.filter((level) => typeof level === "string" && level.trim())
+      .map((level) => level.trim());
+    const defaultReasoningLevel = item.defaultReasoningLevel?.trim();
 
     normalized.push({
       model,
@@ -185,6 +189,10 @@ export const normalizeCodexCatalogModelsForSave = (
         ? { inputModalities }
         : {}),
       ...(baseInstructions ? { baseInstructions } : {}),
+      ...(reasoningLevels && reasoningLevels.length > 0
+        ? { reasoningLevels }
+        : {}),
+      ...(defaultReasoningLevel ? { defaultReasoningLevel } : {}),
     });
   }
 
@@ -1256,11 +1264,18 @@ function ProviderFormFull({
 
     const selectedAccountIsUsable = (
       accountId: string | null,
-      accounts: Array<{ id: string; requires_reauth: boolean }>,
+      accounts: Array<{
+        id: string;
+        requires_reauth: boolean;
+        reauth_required?: boolean;
+      }>,
     ) =>
       accountId === null ||
       accounts.some(
-        (account) => account.id === accountId && !account.requires_reauth,
+        (account) =>
+          account.id === accountId &&
+          !account.requires_reauth &&
+          !account.reauth_required,
       );
     if (
       isCopilotProvider &&
@@ -2390,6 +2405,12 @@ function ProviderFormFull({
             <CodexFormFields
               providerId={providerId}
               modelFetchTarget={target}
+              isCodexOauthPreset={
+                presetProviderType === "codex_oauth" ||
+                initialData?.meta?.providerType === "codex_oauth"
+              }
+              selectedCodexAccountId={selectedCodexAccountId}
+              onCodexAccountSelect={setSelectedCodexAccountId}
               isXaiOauthPreset={
                 presetProviderType === "xai_oauth" ||
                 initialData?.meta?.providerType === "xai_oauth"
