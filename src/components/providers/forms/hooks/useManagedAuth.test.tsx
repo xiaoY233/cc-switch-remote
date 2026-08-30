@@ -4,7 +4,13 @@ import type { PropsWithChildren } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useManagedAuth } from "./useManagedAuth";
-import { authApi, settingsApi, type ManagementTarget } from "@/lib/api";
+import {
+  authApi,
+  remoteApi,
+  settingsApi,
+  type ManagementTarget,
+  type RemoteHealth,
+} from "@/lib/api";
 
 vi.mock("@/lib/clipboard", () => ({
   copyText: vi.fn().mockResolvedValue(undefined),
@@ -37,6 +43,15 @@ const deviceCode = {
   interval: 5,
 };
 
+function remoteHealth(capabilities: string[]): RemoteHealth {
+  return {
+    reachable: true,
+    helperInstalled: true,
+    helperUpdateAvailable: false,
+    capabilities,
+  };
+}
+
 function wrapper(queryClient: QueryClient) {
   return ({ children }: PropsWithChildren) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
@@ -47,12 +62,123 @@ describe("useManagedAuth connection generation", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.spyOn(settingsApi, "openExternal").mockResolvedValue(undefined);
+    vi.spyOn(remoteApi, "checkHealth").mockResolvedValue(remoteHealth([]));
     vi.spyOn(authApi, "authGetStatus").mockImplementation(async (provider) => ({
       provider,
       authenticated: false,
       default_account_id: null,
       accounts: [],
     }));
+  });
+
+  it("enables targeted Codex reauthentication only when the cached remote health reports support", async () => {
+    vi.spyOn(remoteApi, "checkHealth").mockResolvedValue(
+      remoteHealth(["auth", "auth-targeted-relogin"]),
+    );
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const { result } = renderHook(
+      () =>
+        useManagedAuth("codex_oauth", undefined, target("host-a", "secret-a")),
+      { wrapper: wrapper(queryClient) },
+    );
+
+    await waitFor(() => expect(result.current.isLoadingStatus).toBe(false));
+    await waitFor(() => expect(result.current.canTargetedReauth).toBe(true));
+
+    expect(remoteApi.checkHealth).toHaveBeenCalledWith(
+      target("host-a", "secret-a").profile,
+      target("host-a", "secret-a").secret,
+    );
+  });
+
+  it("keeps targeted Codex reauthentication unavailable for an old remote helper", async () => {
+    vi.spyOn(remoteApi, "checkHealth").mockResolvedValue(
+      remoteHealth(["auth"]),
+    );
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const { result } = renderHook(
+      () =>
+        useManagedAuth("codex_oauth", undefined, target("host-a", "secret-a")),
+      { wrapper: wrapper(queryClient) },
+    );
+
+    await waitFor(() => expect(result.current.isLoadingStatus).toBe(false));
+    await waitFor(() => expect(result.current.canTargetedReauth).toBe(false));
+  });
+
+  it("does not cancel a remote Codex flow when an equivalent target object rerenders", async () => {
+    vi.spyOn(authApi, "authStartLogin").mockResolvedValue({
+      ...deviceCode,
+      provider: "codex_oauth",
+    });
+    vi.spyOn(authApi, "authPollForAccount").mockResolvedValue(null);
+    const cancelLogin = vi
+      .spyOn(authApi, "authCancelLogin")
+      .mockResolvedValue(true);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const first = target("host-a", "secret-a");
+    const { result, rerender } = renderHook(
+      ({ currentTarget }) =>
+        useManagedAuth("codex_oauth", undefined, currentTarget),
+      {
+        initialProps: { currentTarget: first },
+        wrapper: wrapper(queryClient),
+      },
+    );
+    await waitFor(() => expect(result.current.isLoadingStatus).toBe(false));
+
+    act(() => result.current.startAuth());
+    await waitFor(() => expect(result.current.pollingState).toBe("polling"));
+
+    rerender({ currentTarget: target("host-a", "secret-a") });
+    await act(async () => Promise.resolve());
+
+    expect(cancelLogin).not.toHaveBeenCalled();
+    expect(result.current.pollingState).toBe("polling");
+  });
+
+  it("cancels the old remote Codex flow when the connection identity changes", async () => {
+    vi.spyOn(authApi, "authStartLogin").mockResolvedValue({
+      ...deviceCode,
+      provider: "codex_oauth",
+    });
+    vi.spyOn(authApi, "authPollForAccount").mockResolvedValue(null);
+    const cancelLogin = vi
+      .spyOn(authApi, "authCancelLogin")
+      .mockResolvedValue(true);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const first = target("host-a", "secret-a");
+    const { result, rerender } = renderHook(
+      ({ currentTarget }) =>
+        useManagedAuth("codex_oauth", undefined, currentTarget),
+      {
+        initialProps: { currentTarget: first },
+        wrapper: wrapper(queryClient),
+      },
+    );
+    await waitFor(() => expect(result.current.isLoadingStatus).toBe(false));
+
+    act(() => result.current.startAuth());
+    await waitFor(() => expect(result.current.pollingState).toBe("polling"));
+
+    rerender({ currentTarget: target("host-b", "secret-b") });
+
+    await waitFor(() =>
+      expect(cancelLogin).toHaveBeenCalledWith(
+        "codex_oauth",
+        "old-device",
+        first,
+      ),
+    );
+    expect(result.current.pollingState).toBe("idle");
   });
 
   it("drops a late device-code response after same-id credentials change", async () => {

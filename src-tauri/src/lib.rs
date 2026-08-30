@@ -1658,6 +1658,7 @@ pub fn run() {
             commands::remote_get_current_omo_provider_id,
             commands::remote_disable_current_omo,
             commands::remote_auth_start_login,
+            commands::remote_auth_cancel_login,
             commands::remote_auth_poll_for_account,
             commands::remote_auth_list_accounts,
             commands::remote_auth_get_status,

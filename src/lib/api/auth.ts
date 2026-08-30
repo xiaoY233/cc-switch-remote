@@ -44,15 +44,11 @@ export async function authStartLogin(
   targetAccountId?: string,
 ): Promise<ManagedAuthDeviceCodeResponse> {
   if (target.type === "remote") {
-    if (targetAccountId) {
-      throw new Error(
-        "The selected remote helper does not support account reauthentication.",
-      );
-    }
     return remoteApi.authStartLogin(
       target.profile,
       authProvider,
       githubDomain,
+      targetAccountId,
       target.secret,
     );
   }
@@ -90,9 +86,14 @@ export async function authCancelLogin(
   deviceCode: string,
   target: ManagementTarget = { type: "local" },
 ): Promise<boolean> {
-  // Existing helpers do not expose a cancellation command. Keep the remote
-  // flow local to the selected profile rather than falling back to Tauri.
-  if (target.type === "remote") return false;
+  if (target.type === "remote") {
+    return remoteApi.authCancelLogin(
+      target.profile,
+      authProvider,
+      deviceCode,
+      target.secret,
+    );
+  }
   return invoke<boolean>("auth_cancel_login", {
     authProvider,
     deviceCode,

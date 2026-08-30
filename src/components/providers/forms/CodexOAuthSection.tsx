@@ -80,6 +80,7 @@ export const CodexOAuthSection: React.FC<CodexOAuthSectionProps> = ({
     isRemovingAccount,
     isSettingDefaultAccount,
     addAccount,
+    canTargetedReauth,
     reauthAccount,
     retryAuth,
     removeAccount,
@@ -238,7 +239,7 @@ export const CodexOAuthSection: React.FC<CodexOAuthSectionProps> = ({
                     )}
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
-                    {target?.type !== "remote" && (
+                    {canTargetedReauth && (
                       <Button
                         type="button"
                         variant="outline"

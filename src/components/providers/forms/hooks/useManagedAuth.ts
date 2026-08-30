@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { authApi, settingsApi } from "@/lib/api";
+import { authApi, remoteApi, settingsApi } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
 import {
   getManagementTargetKey,
@@ -37,6 +37,14 @@ export function useManagedAuth(
     target,
     targetKey,
   );
+  const connectionTargetRef = useRef({
+    generation: connectionGeneration,
+    target,
+  });
+  if (connectionTargetRef.current.generation !== connectionGeneration) {
+    connectionTargetRef.current = { generation: connectionGeneration, target };
+  }
+  const connectionTarget = connectionTargetRef.current.target;
   const connectionGenerationRef = useRef(connectionGeneration);
   connectionGenerationRef.current = connectionGeneration;
   const isCurrentGeneration = useCallback(
@@ -57,6 +65,21 @@ export function useManagedAuth(
   const activeDeviceCodeRef = useRef<string | null>(null);
   const retryTargetAccountIdRef = useRef<string | undefined>(undefined);
   const flowTransitionRef = useRef<Promise<void>>(Promise.resolve());
+
+  const remoteHealthQuery = useQuery({
+    queryKey: ["remote-health", targetKey, connectionGeneration],
+    queryFn: () => {
+      if (target.type !== "remote") return null;
+      return remoteApi.checkHealth(target.profile, target.secret);
+    },
+    enabled: target.type === "remote" && authProvider === "codex_oauth",
+    staleTime: 30_000,
+  });
+  const canTargetedReauth =
+    target.type === "local" ||
+    (authProvider === "codex_oauth" &&
+      remoteHealthQuery.data?.capabilities.includes("auth-targeted-relogin") ===
+        true);
 
   const {
     data: authStatus,
@@ -91,7 +114,7 @@ export function useManagedAuth(
         const cancelled = await authApi.authCancelLogin(
           authProvider,
           activeDeviceCode,
-          target,
+          connectionTarget,
         );
         if (!cancelled) {
           await queryClient.invalidateQueries({ queryKey });
@@ -103,7 +126,7 @@ export function useManagedAuth(
         return false;
       }
     },
-    [authProvider, queryClient, queryKey, target],
+    [authProvider, connectionTarget, queryClient, queryKey],
   );
 
   const queueBackendCancellation = useCallback(
@@ -448,6 +471,7 @@ export function useManagedAuth(
     isSettingDefaultAccount: setDefaultAccountMutation.isPending,
     startAuth,
     addAccount: startAuth,
+    canTargetedReauth,
     reauthAccount,
     retryAuth,
     cancelAuth,

@@ -670,11 +670,17 @@ fn map_device_code_response(
 pub fn auth_start_login(
     auth_provider: &str,
     github_domain: Option<&str>,
+    target_account_id: Option<&str>,
 ) -> Result<ManagedAuthDeviceCodeResponse, String> {
     let auth_provider = ensure_auth_provider(auth_provider)?;
     auth_runtime()?.block_on(async {
         match auth_provider {
             AUTH_PROVIDER_GITHUB_COPILOT => {
+                if target_account_id.is_some() {
+                    return Err(
+                        "Targeted re-authentication is only supported for Codex OAuth".to_string(),
+                    );
+                }
                 let response = COPILOT_AUTH_MANAGER
                     .start_device_flow(github_domain)
                     .await
@@ -683,12 +689,17 @@ pub fn auth_start_login(
             }
             AUTH_PROVIDER_CODEX_OAUTH => {
                 let response = CODEX_OAUTH_MANAGER
-                    .start_device_flow(None)
+                    .start_device_flow(target_account_id)
                     .await
                     .map_err(|e| e.to_string())?;
                 Ok(map_device_code_response(auth_provider, response))
             }
             AUTH_PROVIDER_XAI_OAUTH => {
+                if target_account_id.is_some() {
+                    return Err(
+                        "Targeted re-authentication is only supported for Codex OAuth".to_string(),
+                    );
+                }
                 let response = XAI_OAUTH_MANAGER
                     .start_device_flow()
                     .await
@@ -756,6 +767,15 @@ pub fn auth_poll_for_account(
             _ => unreachable!(),
         }
     })
+}
+
+pub fn auth_cancel_login(auth_provider: &str, device_code: &str) -> Result<bool, String> {
+    let auth_provider = ensure_auth_provider(auth_provider)?;
+    if auth_provider != AUTH_PROVIDER_CODEX_OAUTH {
+        return Err("Login cancellation is only supported for Codex OAuth".to_string());
+    }
+
+    Ok(auth_runtime()?.block_on(CODEX_OAUTH_MANAGER.cancel_device_flow(device_code)))
 }
 
 pub fn auth_list_accounts(auth_provider: &str) -> Result<Vec<ManagedAuthAccount>, String> {

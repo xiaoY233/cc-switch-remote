@@ -77,6 +77,7 @@ const authState = (accountId: string) => ({
   isRemovingAccount: false,
   isSettingDefaultAccount: false,
   addAccount: vi.fn(),
+  canTargetedReauth: true,
   reauthAccount: vi.fn(),
   retryAuth: vi.fn(),
   removeAccount: vi.fn(),
@@ -133,7 +134,27 @@ describe("CodexOAuthSection", () => {
     expect(reauthAccount).toHaveBeenCalledWith("account-1");
   });
 
-  it("hides account reauthentication when the selected helper lacks that command", () => {
+  it("allows account reauthentication when the selected helper advertises support", async () => {
+    const user = userEvent.setup();
+    const reauthAccount = vi.fn();
+    mocks.useCodexOauth.mockReturnValue({
+      ...authState("remote-account"),
+      canTargetedReauth: true,
+      reauthAccount,
+    });
+
+    render(<CodexOAuthSection target={remoteTarget} />);
+    await user.click(screen.getByRole("button", { name: "重新登录" }));
+
+    expect(reauthAccount).toHaveBeenCalledWith("remote-account");
+  });
+
+  it("hides account reauthentication when the selected helper lacks that capability", () => {
+    mocks.useCodexOauth.mockReturnValue({
+      ...authState("remote-account"),
+      canTargetedReauth: false,
+    });
+
     render(<CodexOAuthSection target={remoteTarget} />);
 
     expect(

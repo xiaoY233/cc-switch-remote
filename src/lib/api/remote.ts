@@ -615,12 +615,28 @@ export const remoteApi = {
     profile: RemoteHostProfile,
     authProvider: ManagedAuthProvider,
     githubDomain?: string,
+    targetAccountId?: string,
     secret?: RemoteConnectionSecret,
   ): Promise<ManagedAuthDeviceCodeResponse> {
     return invoke<ManagedAuthDeviceCodeResponse>("remote_auth_start_login", {
       profile,
       authProvider,
       githubDomain: githubDomain || null,
+      targetAccountId: targetAccountId || null,
+      secret,
+    });
+  },
+
+  authCancelLogin(
+    profile: RemoteHostProfile,
+    authProvider: ManagedAuthProvider,
+    deviceCode: string,
+    secret?: RemoteConnectionSecret,
+  ): Promise<boolean> {
+    return invoke<boolean>("remote_auth_cancel_login", {
+      profile,
+      authProvider,
+      deviceCode,
       secret,
     });
   },
