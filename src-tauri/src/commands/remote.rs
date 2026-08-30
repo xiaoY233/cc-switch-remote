@@ -1683,6 +1683,7 @@ fn validate_remote_helper_capability(
     Err(remote_helper_upgrade_required(capability))
 }
 
+#[cfg(test)]
 fn validate_remote_codex_provider_mutation(
     app: &str,
     status: &RemoteHelperStatus,

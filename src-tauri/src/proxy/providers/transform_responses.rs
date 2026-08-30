@@ -2509,6 +2509,7 @@ pub fn responses_to_anthropic(body: Value) -> Result<Value, ProxyError> {
     responses_to_anthropic_with_options(body, None, None, None)
 }
 
+#[cfg(test)]
 pub fn responses_to_anthropic_with_tool_schema_hints(
     body: Value,
     tool_schema_hints: Option<&AnthropicToolSchemaHints>,
@@ -2516,6 +2517,7 @@ pub fn responses_to_anthropic_with_tool_schema_hints(
     responses_to_anthropic_with_options(body, tool_schema_hints, None, None)
 }
 
+#[cfg(test)]
 pub(crate) fn responses_to_anthropic_with_web_search_name(
     body: Value,
     hosted_web_search_name: Option<&str>,

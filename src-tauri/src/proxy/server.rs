@@ -67,6 +67,7 @@ pub struct ProxyServer {
 }
 
 impl ProxyServer {
+    #[cfg(test)]
     pub fn new(config: ProxyConfig, db: Arc<Database>, app_handle: Option<ProxyAppHandle>) -> Self {
         Self::new_with_codex_oauth_manager_and_managed_auth_runtime(
             config,

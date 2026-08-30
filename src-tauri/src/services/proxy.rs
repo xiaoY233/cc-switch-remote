@@ -436,6 +436,7 @@ impl ProxyService {
         )
     }
 
+    #[cfg(not(feature = "desktop"))]
     pub(crate) fn new_with_codex_oauth_manager_and_switch_locks(
         db: Arc<Database>,
         codex_oauth_manager: Arc<CodexOAuthManager>,

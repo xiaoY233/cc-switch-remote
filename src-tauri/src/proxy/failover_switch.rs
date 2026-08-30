@@ -24,7 +24,9 @@ pub struct FailoverSwitchManager {
     /// 正在处理中的切换（key = "app_type:provider_id"）
     pending_switches: Arc<RwLock<HashSet<String>>>,
     db: Arc<Database>,
+    #[cfg(not(feature = "desktop"))]
     codex_oauth_manager: Arc<CodexOAuthManager>,
+    #[cfg(not(feature = "desktop"))]
     switch_locks: SwitchLockManager,
 }
 
@@ -42,10 +44,15 @@ impl FailoverSwitchManager {
         codex_oauth_manager: Arc<CodexOAuthManager>,
         switch_locks: SwitchLockManager,
     ) -> Self {
+        #[cfg(feature = "desktop")]
+        let _ = (codex_oauth_manager, switch_locks);
+
         Self {
             pending_switches: Arc::new(RwLock::new(HashSet::new())),
             db,
+            #[cfg(not(feature = "desktop"))]
             codex_oauth_manager,
+            #[cfg(not(feature = "desktop"))]
             switch_locks,
         }
     }
