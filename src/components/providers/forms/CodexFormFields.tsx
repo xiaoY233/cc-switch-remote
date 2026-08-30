@@ -726,6 +726,7 @@ export function CodexFormFields({
       {/* Codex OAuth 账号选择 */}
       {isCodexOauthPreset && (
         <CodexOAuthSection
+          target={modelFetchTarget}
           selectedAccountId={selectedCodexAccountId}
           onAccountSelect={onCodexAccountSelect}
           onManageAccounts={

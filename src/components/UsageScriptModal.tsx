@@ -585,6 +585,35 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
 
       // Coding Plan 模板使用专用 API
       if (selectedTemplate === TEMPLATE_TYPES.TOKEN_PLAN) {
+        if (target.type === "remote") {
+          // Remote provider payloads deliberately redact credentials. Resolve the
+          // selected provider on its Helper instead of sending an empty/redacted
+          // desktop value (or accidentally consulting a local provider).
+          const result = await usageApi.query(provider.id, appId, target);
+          if (result.success && result.data && result.data.length > 0) {
+            const summary = result.data
+              .map((entry) =>
+                formatUsageDataSummary(entry, {
+                  invalid: t("usage.invalid"),
+                  remaining: t("usage.remaining"),
+                  used: t("usage.used"),
+                }),
+              )
+              .join(", ");
+            toast.success(`${t("usageScript.testSuccess")}${summary}`, {
+              duration: 3000,
+              closeButton: true,
+            });
+            queryClient.setQueryData(usageResultQueryKey, result);
+          } else {
+            toast.error(
+              `${t("usageScript.testFailed")}: ${result.error || t("endpointTest.noResult")}`,
+              { duration: 5000 },
+            );
+          }
+          return;
+        }
+
         // ZenMux 手填 baseUrl/apiKey；火山是 native 供应商，baseUrl 走推理配置，
         // 另用账号 AK/SK 签名查询控制面用量。
         const isZenMux = script.codingPlanProvider === "zenmux";

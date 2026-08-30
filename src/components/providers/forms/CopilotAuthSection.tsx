@@ -77,6 +77,8 @@ export const CopilotAuthSection: React.FC<CopilotAuthSectionProps> = ({
     pollingState,
     deviceCode,
     error,
+    isStatusError,
+    refetchStatus,
     isPolling,
     isAddingAccount,
     isLoggingOut,
@@ -129,6 +131,26 @@ export const CopilotAuthSection: React.FC<CopilotAuthSectionProps> = ({
   const renderAvatar = (account: GitHubAccount) => {
     return <CopilotAccountAvatar account={account} />;
   };
+
+  if (isStatusError) {
+    return (
+      <div className={`space-y-3 ${className || ""}`} role="alert">
+        <p className="text-sm text-destructive">
+          {t("copilot.statusLoadFailed", {
+            defaultValue: "无法加载 GitHub Copilot 账号状态，请重试。",
+          })}
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => refetchStatus()}
+        >
+          {t("copilot.retry", "重试")}
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className={`space-y-4 ${className || ""}`}>

@@ -233,6 +233,19 @@ describe("remote usage API", () => {
     expect(invokeMock).not.toHaveBeenCalled();
   });
 
+  it("uses the local provider usage command only for local targets", async () => {
+    const { usageApi } = await import("./usage");
+    invokeMock.mockResolvedValue({ success: true, data: [], error: null });
+
+    await usageApi.query("local-provider", "opencode");
+
+    expect(invokeMock).toHaveBeenCalledWith("queryProviderUsage", {
+      providerId: "local-provider",
+      app: "opencode",
+    });
+    expect(remoteQueryProviderUsageMock).not.toHaveBeenCalled();
+  });
+
   it("routes provider usage script queries to the selected remote target", async () => {
     const { usageApi } = await import("./usage");
     remoteQueryProviderUsageMock.mockResolvedValue({

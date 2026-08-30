@@ -74,6 +74,8 @@ export const CodexOAuthSection: React.FC<CodexOAuthSectionProps> = ({
     pollingState,
     deviceCode,
     error,
+    isStatusError,
+    refetchStatus,
     isPolling,
     isAddingAccount,
     isLoggingOut,
@@ -120,6 +122,26 @@ export const CodexOAuthSection: React.FC<CodexOAuthSectionProps> = ({
       onAccountSelect?.(null);
     }
   };
+
+  if (isStatusError) {
+    return (
+      <div className={`space-y-3 ${className || ""}`} role="alert">
+        <p className="text-sm text-destructive">
+          {t("codexOauth.statusLoadFailed", {
+            defaultValue: "无法加载 ChatGPT 账号状态，请重试。",
+          })}
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => refetchStatus()}
+        >
+          {t("codexOauth.retry", "重试")}
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className={`space-y-4 ${className || ""}`}>
