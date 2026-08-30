@@ -24,6 +24,8 @@ function workflowStep(name, nextName) {
 }
 
 test("WSL2 nightly compiles once with native temp and runs saved binaries", () => {
+  assert.match(workflow, /timeout-minutes: 180/);
+
   const compileStep = workflowStep(
     "Compile backend tests with native temp",
     "Run Windows-to-WSL2 filesystem contract",

@@ -689,7 +689,12 @@ impl Database {
     /// is readable and passes SQLite's integrity check independently of the
     /// source connection.
     fn sync_and_verify_database_backup(path: &Path) -> Result<(), AppError> {
-        fs::File::open(path)
+        // Windows requires a writable handle for FlushFileBuffers; syncing a
+        // read-only File::open handle fails with ERROR_ACCESS_DENIED.
+        fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(path)
             .map_err(|error| AppError::io(path, error))?
             .sync_all()
             .map_err(|error| AppError::io(path, error))?;

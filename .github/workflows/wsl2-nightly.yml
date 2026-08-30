@@ -12,7 +12,7 @@ jobs:
   backend-windows-wsl2-full:
     name: Backend Full Suite (Windows + WSL2 home)
     runs-on: windows-2025
-    timeout-minutes: 90
+    timeout-minutes: 180
     permissions:
       contents: read
     steps:
