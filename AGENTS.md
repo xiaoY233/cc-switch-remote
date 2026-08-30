@@ -1,5 +1,15 @@
 # Project Rules
 
+## Test Execution Budget
+
+- Never run a full test suite without the user's explicit approval in the current task. A full suite is any command intended to execute all frontend tests, all Rust tests, or all project tests.
+- One approval permits exactly one full-suite run. Every additional run requires new explicit approval, including reruns after failures or later fixes.
+- Before requesting approval, finish implementation, focused tests, and code review. Do not request or start a full suite while another agent or review may still produce changes.
+- After an approved full suite has run, validate later fixes only with the smallest affected test files, test targets, type checks, format checks, or compile checks unless the user authorizes another full run.
+- If a full suite fails, rerun only the failing test or narrow test target after fixing it. Do not infer permission to rerun the full suite.
+- Coordinate test ownership across the main agent and subagents. Subagents must never run a full suite unless the user explicitly approved that exact delegated run, and delayed task notifications must never trigger one.
+- Before invoking a full suite, check the current task history for the user's approval and whether it has already been consumed. Without an unused approval, stop and select focused checks instead.
+
 ## Upstream Merge Policy
 
 - Merge upstream by published release tags as the stable baseline. Treat upstream `main` commits after the latest published release as uncertain until they are included in an upstream release tag or explicitly reviewed and accepted.
