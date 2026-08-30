@@ -102,6 +102,8 @@ interface UsageDashboardProps {
   onSessionAutoSyncEnabledChange?: (
     next: boolean,
   ) => Promise<boolean> | boolean | void;
+  /** Remote helpers must explicitly advertise manual session sync. */
+  sessionManualSyncSupported?: boolean;
 }
 
 export function UsageDashboard({
@@ -111,6 +113,7 @@ export function UsageDashboard({
   onRefreshIntervalChange,
   sessionAutoSyncEnabled = true,
   onSessionAutoSyncEnabledChange,
+  sessionManualSyncSupported = false,
 }: UsageDashboardProps = {}) {
   const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
@@ -233,8 +236,9 @@ export function UsageDashboard({
         imported: result.imported,
         files: result.filesScanned,
         errors: result.errors.length,
+        deferred: result.deferredFiles,
       });
-      if (result.errors.length > 0) {
+      if (result.errors.length > 0 || result.deferredFiles > 0) {
         toast.warning(message);
       } else {
         toast.success(message);
@@ -529,42 +533,46 @@ export function UsageDashboard({
       </div>
 
       <div className="space-y-4">
-        {target.type === "local" && (
+        {(target.type === "local" || sessionManualSyncSupported) && (
           <div className="rounded-xl glass-card px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <ScanSearch className="h-5 w-5 text-sky-500" />
               <div>
                 <h3 className="text-base font-semibold">
-                  {t("usage.sessionSync.title")}
+                  {target.type === "local"
+                    ? t("usage.sessionSync.title")
+                    : t("usage.sessionSync.manualTitle")}
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  {t("usage.sessionSync.description")}
+                  {target.type === "local"
+                    ? t("usage.sessionSync.description")
+                    : t("usage.sessionSync.manualDescription")}
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-3 shrink-0">
-              {!sessionAutoSyncEnabled && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={syncingSession}
-                  onClick={() => void runManualSessionSync()}
-                >
-                  {syncingSession ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                  )}
-                  {t("usage.sessionSync.syncNow")}
-                </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={syncingSession}
+                onClick={() => void runManualSessionSync()}
+              >
+                {syncingSession ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+                {t("usage.sessionSync.syncNow")}
+              </Button>
+              {target.type === "local" && (
+                <Switch
+                  checked={sessionAutoSyncEnabled}
+                  onCheckedChange={(value) =>
+                    void onSessionAutoSyncEnabledChange?.(value)
+                  }
+                  aria-label={t("usage.sessionSync.title")}
+                />
               )}
-              <Switch
-                checked={sessionAutoSyncEnabled}
-                onCheckedChange={(value) =>
-                  void onSessionAutoSyncEnabledChange?.(value)
-                }
-                aria-label={t("usage.sessionSync.title")}
-              />
             </div>
           </div>
         )}

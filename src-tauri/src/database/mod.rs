@@ -101,71 +101,100 @@ impl Database {
     /// 数据库文件位于 `~/.cc-switch-remote/cc-switch.db`
     pub fn init() -> Result<Self, AppError> {
         let db_path = get_app_config_dir().join("cc-switch.db");
+        Self::init_at_path_with_pre_migration_backup(&db_path, |db| {
+            db.create_verified_pre_migration_backup()
+        })
+    }
+
+    /// Initialize a database after taking a verified pre-migration backup.
+    ///
+    /// The callback exists so tests can prove that an unavailable backup stops
+    /// initialization before any schema DDL or `user_version` write occurs.
+    fn init_at_path_with_pre_migration_backup<F>(
+        db_path: &std::path::Path,
+        pre_migration_backup: F,
+    ) -> Result<Self, AppError>
+    where
+        F: FnOnce(&Database) -> Result<(), AppError>,
+    {
         let db_exists = db_path.exists();
 
-        // 确保父目录存在
         if let Some(parent) = db_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| AppError::io(parent, e))?;
+            std::fs::create_dir_all(parent).map_err(|error| AppError::io(parent, error))?;
         }
 
-        let conn = Connection::open(&db_path).map_err(|e| AppError::Database(e.to_string()))?;
-
-        // 启用外键约束
+        let conn =
+            Connection::open(db_path).map_err(|error| AppError::Database(error.to_string()))?;
         conn.execute("PRAGMA foreign_keys = ON;", [])
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .map_err(|error| AppError::Database(error.to_string()))?;
         if !db_exists {
             // For a brand-new database, configure incremental auto-vacuum
             // before creating any tables so no rebuild is needed later.
             conn.execute("PRAGMA auto_vacuum = INCREMENTAL;", [])
-                .map_err(|e| AppError::Database(e.to_string()))?;
+                .map_err(|error| AppError::Database(error.to_string()))?;
         }
         register_db_change_hook(&conn);
 
         let db = Self {
             conn: Mutex::new(conn),
         };
-        db.create_tables()?;
-
-        // Pre-migration backup: only when upgrading from an existing database
-        {
+        let version = {
             let conn = lock_conn!(db.conn);
-            let version = Self::get_user_version(&conn)?;
-            drop(conn);
-            if version > 0 && version < SCHEMA_VERSION {
-                log::info!(
-                    "Creating pre-migration database backup (v{version} → v{SCHEMA_VERSION})"
-                );
-                if let Err(e) = db.backup_database_file() {
-                    log::warn!("Pre-migration backup failed, continuing migration: {e}");
-                }
-            }
+            Self::get_user_version(&conn)?
+        };
+        Self::ensure_schema_version_supported(version, SCHEMA_VERSION)?;
+
+        if db_exists && version > 0 && version < SCHEMA_VERSION {
+            log::info!("Creating pre-migration database backup (v{version} → v{SCHEMA_VERSION})");
+            pre_migration_backup(&db)?;
         }
 
+        // A verified backup now exists for every on-disk schema upgrade, so
+        // all schema writes begin only below this point.
+        db.create_tables()?;
         db.apply_schema_migrations()?;
-        if let Err(e) = db.ensure_incremental_auto_vacuum() {
-            log::warn!("Failed to ensure incremental auto-vacuum: {e}");
+        if let Err(error) = db.ensure_incremental_auto_vacuum() {
+            log::warn!("Failed to ensure incremental auto-vacuum: {error}");
         }
         db.ensure_model_pricing_seeded()?;
-        if let Err(e) = crate::services::model_pricing::sync_local_model_pricing(&db) {
-            log::warn!("Failed to sync local model pricing file: {e}");
+        if let Err(error) = crate::services::model_pricing::sync_local_model_pricing(&db) {
+            log::warn!("Failed to sync local model pricing file: {error}");
         }
 
         // Startup cleanup: prune old logs and reclaim space
-        if let Err(e) = db.cleanup_old_stream_check_logs(7) {
-            log::warn!("Startup stream_check_logs cleanup failed: {e}");
+        if let Err(error) = db.cleanup_old_stream_check_logs(7) {
+            log::warn!("Startup stream_check_logs cleanup failed: {error}");
         }
-        if let Err(e) = db.rollup_and_prune(30) {
-            log::warn!("Startup rollup_and_prune failed: {e}");
+        if let Err(error) = db.rollup_and_prune(30) {
+            log::warn!("Startup rollup_and_prune failed: {error}");
         }
-        // Reclaim disk space after cleanup
         {
             let conn = lock_conn!(db.conn);
-            if let Err(e) = conn.execute_batch("PRAGMA incremental_vacuum;") {
-                log::warn!("Startup incremental vacuum failed: {e}");
+            if let Err(error) = conn.execute_batch("PRAGMA incremental_vacuum;") {
+                log::warn!("Startup incremental vacuum failed: {error}");
             }
         }
 
         Ok(db)
+    }
+
+    fn create_verified_pre_migration_backup(&self) -> Result<(), AppError> {
+        self.backup_database_file()?.ok_or_else(|| {
+            AppError::Database("迁移前数据库备份未创建，拒绝继续修改 schema".to_string())
+        })?;
+        Ok(())
+    }
+
+    pub(crate) fn ensure_schema_version_supported(
+        version: i32,
+        supported_version: i32,
+    ) -> Result<(), AppError> {
+        if version > supported_version {
+            return Err(AppError::Database(format!(
+                "数据库版本过新（{version}），当前应用仅支持 {supported_version}，请升级应用后再尝试。"
+            )));
+        }
+        Ok(())
     }
 
     /// 读取磁盘上数据库的 `user_version`；仅当它比应用支持的 [`SCHEMA_VERSION`]

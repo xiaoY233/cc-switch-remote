@@ -1751,9 +1751,11 @@
     "rawInputLabel": "Raw",
     "sessionSync": {
       "title": "Auto-Scan Session Logs",
-      "description": "Periodically scans each client's local session logs to track usage; when off, logs are only scanned on manual sync",
+      "description": "Periodically scans this desktop's local session logs to track usage; when off, logs are only scanned on manual sync",
+      "manualTitle": "Session Log Sync",
+      "manualDescription": "Synchronize session logs on the selected remote host. Remote scans run only when requested.",
       "syncNow": "Sync Now",
-      "syncCompleted": "Sync completed: {{imported}} imported, {{files}} files scanned, {{errors}} errors",
+      "syncCompleted": "Sync completed: {{imported}} imported, {{files}} files scanned, {{errors}} errors, {{deferred}} deferred",
       "syncFailed": "Session usage sync failed: {{error}}"
     },
     "rebuildCodex": {

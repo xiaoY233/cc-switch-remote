@@ -446,12 +446,10 @@ impl Database {
 
         let mut version = Self::get_user_version(conn)?;
 
-        if version > SCHEMA_VERSION {
+        if let Err(error) = Self::ensure_schema_version_supported(version, SCHEMA_VERSION) {
             conn.execute("ROLLBACK TO schema_migration;", []).ok();
             conn.execute("RELEASE schema_migration;", []).ok();
-            return Err(AppError::Database(format!(
-                "数据库版本过新（{version}），当前应用仅支持 {SCHEMA_VERSION}，请升级应用后再尝试。"
-            )));
+            return Err(error);
         }
 
         let result = (|| {
@@ -3441,6 +3439,67 @@ mod tests {
              VALUES ('pi_session', 'request', 'semantic', 1)",
             [],
         )?;
+        Ok(())
+    }
+
+    #[test]
+    fn migrate_v17_to_v18_missing_sync_table_is_safe_for_fixture_databases() -> Result<(), AppError>
+    {
+        let conn = Connection::open_in_memory()?;
+        Database::set_user_version(&conn, 17)?;
+
+        Database::apply_schema_migrations_on_conn(&conn)?;
+
+        assert_eq!(Database::get_user_version(&conn)?, 18);
+        assert!(!Database::table_exists(&conn, "session_log_sync")?);
+
+        Database::create_tables_on_conn(&conn)?;
+        assert!(Database::has_column(
+            &conn,
+            "session_log_sync",
+            "last_byte_offset"
+        )?);
+        assert!(Database::has_column(
+            &conn,
+            "session_log_sync",
+            "last_tail_fingerprint"
+        )?);
+        Ok(())
+    }
+
+    #[test]
+    fn v17_to_v18_rolls_back_columns_and_user_version_when_second_column_fails(
+    ) -> Result<(), AppError> {
+        // SQLite accepts at most 2,000 columns. The first ALTER reaches that
+        // limit; the second must fail so this exercises the migration
+        // savepoint after it has already mutated the table.
+        let mut columns = vec![
+            "file_path TEXT PRIMARY KEY".to_string(),
+            "last_modified INTEGER NOT NULL".to_string(),
+            "last_line_offset INTEGER NOT NULL DEFAULT 0".to_string(),
+            "last_synced_at INTEGER NOT NULL".to_string(),
+        ];
+        columns.extend((0..1995).map(|index| format!("fixture_{index} INTEGER")));
+        let conn = Connection::open_in_memory()?;
+        conn.execute_batch(&format!(
+            "CREATE TABLE session_log_sync ({})",
+            columns.join(",")
+        ))?;
+        Database::set_user_version(&conn, 17)?;
+
+        Database::apply_schema_migrations_on_conn(&conn)
+            .expect_err("the second v18 column must exceed SQLite's column limit");
+
+        assert_eq!(Database::get_user_version(&conn)?, 17);
+        assert!(
+            !Database::has_column(&conn, "session_log_sync", "last_byte_offset")?,
+            "the first ALTER must be rolled back with the failed migration"
+        );
+        assert!(!Database::has_column(
+            &conn,
+            "session_log_sync",
+            "last_tail_fingerprint"
+        )?);
         Ok(())
     }
 

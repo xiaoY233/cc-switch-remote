@@ -502,13 +502,33 @@ impl Database {
     }
 
     fn backup_database_file_from_conn_with_hook<F>(
-        _backup_file_guard: &BackupFileOperationGuard,
+        backup_file_guard: &BackupFileOperationGuard,
         source_conn: &Connection,
         protected_paths: &[&Path],
         before_publish: F,
     ) -> Result<Option<PathBuf>, AppError>
     where
         F: FnOnce(&Path, &Path) -> Result<(), AppError>,
+    {
+        Self::backup_database_file_from_conn_with_hooks(
+            backup_file_guard,
+            source_conn,
+            protected_paths,
+            |_| Ok(()),
+            before_publish,
+        )
+    }
+
+    fn backup_database_file_from_conn_with_hooks<V, P>(
+        _backup_file_guard: &BackupFileOperationGuard,
+        source_conn: &Connection,
+        protected_paths: &[&Path],
+        before_verify: V,
+        before_publish: P,
+    ) -> Result<Option<PathBuf>, AppError>
+    where
+        V: FnOnce(&Path) -> Result<(), AppError>,
+        P: FnOnce(&Path, &Path) -> Result<(), AppError>,
     {
         let db_path = get_app_config_dir().join("cc-switch.db");
         if !db_path.exists() {
@@ -543,10 +563,11 @@ impl Database {
             .map_err(|e| AppError::Database(e.to_string()))?;
         Self::complete_backup(&backup, "创建数据库安全备份")?;
         drop(backup);
-        Self::validate_sqlite_integrity(&dest_conn)?;
         dest_conn
             .close()
-            .map_err(|(_, e)| AppError::Database(format!("关闭数据库安全备份失败: {e}")))?;
+            .map_err(|(_, error)| AppError::Database(format!("关闭数据库安全备份失败: {error}")))?;
+        before_verify(temp_db_path)?;
+        Self::sync_and_verify_database_backup(temp_db_path)?;
         before_publish(temp_db_path, &backup_path)?;
 
         loop {
@@ -560,6 +581,22 @@ impl Database {
                 Err(error) => return Err(AppError::io(&backup_path, error.error)),
             }
         }
+
+        // The final backup name refers to the same inode as the verified temp
+        // file, but verify and sync it again through its published path before
+        // a caller can start a schema mutation. If that final check fails,
+        // remove the unusable candidate and leave the source database alone.
+        if let Err(error) = Self::sync_and_verify_database_backup(&backup_path) {
+            if let Err(remove_error) = fs::remove_file(&backup_path) {
+                log::warn!(
+                    "删除未通过验证的数据库安全备份失败 {}: {}",
+                    backup_path.display(),
+                    remove_error
+                );
+            }
+            return Err(error);
+        }
+        Self::sync_backup_directory(&backup_dir)?;
 
         // The newly created safety backup must never be the cleanup victim.
         // During restore, the selected source is protected as well. If the
@@ -641,6 +678,43 @@ impl Database {
             } else {
                 removed += 1;
             }
+        }
+        Ok(())
+    }
+
+    /// Verify the exact on-disk backup image after its writer has closed.
+    ///
+    /// A migration may only proceed after this function succeeds: syncing the
+    /// image makes writes durable, and reopening it read-only proves the image
+    /// is readable and passes SQLite's integrity check independently of the
+    /// source connection.
+    fn sync_and_verify_database_backup(path: &Path) -> Result<(), AppError> {
+        fs::File::open(path)
+            .map_err(|error| AppError::io(path, error))?
+            .sync_all()
+            .map_err(|error| AppError::io(path, error))?;
+        let conn = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|error| AppError::Database(format!("重新打开数据库安全备份失败: {error}")))?;
+        Self::validate_sqlite_integrity(&conn)?;
+        conn.close().map_err(|(_, error)| {
+            AppError::Database(format!("关闭已验证数据库安全备份失败: {error}"))
+        })?;
+        Ok(())
+    }
+
+    fn sync_backup_directory(backup_dir: &Path) -> Result<(), AppError> {
+        #[cfg(unix)]
+        {
+            fs::File::open(backup_dir)
+                .map_err(|error| AppError::io(backup_dir, error))?
+                .sync_all()
+                .map_err(|error| AppError::io(backup_dir, error))?;
+        }
+        #[cfg(not(unix))]
+        {
+            // Windows cannot fsync a directory handle. The backup image itself
+            // is still synced and re-opened above before migration proceeds.
+            let _ = backup_dir;
         }
         Ok(())
     }
@@ -2405,6 +2479,67 @@ mod tests {
             files_after, files_before,
             "failed publish must not leave either a visible backup or a temporary file"
         );
+        Ok(())
+    }
+
+    #[test]
+    #[serial]
+    fn backup_validation_failure_does_not_publish_or_mutate_the_source() -> Result<(), AppError> {
+        let _test_home = TestHomeGuard::new();
+        let db = Database::init()?;
+        {
+            let conn = crate::database::lock_conn!(db.conn);
+            conn.execute(
+                "INSERT INTO settings (key, value) VALUES ('sentinel', 'keep')",
+                [],
+            )?;
+        }
+        let backup_dir = crate::config::get_app_config_dir().join("backups");
+        let visible_before = Database::list_backups()?
+            .into_iter()
+            .map(|entry| entry.filename)
+            .collect::<Vec<_>>();
+
+        let error = {
+            let backup_file_guard = lock_backup_file_operations()?;
+            let conn = crate::database::lock_conn!(db.conn);
+            Database::backup_database_file_from_conn_with_hooks(
+                &backup_file_guard,
+                &conn,
+                &[],
+                |temp_path| {
+                    std::fs::write(temp_path, b"not a SQLite database")
+                        .map_err(|error| AppError::io(temp_path, error))
+                },
+                |_, _| Ok(()),
+            )
+        }
+        .expect_err("a backup that fails post-close validation must not publish");
+
+        assert!(error.to_string().contains("检查数据库完整性失败"));
+        assert_eq!(
+            Database::list_backups()?
+                .into_iter()
+                .map(|entry| entry.filename)
+                .collect::<Vec<_>>(),
+            visible_before
+        );
+        assert_eq!(
+            db.get_setting("sentinel")?,
+            Some("keep".to_string()),
+            "backup validation failure must not mutate the source database"
+        );
+        let temporary_files = std::fs::read_dir(&backup_dir)
+            .map_err(|error| AppError::io(&backup_dir, error))?
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".cc-switch-backup-")
+            })
+            .count();
+        assert_eq!(temporary_files, 0);
         Ok(())
     }
 

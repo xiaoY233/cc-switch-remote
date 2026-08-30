@@ -24,6 +24,7 @@ pub const REMOTE_HELPER_CAPABILITIES: &[&str] = &[
     "tools",
     "stream-check",
     "usage",
+    "usage-manual-session-sync",
     "usage-model-pricing-sync",
     "auth",
     "auth-targeted-relogin",

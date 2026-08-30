@@ -111,7 +111,7 @@ mod tests {
     }
 
     #[test]
-    fn status_advertises_usage_capability() {
+    fn status_advertises_usage_capabilities() {
         let response = run_command(&["status".to_string()]);
         let capabilities = response
             .get("data")
@@ -119,7 +119,12 @@ mod tests {
             .and_then(Value::as_array)
             .expect("status capabilities");
 
-        assert!(capabilities.iter().any(|capability| capability == "usage"));
+        for capability in ["usage", "usage-manual-session-sync"] {
+            assert!(
+                capabilities.iter().any(|value| value == capability),
+                "status must advertise {capability}",
+            );
+        }
     }
 
     #[test]
@@ -871,7 +876,8 @@ mod tests {
         std::env::set_var("OPENCODE_DB", dir.path().join("missing-opencode.db"));
         std::env::set_var("CC_SWITCH_DISABLE_SESSION_SYNC_FOR_TESTS", "1");
 
-        let response = run_command(&["usage".to_string(), "sync-session".to_string()]);
+        let response = run_command(&["usage".to_string(), "manual-session-sync".to_string()]);
+        let legacy_response = run_command(&["usage".to_string(), "sync-session".to_string()]);
 
         match previous_home {
             Some(value) => std::env::set_var("CC_SWITCH_TEST_HOME", value),
@@ -903,6 +909,11 @@ mod tests {
             .and_then(|data| data.get("errors"))
             .and_then(Value::as_array)
             .is_some());
+        assert_eq!(
+            legacy_response.get("ok").and_then(Value::as_bool),
+            Some(true),
+            "the legacy helper command remains compatible",
+        );
     }
 
     #[test]
@@ -1671,7 +1682,9 @@ pub(crate) fn run_command(args: &[String]) -> Value {
                 }
             }
         }
-        [group, cmd] if group == "usage" && cmd == "sync-session" => {
+        [group, cmd]
+            if group == "usage" && matches!(cmd.as_str(), "sync-session" | "manual-session-sync") =>
+        {
             match commands::usage_sync_session() {
                 Ok(value) => {
                     serde_json::to_value(types::ok(value)).expect("serialize usage session sync")

@@ -1273,7 +1273,6 @@
       "teamorouter": "TeamoRouter 是企业级 Agentic LLM 网关，价格最高可达 90% 折扣。为 CC Switch Remote 的用户提供了特别福利：新用户通过此链接注册，首次充值享 10% 折扣！",
       "ppio": "PPIO 是国内领先的独立 Agentic Cloud 服务商，一个 API Key 调用全部旗舰开源模型。通过此链接注册并完成实名认证，即可获得 ¥10 代金券。",
       "xycai": "XycAi 企业级 Token 工厂：200+ 全球模型一键接入，SLA 自动赔付，异常缓存 100% 退还！"
-
     },
     "presets": {
       "ucloud": "优云智算",
@@ -1760,9 +1759,11 @@
     "rawInputLabel": "原始",
     "sessionSync": {
       "title": "自动扫描会话记录",
-      "description": "定期扫描各客户端的本地会话记录以统计用量；关闭后仅在手动同步时扫描",
+      "description": "定期扫描本机桌面端的会话记录以统计用量；关闭后仅在手动同步时扫描",
+      "manualTitle": "会话记录同步",
+      "manualDescription": "同步所选远程主机上的会话记录；远程扫描仅在手动请求时运行。",
       "syncNow": "立即同步",
-      "syncCompleted": "同步完成：新增 {{imported}} 条，扫描 {{files}} 个文件，错误 {{errors}}",
+      "syncCompleted": "同步完成：新增 {{imported}} 条，扫描 {{files}} 个文件，错误 {{errors}}，暂缓 {{deferred}} 个",
       "syncFailed": "会话用量同步失败：{{error}}"
     },
     "rebuildCodex": {

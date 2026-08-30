@@ -1559,6 +1559,7 @@ fn parse_remote_capability(value: &str) -> Option<RemoteCapability> {
         "tools" => Some(RemoteCapability::Tools),
         "stream-check" => Some(RemoteCapability::StreamCheck),
         "usage" => Some(RemoteCapability::Usage),
+        "usage-manual-session-sync" => Some(RemoteCapability::UsageManualSessionSync),
         "usage-model-pricing-sync" => Some(RemoteCapability::UsageModelPricingSync),
         "auth" => Some(RemoteCapability::Auth),
         "auth-targeted-relogin" => Some(RemoteCapability::AuthTargetedRelogin),
@@ -1643,6 +1644,7 @@ pub async fn remote_get_provider_state(
 }
 
 const REMOTE_CODEX_CONFIG_ONLY_CAPABILITY: &str = "codex-config-only";
+const REMOTE_USAGE_MANUAL_SESSION_SYNC_CAPABILITY: &str = "usage-manual-session-sync";
 const REMOTE_HELPER_UPGRADE_REQUIRED: &str = "remote_helper_upgrade_required";
 
 #[derive(Debug, Deserialize)]
@@ -1654,22 +1656,39 @@ fn remote_helper_upgrade_required(capability: &str) -> String {
     format!("{REMOTE_HELPER_UPGRADE_REQUIRED}: {capability}")
 }
 
+fn validate_remote_helper_capability(
+    status: &RemoteHelperStatus,
+    capability: &str,
+) -> Result<(), String> {
+    if status.capabilities.iter().any(|value| value == capability) {
+        return Ok(());
+    }
+    Err(remote_helper_upgrade_required(capability))
+}
+
 fn validate_remote_codex_provider_mutation(
     app: &str,
     status: &RemoteHelperStatus,
 ) -> Result<(), String> {
-    if app != "codex"
-        || status
-            .capabilities
-            .iter()
-            .any(|value| value == REMOTE_CODEX_CONFIG_ONLY_CAPABILITY)
-    {
+    if app != "codex" {
         return Ok(());
     }
+    validate_remote_helper_capability(status, REMOTE_CODEX_CONFIG_ONLY_CAPABILITY)
+}
 
-    Err(remote_helper_upgrade_required(
-        REMOTE_CODEX_CONFIG_ONLY_CAPABILITY,
-    ))
+async fn ensure_remote_helper_capability(
+    profile: RemoteHostProfile,
+    secret: Option<RemoteConnectionSecret>,
+    capability: &str,
+) -> Result<(), String> {
+    let status: RemoteHelperStatus = run_remote_helper_json(
+        profile,
+        vec!["status".to_string()],
+        secret,
+        "Remote helper status",
+    )
+    .await?;
+    validate_remote_helper_capability(&status, capability)
 }
 
 async fn ensure_remote_codex_provider_mutation_supported(
@@ -1680,15 +1699,7 @@ async fn ensure_remote_codex_provider_mutation_supported(
     if app != "codex" {
         return Ok(());
     }
-
-    let status: RemoteHelperStatus = run_remote_helper_json(
-        profile,
-        vec!["status".to_string()],
-        secret,
-        "Remote helper status",
-    )
-    .await?;
-    validate_remote_codex_provider_mutation(app, &status)
+    ensure_remote_helper_capability(profile, secret, REMOTE_CODEX_CONFIG_ONLY_CAPABILITY).await
 }
 
 fn remote_auth_start_login_args(
@@ -1936,14 +1947,24 @@ pub async fn remote_get_usage_data_sources(
     .await
 }
 
+fn remote_manual_session_sync_args() -> Vec<String> {
+    vec!["usage".to_string(), "manual-session-sync".to_string()]
+}
+
 #[tauri::command]
 pub async fn remote_sync_session_usage(
     profile: RemoteHostProfile,
     secret: Option<RemoteConnectionSecret>,
 ) -> Result<crate::services::session_usage::SessionSyncResult, String> {
+    ensure_remote_helper_capability(
+        profile.clone(),
+        secret.clone(),
+        REMOTE_USAGE_MANUAL_SESSION_SYNC_CAPABILITY,
+    )
+    .await?;
     run_remote_helper_json(
         profile,
-        vec!["usage".to_string(), "sync-session".to_string()],
+        remote_manual_session_sync_args(),
         secret,
         "Remote usage session sync",
     )
@@ -4217,6 +4238,18 @@ mod tests {
             parse_remote_capability("usage"),
             Some(RemoteCapability::Usage)
         );
+        assert_eq!(
+            parse_remote_capability("usage-manual-session-sync"),
+            Some(RemoteCapability::UsageManualSessionSync)
+        );
+    }
+
+    #[test]
+    fn remote_manual_session_sync_uses_the_capability_gated_helper_command() {
+        assert_eq!(
+            remote_manual_session_sync_args(),
+            vec!["usage", "manual-session-sync"],
+        );
     }
 
     #[test]
@@ -4240,7 +4273,7 @@ mod tests {
     }
 
     #[test]
-    fn codex_provider_mutations_require_config_only_capability_before_dispatch() {
+    fn remote_mutations_require_specific_capabilities_before_dispatch() {
         let old_helper = RemoteHelperStatus {
             capabilities: vec!["providers".to_string()],
         };
@@ -4254,6 +4287,15 @@ mod tests {
         );
         assert!(validate_remote_codex_provider_mutation("codex", &current_helper).is_ok());
         assert!(validate_remote_codex_provider_mutation("claude", &old_helper).is_ok());
+        assert_eq!(
+            validate_remote_helper_capability(
+                &old_helper,
+                REMOTE_USAGE_MANUAL_SESSION_SYNC_CAPABILITY,
+            ),
+            Err(remote_helper_upgrade_required(
+                REMOTE_USAGE_MANUAL_SESSION_SYNC_CAPABILITY,
+            ))
+        );
     }
 
     #[test]

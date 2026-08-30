@@ -1273,7 +1273,6 @@
       "teamorouter": "TeamoRouter はエンタープライズグレードの Agentic LLM ゲートウェイで、料金は最大 90% オフ。CC Switch Remote ユーザーに特別特典を提供しています：このリンクから新規登録すると初回チャージが 10% オフ！",
       "ppio": "PPIO は中国有数の独立系 Agentic Cloud プロバイダーで、API キー 1 つで主要なオープンソースモデルをすべて利用できます。このリンクから登録し実名認証を完了すると、¥10 のクーポンがもらえます。",
       "xycai": "XycAi はエンタープライズグレードのトークンファクトリー：200+ のグローバルモデルにワンクリック接続、SLA 自動補償、異常キャッシュは 100% 返金！"
-
     },
     "presets": {
       "ucloud": "Compshare",
@@ -1760,9 +1759,11 @@
     "rawInputLabel": "原始",
     "sessionSync": {
       "title": "セッションログの自動スキャン",
-      "description": "各クライアントのローカルセッションログを定期的にスキャンして使用量を集計します。オフにすると手動同期時のみスキャンします",
+      "description": "このデスクトップのローカルセッションログを定期的にスキャンして使用量を集計します。オフにすると手動同期時のみスキャンします",
+      "manualTitle": "セッションログ同期",
+      "manualDescription": "選択したリモートホストのセッションログを同期します。リモートのスキャンは手動要求時のみ実行されます。",
       "syncNow": "今すぐ同期",
-      "syncCompleted": "同期完了：{{imported}} 件追加、{{files}} ファイルをスキャン、エラー {{errors}} 件",
+      "syncCompleted": "同期完了：{{imported}} 件追加、{{files}} ファイルをスキャン、エラー {{errors}} 件、保留 {{deferred}} 件",
       "syncFailed": "セッション使用量の同期に失敗しました：{{error}}"
     },
     "rebuildCodex": {

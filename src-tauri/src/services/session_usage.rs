@@ -420,11 +420,6 @@ fn sync_single_file(
     let last_byte_offset = cursor.and_then(|c| c.last_byte_offset);
     let last_fingerprint = cursor.and_then(|c| c.last_tail_fingerprint);
 
-    // 文件未变化则跳过
-    if file_modified <= last_modified {
-        return Ok(ClaudeFileSync::default());
-    }
-
     let mut file =
         fs::File::open(file_path).map_err(|e| AppError::Config(format!("无法打开文件: {e}")))?;
 
@@ -476,6 +471,13 @@ fn sync_single_file(
             Vec::new(),
         ),
     };
+
+    // 不能只看 mtime：外部工具可能保留 mtime 或原子替换为等长内容。
+    // 字节游标的边界指纹已确认且没有新增字节时才可安全跳过；游标落在
+    // EOF 前的 deferred tail 必须每轮重试，旧行号游标也必须完成一次转换。
+    if last_byte_offset == Some(file_size) && file_modified <= last_modified {
+        return Ok(ClaudeFileSync::default());
+    }
 
     let mut reader = BufReader::new(file);
 
@@ -1418,6 +1420,31 @@ mod tests {
         bump_mtime(&file);
         let after = sync_with_cursor(&db, &file)?;
         assert_eq!((after.imported, after.skipped), (1, 0), "追加恢复增量");
+
+        fs::remove_dir_all(&tmp).ok();
+        Ok(())
+    }
+
+    #[test]
+    fn test_same_size_preserved_mtime_rewrite_is_not_skipped() -> Result<(), AppError> {
+        let db = Database::memory()?;
+        let tmp = std::env::temp_dir().join(format!("cc-switch-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&tmp).unwrap();
+        let file = tmp.join("session.jsonl");
+
+        fs::write(&file, format!("{}\n", assistant_line("msg_a", 5))).unwrap();
+        assert_eq!(sync_with_cursor(&db, &file)?.imported, 1);
+        let original_modified = fs::metadata(&file).unwrap().modified().unwrap();
+
+        fs::write(&file, format!("{}\n", assistant_line("msg_x", 5))).unwrap();
+        let rewritten = fs::OpenOptions::new().write(true).open(&file).unwrap();
+        rewritten
+            .set_times(fs::FileTimes::new().set_modified(original_modified))
+            .unwrap();
+
+        let result = sync_with_cursor(&db, &file)?;
+        assert_eq!(result.pinned_rewrite, Some("重写"));
+        assert_eq!((result.imported, result.skipped), (0, 0));
 
         fs::remove_dir_all(&tmp).ok();
         Ok(())

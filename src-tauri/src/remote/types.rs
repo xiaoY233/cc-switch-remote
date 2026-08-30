@@ -94,6 +94,7 @@ pub enum RemoteCapability {
     Tools,
     StreamCheck,
     Usage,
+    UsageManualSessionSync,
     UsageModelPricingSync,
     Auth,
     AuthTargetedRelogin,

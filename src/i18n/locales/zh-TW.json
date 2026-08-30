@@ -1274,7 +1274,6 @@
       "teamorouter": "TeamoRouter 是企業級 Agentic LLM 閘道，價格最高可達 90% 折扣。為 CC Switch Remote 的使用者提供了特別福利：新使用者透過此連結註冊，首次充值享 10% 折扣！",
       "ppio": "PPIO 是中國領先的獨立 Agentic Cloud 服務商，一個 API Key 調用全部旗艦開源模型。透過此連結註冊並完成實名認證，即可獲得 ¥10 代金券。",
       "xycai": "XycAi 企業級 Token 工廠：200+ 全球模型一鍵接入，SLA 自動賠付，異常快取 100% 退還！"
-
     },
     "presets": {
       "ucloud": "優雲智算",
@@ -1761,9 +1760,11 @@
     "rawInputLabel": "原始",
     "sessionSync": {
       "title": "自動掃描工作階段記錄",
-      "description": "定期掃描各用戶端的本機工作階段記錄以統計用量；關閉後僅在手動同步時掃描",
+      "description": "定期掃描本機桌面端的工作階段記錄以統計用量；關閉後僅在手動同步時掃描",
+      "manualTitle": "工作階段記錄同步",
+      "manualDescription": "同步所選遠端主機上的工作階段記錄；遠端掃描僅在手動要求時執行。",
       "syncNow": "立即同步",
-      "syncCompleted": "同步完成：新增 {{imported}} 筆，掃描 {{files}} 個檔案，錯誤 {{errors}}",
+      "syncCompleted": "同步完成：新增 {{imported}} 筆，掃描 {{files}} 個檔案，錯誤 {{errors}}，暫緩 {{deferred}} 個",
       "syncFailed": "工作階段用量同步失敗：{{error}}"
     },
     "rebuildCodex": {
